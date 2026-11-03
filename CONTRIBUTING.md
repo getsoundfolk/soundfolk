@@ -37,6 +37,17 @@ This certifies that you comply with the [Developer Certificate of Origin 1.1](ht
 > (including all personal information I submit with it, including my sign-off) is maintained indefinitely and may be
 > redistributed consistent with this project or the open source license(s) involved.
 
+### Automatic check
+
+A GitHub Action ([`dco.yml`](.github/workflows/dco.yml)) runs on every pull request and fails if a commit has no
+`Signed-off-by` line, or if the email in that line differs from the commit author's email. Merge commits and bot
+commits are ignored. To sign off commits you already made on your branch:
+
+```bash
+git rebase --signoff main
+git push --force-with-lease
+```
+
 ## AI-generated content
 
 You remain responsible for what you submit: review it, understand it, and do not submit code whose origin you
