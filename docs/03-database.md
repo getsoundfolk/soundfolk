@@ -78,6 +78,34 @@ CREATE TABLE IF NOT EXISTS listening_sessions (
 );
 ```
 
+### `tracks`, `artists`, `albums`
+MusicBrainz identification of liked tracks (opt-in, see the `identify_tracks` setting). `tracks` is keyed like `likes`
+and doubles as the work queue: a liked track without a row, or `pending` with `next_attempt_at` in the past, is looked
+up next. A failed lookup is retried after 2, 4, 8… minutes (up to a day); a track without a trustworthy match is
+`not_found`. Albums are release groups ("the album", whatever the edition), preferring a plain album over a
+compilation or a live recording. `tags` and `genres` are JSON arrays.
+```sql
+CREATE TABLE IF NOT EXISTS tracks (
+    track_key          TEXT PRIMARY KEY,
+    status             TEXT NOT NULL CHECK (status IN ('pending', 'matched', 'not_found')),
+    attempts           INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    recording_mbid     TEXT,
+    title              TEXT,
+    artist_mbid        TEXT,
+    album_mbid         TEXT,
+    first_release_date TEXT,
+    tags               TEXT,
+    looked_up_at       DATETIME
+);
+CREATE TABLE IF NOT EXISTS artists (
+    mbid TEXT PRIMARY KEY, name TEXT NOT NULL, country TEXT, genres TEXT, looked_up_at DATETIME
+);
+CREATE TABLE IF NOT EXISTS albums (
+    mbid TEXT PRIMARY KEY, title TEXT NOT NULL, primary_type TEXT
+);
+```
+
 ### `station_reports`
 Anomaly reports about catalog stations.
 ```sql

@@ -13,6 +13,7 @@ use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerStat
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType};
 use crate::error::AppResult;
+use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 
 /// Station being played, as the history records it.
 #[derive(Debug, Clone)]
@@ -278,8 +279,31 @@ pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize
 // ── Likes ────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn like_track(db: State<'_, Database>, history_id: i64) -> AppResult<bool> {
-    Ok(db.like_track(history_id)?)
+pub async fn like_track(
+    db: State<'_, Database>,
+    waker: State<'_, IdentifyWaker>,
+    history_id: i64,
+) -> AppResult<bool> {
+    let liked = db.like_track(history_id)?;
+    waker.0.notify_one();
+    Ok(liked)
+}
+
+/// Whether liked tracks are identified on MusicBrainz (off by default).
+#[tauri::command]
+pub async fn get_track_identification(db: State<'_, Database>) -> AppResult<bool> {
+    Ok(db.get_bool(SETTING_IDENTIFY, false)?)
+}
+
+#[tauri::command]
+pub async fn set_track_identification(
+    db: State<'_, Database>,
+    waker: State<'_, IdentifyWaker>,
+    enabled: bool,
+) -> AppResult<()> {
+    db.set_bool(SETTING_IDENTIFY, enabled)?;
+    waker.0.notify_one();
+    Ok(())
 }
 
 #[tauri::command]

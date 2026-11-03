@@ -29,6 +29,9 @@
 
 .panel {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
   top: calc(100% + 0.35rem);
   right: 0;
   z-index: 10;

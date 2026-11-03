@@ -12,9 +12,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 mod history;
+mod identify;
 mod sessions;
 
 pub use history::{HistoryEntry, LikedTrack};
+pub use identify::TrackToIdentify;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS favorites (
@@ -77,6 +79,37 @@ CREATE TABLE IF NOT EXISTS listening_sessions (
     ended_at     DATETIME
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON listening_sessions (started_at);
+
+-- MusicBrainz identification of liked tracks (opt-in), keyed like the likes. `tags` and `genres`
+-- are JSON arrays of lowercase names.
+CREATE TABLE IF NOT EXISTS tracks (
+    track_key          TEXT PRIMARY KEY,
+    status             TEXT NOT NULL CHECK (status IN ('pending', 'matched', 'not_found')),
+    attempts           INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+    recording_mbid     TEXT,
+    title              TEXT,
+    artist_mbid        TEXT,
+    album_mbid         TEXT,
+    first_release_date TEXT,
+    tags               TEXT,
+    looked_up_at       DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS artists (
+    mbid         TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    country      TEXT,
+    genres       TEXT,
+    looked_up_at DATETIME
+);
+
+-- Release groups: the album, whatever the edition.
+CREATE TABLE IF NOT EXISTS albums (
+    mbid         TEXT PRIMARY KEY,
+    title        TEXT NOT NULL,
+    primary_type TEXT
+);
 
 -- Manually added stations: strictly local, never sent anywhere.
 CREATE TABLE IF NOT EXISTS personal_stations (

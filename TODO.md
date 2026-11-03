@@ -46,14 +46,15 @@ Also to do early: without it, listening time and like rates cannot be computed f
 - [x] Close sessions left open by a crash at the next startup (at the last one-minute heartbeat).
 
 ## Batch 4 — MusicBrainz enrichment
-Can come later without losing anything: it works from the raw titles already stored.
+Can come later without losing anything: it works from the raw titles already stored. Only **liked** tracks are
+identified (all the stats need), and only once the setting is turned on in ⚙ (off by default: titles leave the device).
 
-- [ ] Look up `artist` + `title` on MusicBrainz (free, no key, 1 request/s, `User-Agent` required).
-- [ ] `tracks`, `artists`, `albums` tables keyed by MBID (recording, artist, release group — not a specific release,
+- [x] Look up `artist` + `title` on MusicBrainz (free, no key, 1 request/s, `User-Agent` required).
+- [x] `tracks`, `artists`, `albums` tables keyed by MBID (recording, artist, release group — not a specific release,
   so compilations do not skew the stats).
-- [ ] Release date, tags (genres), artist country.
-- [ ] Resolution status per track: `parsed` / `matched`.
-- [ ] Background queue, offline-tolerant (retries when the network is back).
+- [x] Release date, tags (genres), artist country.
+- [x] Resolution status per track: `parsed` / `matched`.
+- [x] Background queue, offline-tolerant (retries when the network is back).
 
 ## Batch 5 — Stats screen
 - [ ] Stations: likes, and **like rate** (likes ÷ tracks heard, likes per listening hour) — raw counts favour the

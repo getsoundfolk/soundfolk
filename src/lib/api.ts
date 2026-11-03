@@ -116,6 +116,9 @@ export const api = {
   resolveStation: (stationId: string, name?: string) =>
     invoke<Playable>('resolve_station', { stationId, name }),
 
+  getTrackIdentification: () => invoke<boolean>('get_track_identification'),
+  setTrackIdentification: (enabled: boolean) => invoke<void>('set_track_identification', { enabled }),
+
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),
 };

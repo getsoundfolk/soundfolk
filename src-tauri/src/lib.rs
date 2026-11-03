@@ -4,11 +4,14 @@ mod catalog;
 mod commands;
 mod db;
 mod error;
+mod musicbrainz;
 mod tracks;
 
 use std::sync::{Arc, Mutex};
 
-use tauri::{Emitter, Manager};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
 use audio::{DesktopAudioEngine, NowPlaying, PlayerState};
@@ -70,6 +73,49 @@ fn track_session(app: &tauri::AppHandle, station: &Mutex<Option<OnAir>>, state: 
     }
 }
 
+/// Shows the main window if it is hidden or minimized, hides it otherwise.
+fn toggle_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let visible = window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false);
+    let result = if visible {
+        window.hide()
+    } else {
+        window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus())
+    };
+    if let Err(e) = result {
+        tracing::warn!("failed to toggle the main window: {e}");
+    }
+}
+
+/// Notification area icon: the app keeps playing in the background once its window is closed,
+/// so this is the way back to the window and the way to really quit.
+fn build_tray(app: &tauri::App) -> tauri::Result<()> {
+    let toggle = MenuItem::with_id(app, "toggle", "Show / hide Soundfolk", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    let mut tray = TrayIconBuilder::with_id("main")
+        .tooltip("Soundfolk")
+        .menu(&Menu::with_items(app, &[&toggle, &quit])?)
+        // Left click toggles the window (Windows and macOS; on Linux every click opens the menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "toggle" => toggle_main_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                toggle_main_window(tray.app_handle());
+            }
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -110,6 +156,10 @@ pub fn run() {
             app.manage(AudioState::new(engine, on_air));
             app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
 
+            let identify = Arc::new(tokio::sync::Notify::new());
+            musicbrainz::spawn_worker(app.handle().clone(), identify.clone());
+            app.manage(musicbrainz::IdentifyWaker(identify));
+
             let heartbeat = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -119,7 +169,18 @@ pub fn run() {
                     }
                 }
             });
+
+            build_tray(app)?;
             Ok(())
+        })
+        // Closing the window sends it to the notification area; "Quit" in the tray menu exits
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                if let Err(e) = window.hide() {
+                    tracing::warn!("failed to hide the main window: {e}");
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::play_stream,
@@ -137,6 +198,8 @@ pub fn run() {
             commands::like_track,
             commands::unlike_track,
             commands::list_likes,
+            commands::get_track_identification,
+            commands::set_track_identification,
             commands::report_station,
             commands::search_stations,
             commands::resolve_station,

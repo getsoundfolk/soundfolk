@@ -7,15 +7,26 @@
 
   let open = $state(false);
   let clickCounting = $state(true);
+  let identify = $state(false);
   let root: HTMLDivElement | undefined = $state();
 
   onMount(async () => {
     try {
-      clickCounting = await api.getClickCounting();
+      [clickCounting, identify] = await Promise.all([api.getClickCounting(), api.getTrackIdentification()]);
     } catch (e) {
       player.error = errorMessage(e);
     }
   });
+
+  async function changeIdentify(enabled: boolean) {
+    identify = enabled;
+    try {
+      await api.setTrackIdentification(enabled);
+    } catch (e) {
+      identify = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
 
   async function change(enabled: boolean) {
     clickCounting = enabled;
@@ -54,6 +65,10 @@
           onchange={(e) => change(e.currentTarget.checked)}
         />
         Report my listens to Radio-Browser (station + IP) to help radios get discovered
+      </label>
+      <label class={styles.label}>
+        <input type="checkbox" checked={identify} onchange={(e) => changeIdentify(e.currentTarget.checked)} />
+        Identify my liked tracks on MusicBrainz (artist + title + IP) for artist, album and genre stats
       </label>
     </div>
   {/if}

@@ -47,4 +47,8 @@ onwards.
   it for popularity rankings. It sends the station UUID and, as with any request, the IP address — nothing else. A short
   notice appears at the first play (that first play is not counted), and the setting can be turned off at any time.
   Personal stations are never reported.
+* **Track identification (off by default):** when turned on in ⚙, the artist and title of **liked** tracks — never the
+  rest of the history — are looked up on MusicBrainz, the open music database, to get the canonical artist, album,
+  release date, genres and artist country used by the stats. As with any request, the IP address is visible to
+  MusicBrainz. One request per second at most; lookups wait while offline and resume later.
 * **No telemetry** beyond that.
