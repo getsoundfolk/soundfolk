@@ -34,6 +34,6 @@
       checked={clickCounting}
       onchange={(e) => change(e.currentTarget.checked)}
     />
-    Report my listens to Radio-Browser (station + IP) to help independent radios
+    Report my listens to Radio-Browser (station + IP) to help radios get discovered
   </label>
 </footer>

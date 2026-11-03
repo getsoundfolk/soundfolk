@@ -17,7 +17,7 @@
 {#if player.clickNotice}
   <aside class={styles.notice} aria-label="Information about listen counting">
     <p class={styles.text}>
-      This listen is reported to Radio-Browser (station + IP) to help independent radios.
+      This listen is reported to Radio-Browser (station + IP) to help radios get discovered.
     </p>
     <div class={styles.actions}>
       <button class={styles.primary} type="button" onclick={() => (player.clickNotice = false)}>OK</button>
