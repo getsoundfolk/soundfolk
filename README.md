@@ -41,7 +41,7 @@ Events emitted to the frontend:
 
 ## Known MVP limitations
 
-- **HLS (`.m3u8`) is not supported**: these stations are shown but disabled.
+- **HLS (`.m3u8`) is not supported**: HLS stations (roughly 14 % of the most popular ones) are left out of the search results.
 - No current title for streams without `icy-metaint` (e.g. Ogg, whose comments are inside the stream).
 - An Ogg logical stream change mid-stream causes a reconnection (short silence).
 - The catalog is queried online (Radio-Browser API, a single active mirror for now).

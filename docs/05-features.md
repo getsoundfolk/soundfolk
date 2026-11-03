@@ -21,7 +21,7 @@ onwards.
 * **Global coverage via Radio-Browser:** worldwide catalog (independent and commercial web radios), searched online by
   name, with a short typing delay to spare the API.
 * **Honest station health:** stations whose last check failed stay visible with a warning (the check can be a false
-  negative) and are ranked after healthy ones; HLS stations are listed but disabled until they are supported.
+  negative) and are ranked after healthy ones. HLS stations are not shown until they are supported.
 * **Add a station by URL:** direct stream, `.m3u` or `.pls`. The stream is tested before it is saved. Private to the
   device by default; nothing is sent anywhere.
 

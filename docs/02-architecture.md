@@ -47,7 +47,8 @@ Soundfolk strictly decouples the user interface, the performance-critical logic 
   public Radio-Browser API: the mirror is discovered through `/json/servers`, requests carry an explicit
   `User-Agent`, and the UI delays searches by 300 ms to spare the API.
 * A station is never silently hidden: stations whose last check failed (which can be a false negative) are shown with
-  a warning and ranked after healthy ones; HLS stations are shown but disabled until the engine can play them.
+  a warning and ranked after healthy ones. HLS stations, which the engine cannot play yet, are left out of the results; since
+  that shortens pages, a search fetches up to three catalog pages to fill one and returns the offset of the next page.
 * **Click counting** goes **straight from the client** to Radio-Browser. Their API counts at most one click per IP,
   per station and per day, so an intermediary would make every user look like a single IP. It runs after playback has
   started, never on the critical path, and never for personal stations.

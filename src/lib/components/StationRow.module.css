@@ -16,10 +16,6 @@
   background: #272733;
 }
 
-.row[data-muted='true'] .text {
-  opacity: 0.6;
-}
-
 .play,
 .icon {
   flex: none;
@@ -39,14 +35,8 @@
   font-size: 0.7rem;
 }
 
-.play:hover:not(:disabled) {
+.play:hover {
   background: #ffb443;
-}
-
-.play:disabled {
-  background: #3a3a46;
-  color: #7a7a88;
-  cursor: not-allowed;
 }
 
 .play:focus-visible,
@@ -62,7 +52,6 @@
 
 .name,
 .meta,
-.note,
 .warning {
   margin: 0;
   overflow: hidden;
@@ -83,11 +72,6 @@
 .warning {
   font-size: 0.72rem;
   color: #f0a028;
-}
-
-.note {
-  font-size: 0.72rem;
-  color: #9a9aab;
 }
 
 .badge {

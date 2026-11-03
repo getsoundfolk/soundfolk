@@ -16,7 +16,7 @@ use serde::Serialize;
 pub type CatalogFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, CatalogError>> + Send + 'a>>;
 
 pub trait CatalogSource: Send + Sync {
-    fn search<'a>(&'a self, query: &'a SearchQuery) -> CatalogFuture<'a, Vec<Station>>;
+    fn search<'a>(&'a self, query: &'a SearchQuery) -> CatalogFuture<'a, SearchPage>;
 
     /// Reports that a user started playing the station (popularity rankings).
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()>;
@@ -70,6 +70,23 @@ pub struct Station {
     pub bitrate: u32,
     pub votes: u32,
     pub health: Health,
+}
+
+impl Station {
+    /// Whether the engine can play this station (HLS is not supported yet): unsupported stations
+    /// are never returned by a search.
+    pub fn is_supported(&self) -> bool {
+        !matches!(self.health, Health::Unsupported { .. })
+    }
+}
+
+/// One page of search results.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SearchPage {
+    pub stations: Vec<Station>,
+    /// Offset to pass to get the next page, or `None` when the catalog has no more results.
+    /// It counts the catalog's own entries (including the ones filtered out), not `stations.len()`.
+    pub next_offset: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]

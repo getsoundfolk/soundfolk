@@ -29,6 +29,12 @@ export interface Station {
   health: Health;
 }
 
+export interface SearchPage {
+  stations: Station[];
+  /** Offset of the next page, or `null` when there are no more results. */
+  next_offset: number | null;
+}
+
 export interface PersonalStation {
   station_id: string;
   name: string;
@@ -59,7 +65,7 @@ export const api = {
   getPlayerState: () => invoke<PlayerState>('get_player_state'),
   getNowPlaying: () => invoke<NowPlaying>('get_now_playing'),
 
-  searchStations: (query: SearchQuery) => invoke<Station[]>('search_stations', { query }),
+  searchStations: (query: SearchQuery) => invoke<SearchPage>('search_stations', { query }),
 
   listFavorites: () => invoke<Favorite[]>('list_favorites'),
   addFavorite: (favorite: Favorite) => invoke<void>('add_favorite', { favorite }),

@@ -12,13 +12,16 @@ use stream_download::http::reqwest::{Client, Url};
 use tokio::sync::OnceCell;
 
 use super::{
-    rank, CatalogError, CatalogFuture, CatalogSource, Health, SearchQuery, Station,
+    rank, CatalogError, CatalogFuture, CatalogSource, Health, SearchPage, SearchQuery, Station,
 };
 
 /// Only guaranteed mirror; the full list is discovered via `/json/servers`.
 const FALLBACK_SERVER: &str = "https://de1.api.radio-browser.info";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_ATTEMPTS: usize = 3;
+/// Catalog pages fetched at most per search: unsupported (HLS) stations are dropped, so a page can
+/// come back short; we fetch a few more to fill it without hammering the API.
+const MAX_PAGES_PER_SEARCH: usize = 3;
 
 pub struct RadioBrowser {
     client: Client,
@@ -102,32 +105,32 @@ impl RadioBrowser {
 }
 
 impl CatalogSource for RadioBrowser {
-    fn search<'a>(&'a self, query: &'a SearchQuery) -> CatalogFuture<'a, Vec<Station>> {
+    fn search<'a>(&'a self, query: &'a SearchQuery) -> CatalogFuture<'a, SearchPage> {
         Box::pin(async move {
             let q = query.sanitized()?;
-            let mut params = vec![
-                // Descending popularity: dead stations (0 clicks) naturally end up at the bottom.
-                ("order", "clickcount".to_string()),
-                ("reverse", "true".to_string()),
-                // We want to show suspect stations (see `Health::Unreachable`), not hide them.
-                ("hidebroken", "false".to_string()),
-                ("limit", q.limit.unwrap_or(super::DEFAULT_LIMIT).to_string()),
-                ("offset", q.offset.unwrap_or(0).to_string()),
-            ];
-            if let Some(text) = q.text {
-                params.push(("name", text));
-            }
-            if let Some(code) = q.country_code {
-                params.push(("countrycode", code));
-            }
-            if let Some(tag) = q.tag {
-                params.push(("tag", tag));
+            let limit = q.limit.unwrap_or(super::DEFAULT_LIMIT);
+            let mut offset = q.offset.unwrap_or(0);
+            let mut stations = Vec::new();
+            let mut exhausted = false;
+
+            for _ in 0..MAX_PAGES_PER_SEARCH {
+                let params = search_params(&q, limit, offset);
+                let body = self.get("json/stations/search", &params).await?;
+                let (page, raw_len) = parse_stations(&body)?;
+                offset += raw_len as u32;
+                stations.extend(page.into_iter().filter(Station::is_supported));
+
+                if raw_len < limit as usize {
+                    exhausted = true;
+                    break;
+                }
+                if stations.len() >= limit as usize {
+                    break;
+                }
             }
 
-            let body = self.get("json/stations/search", &params).await?;
-            let mut stations = parse_stations(&body)?;
             rank(&mut stations);
-            Ok(stations)
+            Ok(SearchPage { stations, next_offset: (!exhausted).then_some(offset) })
         })
     }
 
@@ -169,10 +172,36 @@ struct RawStation {
     lastcheckoktime_iso8601: Option<String>,
 }
 
-fn parse_stations(body: &[u8]) -> Result<Vec<Station>, CatalogError> {
+/// Query parameters of one catalog request.
+fn search_params(q: &SearchQuery, limit: u32, offset: u32) -> Vec<(&'static str, String)> {
+    let mut params = vec![
+        // Descending popularity: dead stations (0 clicks) naturally end up at the bottom.
+        ("order", "clickcount".to_string()),
+        ("reverse", "true".to_string()),
+        // We want to show suspect stations (see `Health::Unreachable`), not hide them.
+        ("hidebroken", "false".to_string()),
+        ("limit", limit.to_string()),
+        ("offset", offset.to_string()),
+    ];
+    if let Some(text) = &q.text {
+        params.push(("name", text.clone()));
+    }
+    if let Some(code) = &q.country_code {
+        params.push(("countrycode", code.clone()));
+    }
+    if let Some(tag) = &q.tag {
+        params.push(("tag", tag.clone()));
+    }
+    params
+}
+
+/// Converts a catalog response. Also returns how many entries the catalog sent, including the
+/// unusable ones that were dropped: pagination must advance by that number, not by the usable count.
+fn parse_stations(body: &[u8]) -> Result<(Vec<Station>, usize), CatalogError> {
     let raw: Vec<RawStation> =
         serde_json::from_slice(body).map_err(|e| CatalogError::Invalid(e.to_string()))?;
-    Ok(raw.into_iter().filter_map(convert).collect())
+    let raw_len = raw.len();
+    Ok((raw.into_iter().filter_map(convert).collect(), raw_len))
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {
@@ -244,7 +273,9 @@ mod tests {
 
     #[test]
     fn converts_and_drops_unusable_entries() {
-        let stations = parse_stations(FIXTURE.as_bytes()).unwrap();
+        let (stations, raw_len) = parse_stations(FIXTURE.as_bytes()).unwrap();
+        // Six entries sent, three usable: pagination must advance by six.
+        assert_eq!(raw_len, 6);
         let names: Vec<_> = stations.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, ["Dead Radio", "HLS Channel", "RDWA"]);
 
@@ -262,7 +293,7 @@ mod tests {
 
     #[test]
     fn ranking_puts_healthy_first_and_keeps_popularity_order() {
-        let mut stations = parse_stations(FIXTURE.as_bytes()).unwrap();
+        let (mut stations, _) = parse_stations(FIXTURE.as_bytes()).unwrap();
         rank(&mut stations);
         let names: Vec<_> = stations.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(names, ["RDWA", "Dead Radio", "HLS Channel"]);
@@ -304,7 +335,53 @@ mod tests {
     async fn live_search_finds_rdwa() {
         let rb = RadioBrowser::new().unwrap();
         let query = SearchQuery { text: Some("rdwa".into()), ..Default::default() };
-        let stations = rb.search(&query).await.unwrap();
-        assert!(stations.iter().any(|s| s.id == "ab30ca84-c228-4f57-8cac-816c69ef651d"));
+        let page = rb.search(&query).await.unwrap();
+        assert!(page.stations.iter().any(|s| s.id == "ab30ca84-c228-4f57-8cac-816c69ef651d"));
+    }
+
+    #[test]
+    fn unsupported_stations_are_filtered_out() {
+        let (stations, _) = parse_stations(FIXTURE.as_bytes()).unwrap();
+        let supported: Vec<_> =
+            stations.iter().filter(|s| s.is_supported()).map(|s| s.name.as_str()).collect();
+        assert_eq!(supported, ["Dead Radio", "RDWA"]); // unreachable stays, HLS goes
+    }
+
+    #[test]
+    fn search_params_carry_the_filters_and_the_offset() {
+        let q = SearchQuery {
+            text: Some("jazz".into()),
+            country_code: Some("FR".into()),
+            tag: Some("soul".into()),
+            ..Default::default()
+        };
+        let params = search_params(&q, 30, 60);
+        let get = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str());
+        assert_eq!(get("limit"), Some("30"));
+        assert_eq!(get("offset"), Some("60"));
+        assert_eq!(get("name"), Some("jazz"));
+        assert_eq!(get("countrycode"), Some("FR"));
+        assert_eq!(get("tag"), Some("soul"));
+        assert_eq!(get("hidebroken"), Some("false"));
+    }
+
+    /// Against the real API: HLS stations never come back, and paging moves forward.
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_search_hides_hls_and_paginates() {
+        let rb = RadioBrowser::new().unwrap();
+        // Korean broadcasters are mostly HLS: a good stress test for short pages.
+        let query = SearchQuery { text: Some("kbs".into()), limit: Some(10), ..Default::default() };
+        let first = rb.search(&query).await.unwrap();
+        assert!(first.stations.iter().all(|s| s.is_supported()));
+        if let Some(next) = first.next_offset {
+            let second = rb
+                .search(&SearchQuery { offset: Some(next), ..query.clone() })
+                .await
+                .unwrap();
+            assert!(second.stations.iter().all(|s| s.is_supported()));
+            let ids: std::collections::HashSet<_> = first.stations.iter().map(|s| &s.id).collect();
+            assert!(second.stations.iter().all(|s| !ids.contains(&s.id)), "pages overlap");
+        }
     }
 }

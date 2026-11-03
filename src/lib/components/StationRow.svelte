@@ -7,8 +7,6 @@
     meta?: string;
     /** `null` = healthy station; otherwise the warning to display. */
     warning?: string | null;
-    /** Unplayable station: the button is disabled and this text explains why. */
-    unplayable?: string | null;
     personal?: boolean;
     active?: boolean;
     favorite: boolean;
@@ -21,7 +19,6 @@
     name,
     meta = '',
     warning = null,
-    unplayable = null,
     personal = false,
     active = false,
     favorite,
@@ -31,12 +28,11 @@
   }: Props = $props();
 </script>
 
-<li class={styles.row} data-active={active} data-muted={unplayable !== null}>
+<li class={styles.row} data-active={active}>
   <button
     class={styles.play}
     type="button"
-    disabled={unplayable !== null}
-    title={unplayable ?? `Play ${name}`}
+    title={`Play ${name}`}
     aria-label={`Play ${name}`}
     onclick={onplay}
   >
@@ -49,9 +45,7 @@
       {#if personal}<span class={styles.badge}>personal</span>{/if}
     </p>
     {#if meta}<p class={styles.meta}>{meta}</p>{/if}
-    {#if unplayable}
-      <p class={styles.note}>{unplayable}</p>
-    {:else if warning}
+    {#if warning}
       <p class={styles.warning}>{warning}</p>
     {/if}
   </div>

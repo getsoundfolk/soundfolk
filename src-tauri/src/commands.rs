@@ -10,7 +10,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState};
-use crate::catalog::{CatalogSource, SearchQuery, Station};
+use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, PersonalStation, ReportType};
 use crate::error::AppResult;
 
@@ -135,7 +135,7 @@ pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppRe
 pub async fn search_stations(
     catalog: State<'_, CatalogState>,
     query: SearchQuery,
-) -> AppResult<Vec<Station>> {
+) -> AppResult<SearchPage> {
     Ok(catalog.0.search(&query).await?)
 }
 

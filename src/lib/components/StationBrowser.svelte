@@ -22,7 +22,9 @@
   let results = $state<Station[]>([]);
   let loading = $state(false);
   let searchError = $state<string | null>(null);
-  let hasMore = $state(false);
+  // Offset of the next page, or null when the catalog has no more results.
+  let nextOffset = $state<number | null>(null);
+  const hasMore = $derived(nextOffset !== null);
   // Id of the latest request: an older response is ignored.
   let requestId = 0;
 
@@ -34,11 +36,12 @@
       const page = await api.searchStations({
         text: text.trim() || undefined,
         limit: PAGE,
-        offset: reset ? 0 : results.length,
+        // The offset counts the catalog's own entries, not the stations shown (some are filtered out).
+        offset: reset ? 0 : (nextOffset ?? 0),
       });
       if (mine !== requestId) return;
-      results = reset ? page : [...results, ...page];
-      hasMore = page.length === PAGE;
+      results = reset ? page.stations : [...results, ...page.stations];
+      nextOffset = page.next_offset;
     } catch (e) {
       if (mine === requestId) searchError = errorMessage(e);
     } finally {
@@ -99,9 +102,6 @@
       : 'Unreachable at last check';
   }
 
-  const unplayable = (s: Station): string | null =>
-    s.health.status === 'unsupported' ? 'Format not supported yet (HLS)' : null;
-
   const isActive = (id: string) => player.current?.id === id;
 </script>
 
@@ -151,7 +151,6 @@
             name={s.name}
             meta={meta(s)}
             warning={warning(s)}
-            unplayable={unplayable(s)}
             active={isActive(s.id)}
             favorite={player.isFavorite(s.id)}
             onplay={() => player.play(fromStation(s))}
