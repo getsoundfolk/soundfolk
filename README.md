@@ -1,5 +1,7 @@
 # Soundfolk — Linux MVP
 
+> Find and play any web radio. Know what’s playing, keep track of what you heard.
+
 Tauri v2 + Svelte 5 + Rust audio engine (`stream-download` → `symphonia` → `cpal`) + SQLite (`rusqlite`).
 Specs in [`docs/`](docs/).
 
