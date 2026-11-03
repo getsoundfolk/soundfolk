@@ -1,0 +1,44 @@
+# Dependencies and builds
+node_modules/
+dist/
+src-tauri/target/
+*.tsbuildinfo
+.vite/
+
+# Tauri: the schemas are generated. gen/android and gen/apple (mobile, phase 2) MUST be committed.
+src-tauri/gen/schemas/
+
+# Secrets and local configuration: never commit a key (use .env.example as a template).
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+*.mobileprovision
+
+# Local SQLite databases created during development
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editors and system
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Local assistant tooling
+.claude/settings.local.json
+.claude/worktrees/

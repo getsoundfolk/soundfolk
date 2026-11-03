@@ -1,0 +1,46 @@
+[package]
+name = "soundfolk"
+version = "0.1.0"
+description = "Soundfolk — discover and listen to independent web radios"
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.85"
+
+[lib]
+name = "soundfolk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Local database (SQLite statically compiled, no system dependency)
+rusqlite = { version = "0.41", features = ["bundled"] }
+
+# Desktop audio engine, 100% Rust
+#   stream-download : HTTP network buffer (reqwest re-exported, rustls TLS)
+#   symphonia       : demuxing + decoding MP3 / AAC (ADTS & MP4) / Ogg Vorbis / FLAC / WAV
+#   cpal            : sound card output (ALSA by default on Linux)
+#   rtrb            : lock-free SPSC ring buffer between decoder and audio callback
+stream-download = { version = "0.24", default-features = false, features = ["reqwest", "reqwest-rustls"] }
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm", "id3v2"] }
+cpal = "0.18"
+rtrb = "0.4"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+rubato = "4.0.0"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true

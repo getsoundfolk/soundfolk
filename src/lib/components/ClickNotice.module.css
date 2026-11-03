@@ -1,0 +1,51 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #4a3a1c;
+  border-radius: 0.7rem;
+  background: #2a2214;
+}
+
+.text {
+  flex: 1;
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.actions {
+  display: flex;
+  flex: none;
+  gap: 0.4rem;
+}
+
+.primary,
+.secondary {
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.45rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.primary {
+  border: 0;
+  background: #f0a028;
+  color: #1a1204;
+  font-weight: 600;
+}
+
+.secondary {
+  border: 1px solid #5a4a2c;
+  background: transparent;
+  color: inherit;
+}
+
+.primary:focus-visible,
+.secondary:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
