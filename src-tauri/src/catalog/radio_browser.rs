@@ -134,6 +134,18 @@ impl CatalogSource for RadioBrowser {
         })
     }
 
+    fn station<'a>(&'a self, id: &'a str) -> CatalogFuture<'a, Option<Station>> {
+        Box::pin(async move {
+            // The ID ends up in the URL path: only a UUID is accepted.
+            if !is_uuid(id) {
+                return Err(CatalogError::BadRequest(format!("Invalid ID: {id}")));
+            }
+            let body = self.get(&format!("json/stations/byuuid/{id}"), &[]).await?;
+            let (stations, _) = parse_stations(&body)?;
+            Ok(stations.into_iter().next())
+        })
+    }
+
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()> {
         Box::pin(async move {
             // The ID ends up in the URL path: only a UUID is accepted.
@@ -363,6 +375,16 @@ mod tests {
         assert_eq!(get("countrycode"), Some("FR"));
         assert_eq!(get("tag"), Some("soul"));
         assert_eq!(get("hidebroken"), Some("false"));
+    }
+
+    /// Against the real API: `cargo test -- --ignored live_station`.
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_station_by_id() {
+        let rb = RadioBrowser::new().unwrap();
+        let station = rb.station("ab30ca84-c228-4f57-8cac-816c69ef651d").await.unwrap().unwrap();
+        assert_eq!(station.id, "ab30ca84-c228-4f57-8cac-816c69ef651d");
+        assert!(rb.station("../../etc/passwd").await.is_err());
     }
 
     /// Against the real API: HLS stations never come back, and paging moves forward.

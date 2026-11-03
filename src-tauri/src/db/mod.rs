@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Local SQLite persistence (offline-first): favorites, listening history, reports.
+//! Local SQLite persistence (offline-first): favorites, listening history, likes, reports.
 //!
 //! The connection is single and protected by a `Mutex`: accesses are short and WAL mode
 //! prevents concurrent reads (future sync worker) from blocking writes.
@@ -10,6 +10,10 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+mod history;
+
+pub use history::{HistoryEntry, LikedTrack};
+
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS favorites (
     station_id TEXT PRIMARY KEY,
@@ -19,14 +23,32 @@ CREATE TABLE IF NOT EXISTS favorites (
     added_at   DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- `artist`, `title` and `track_key` are parsed from `track_title` (see `tracks.rs`) and recomputed
+-- when the parsing rules change; `track_title` is never altered.
 CREATE TABLE IF NOT EXISTS listening_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id   TEXT NOT NULL,
     station_name TEXT,
     track_title  TEXT NOT NULL,
-    played_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    artist       TEXT,
+    title        TEXT,
+    track_key    TEXT,
+    played_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_history_played_at ON listening_history (played_at DESC);
+
+-- One row per liked track (same track_key = same track). Self-contained: clearing the history
+-- keeps the likes, and the station is the one the track was liked on.
+CREATE TABLE IF NOT EXISTS likes (
+    track_key    TEXT PRIMARY KEY,
+    artist       TEXT,
+    title        TEXT NOT NULL,
+    raw_title    TEXT NOT NULL,
+    station_id   TEXT NOT NULL,
+    station_name TEXT,
+    history_id   INTEGER,
+    liked_at     DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE IF NOT EXISTS station_reports (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,6 +74,11 @@ CREATE TABLE IF NOT EXISTS personal_stations (
 );
 ";
 
+/// Indexes on columns that older databases only gain in [`migrate`].
+const INDEXES: &str = "
+CREATE INDEX IF NOT EXISTS idx_history_track_key ON listening_history (track_key);
+";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Favorite {
     pub station_id: String,
@@ -60,16 +87,6 @@ pub struct Favorite {
     pub genre: Option<String>,
     #[serde(default)]
     pub added_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct HistoryEntry {
-    pub id: i64,
-    pub station_id: String,
-    /// Name at the time of listening; for old rows, the favorite or personal station name if known.
-    pub station_name: Option<String>,
-    pub track_title: String,
-    pub played_at: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -124,7 +141,10 @@ impl Database {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        conn.execute_batch(INDEXES)?;
+        let db = Self { conn: Mutex::new(conn) };
+        db.reparse_history_if_outdated()?;
+        Ok(db)
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -176,18 +196,24 @@ impl Database {
     // ── settings ─────────────────────────────────────────────────────────────
 
     pub fn get_bool(&self, key: &str, default: bool) -> rusqlite::Result<bool> {
-        let value: Option<String> = self
-            .conn()
-            .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
-            .optional()?;
-        Ok(value.map_or(default, |v| v == "true"))
+        Ok(self.get_str(key)?.map_or(default, |v| v == "true"))
     }
 
     pub fn set_bool(&self, key: &str, value: bool) -> rusqlite::Result<()> {
+        self.set_str(key, if value { "true" } else { "false" })
+    }
+
+    fn get_str(&self, key: &str) -> rusqlite::Result<Option<String>> {
+        self.conn()
+            .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
+            .optional()
+    }
+
+    fn set_str(&self, key: &str, value: &str) -> rusqlite::Result<()> {
         self.conn().execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, if value { "true" } else { "false" }],
+            params![key, value],
         )?;
         Ok(())
     }
@@ -224,52 +250,21 @@ impl Database {
         rows.collect()
     }
 
+    pub fn personal_station(&self, station_id: &str) -> rusqlite::Result<Option<PersonalStation>> {
+        self.conn()
+            .query_row(
+                "SELECT station_id, name, stream_url, genre FROM personal_stations WHERE station_id = ?1",
+                params![station_id],
+                personal_from_row,
+            )
+            .optional()
+    }
+
     pub fn remove_personal_station(&self, station_id: &str) -> rusqlite::Result<bool> {
         let deleted = self
             .conn()
             .execute("DELETE FROM personal_stations WHERE station_id = ?1", params![station_id])?;
         Ok(deleted > 0)
-    }
-
-    // ── listening_history ────────────────────────────────────────────────────
-
-    pub fn log_track(
-        &self,
-        station_id: &str,
-        station_name: Option<&str>,
-        track_title: &str,
-    ) -> rusqlite::Result<()> {
-        self.conn().execute(
-            "INSERT INTO listening_history (station_id, station_name, track_title) VALUES (?1, ?2, ?3)",
-            params![station_id, station_name, track_title],
-        )?;
-        Ok(())
-    }
-
-    pub fn recent_history(&self, limit: u32) -> rusqlite::Result<Vec<HistoryEntry>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT h.id, h.station_id, COALESCE(h.station_name, f.name, p.name), h.track_title, h.played_at
-             FROM listening_history h
-             LEFT JOIN favorites f ON f.station_id = h.station_id
-             LEFT JOIN personal_stations p ON p.station_id = h.station_id
-             ORDER BY h.id DESC LIMIT ?1",
-        )?;
-        let rows = stmt.query_map(params![limit], |row| {
-            Ok(HistoryEntry {
-                id: row.get(0)?,
-                station_id: row.get(1)?,
-                station_name: row.get(2)?,
-                track_title: row.get(3)?,
-                played_at: row.get(4)?,
-            })
-        })?;
-        rows.collect()
-    }
-
-    /// Deletes the whole listening history; returns the number of rows removed.
-    pub fn clear_history(&self) -> rusqlite::Result<usize> {
-        self.conn().execute("DELETE FROM listening_history", [])
     }
 
     // ── station_reports ──────────────────────────────────────────────────────
@@ -291,13 +286,22 @@ impl Database {
 
 /// Brings a database created by an older version up to the current schema.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-    let has_station_name: bool = conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM pragma_table_info('listening_history') WHERE name = 'station_name')",
-        [],
+    for column in ["station_name TEXT", "artist TEXT", "title TEXT", "track_key TEXT"] {
+        add_column(conn, "listening_history", column)?;
+    }
+    Ok(())
+}
+
+/// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).
+fn add_column(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<()> {
+    let name = column.split_whitespace().next().unwrap_or(column);
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+        params![table, name],
         |r| r.get(0),
     )?;
-    if !has_station_name {
-        conn.execute_batch("ALTER TABLE listening_history ADD COLUMN station_name TEXT")?;
+    if !exists {
+        conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column}"))?;
     }
     Ok(())
 }
@@ -312,10 +316,10 @@ fn personal_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PersonalStatio
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
-    fn fav(id: &str) -> Favorite {
+    pub(super) fn fav(id: &str) -> Favorite {
         Favorite {
             station_id: id.into(),
             name: format!("Radio {id}"),
@@ -336,50 +340,6 @@ mod tests {
         assert!(list[0].added_at.is_some());
         assert!(db.remove_favorite("a").unwrap());
         assert!(!db.remove_favorite("a").unwrap());
-    }
-
-    #[test]
-    fn history_is_newest_first() {
-        let db = Database::open_in_memory().unwrap();
-        db.log_track("a", Some("Radio A"), "first").unwrap();
-        db.log_track("a", Some("Radio A"), "second").unwrap();
-        let history = db.recent_history(10).unwrap();
-        assert_eq!(history[0].track_title, "second");
-        assert_eq!(history[0].station_name.as_deref(), Some("Radio A"));
-        assert_eq!(db.recent_history(1).unwrap().len(), 1);
-        assert_eq!(db.clear_history().unwrap(), 2);
-        assert!(db.recent_history(10).unwrap().is_empty());
-    }
-
-    #[test]
-    fn history_without_a_name_falls_back_to_the_favorite() {
-        let db = Database::open_in_memory().unwrap();
-        db.add_favorite(&fav("a")).unwrap();
-        db.log_track("a", None, "title").unwrap();
-        db.log_track("b", None, "title").unwrap();
-        let history = db.recent_history(10).unwrap();
-        assert_eq!(history[0].station_name, None);
-        assert_eq!(history[1].station_name.as_deref(), Some("Radio a"));
-    }
-
-    #[test]
-    fn old_history_table_gains_the_station_name() {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE listening_history (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                 station_id TEXT NOT NULL,
-                 track_title TEXT NOT NULL,
-                 played_at DATETIME DEFAULT CURRENT_TIMESTAMP
-             );
-             INSERT INTO listening_history (station_id, track_title) VALUES ('a', 'old');",
-        )
-        .unwrap();
-        let db = Database::init(conn).unwrap();
-        db.log_track("a", Some("Radio A"), "new").unwrap();
-        let history = db.recent_history(10).unwrap();
-        assert_eq!(history[0].station_name.as_deref(), Some("Radio A"));
-        assert_eq!(history[1].station_name, None);
     }
 
     #[test]

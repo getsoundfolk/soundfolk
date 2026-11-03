@@ -53,9 +53,28 @@ export interface HistoryEntry {
   id: number;
   station_id: string;
   station_name: string | null;
+  /** Raw title as announced on air. */
   track_title: string;
+  artist: string | null;
+  title: string;
+  track_key: string;
   /** SQLite `CURRENT_TIMESTAMP`: UTC, `YYYY-MM-DD HH:MM:SS`. */
   played_at: string;
+  liked: boolean;
+  /** Artist and title cleaned for a music service's search box. */
+  search_query: string;
+}
+
+export interface LikedTrack {
+  track_key: string;
+  artist: string | null;
+  title: string;
+  raw_title: string;
+  /** Station the track was liked on. */
+  station_id: string;
+  station_name: string | null;
+  liked_at: string;
+  search_query: string;
 }
 
 export interface SearchQuery {
@@ -86,8 +105,16 @@ export const api = {
   removePersonalStation: (stationId: string) =>
     invoke<boolean>('remove_personal_station', { stationId }),
 
-  getListeningHistory: (limit?: number) => invoke<HistoryEntry[]>('get_listening_history', { limit }),
+  getListeningHistory: (limit?: number, query?: string) =>
+    invoke<HistoryEntry[]>('get_listening_history', { limit, query }),
   clearListeningHistory: () => invoke<number>('clear_listening_history'),
+
+  likeTrack: (historyId: number) => invoke<boolean>('like_track', { historyId }),
+  unlikeTrack: (trackKey: string) => invoke<boolean>('unlike_track', { trackKey }),
+  listLikes: (limit?: number, query?: string) => invoke<LikedTrack[]>('list_likes', { limit, query }),
+
+  resolveStation: (stationId: string, name?: string) =>
+    invoke<Playable>('resolve_station', { stationId, name }),
 
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),

@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
+  import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import SettingsMenu from './SettingsMenu.svelte';
   import styles from './PlayerControls.module.css';
@@ -30,6 +31,17 @@
       <p class={styles.headline} title={headline}>{headline}</p>
       {#if subline}<p class={styles.subline}>{subline}</p>{/if}
     </div>
+    {#if history.onAir}
+      {@const track = history.onAir}
+      <button
+        class={styles.like}
+        type="button"
+        aria-pressed={track.liked}
+        aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
+        data-on={track.liked}
+        onclick={() => history.toggleLike({ ...track, historyId: track.id })}>{track.liked ? '♥' : '♡'}</button
+      >
+    {/if}
     <SettingsMenu />
   </div>
 

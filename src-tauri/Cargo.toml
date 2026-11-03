@@ -39,6 +39,9 @@ rtrb = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
 rubato = "4.0.0"
 
+# Track titles: accent folding for comparison keys
+unicode-normalization = "0.1"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }
 

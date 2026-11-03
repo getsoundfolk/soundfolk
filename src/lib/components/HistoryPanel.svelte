@@ -2,40 +2,100 @@
 <script lang="ts">
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
   import { openUrl } from '@tauri-apps/plugin-opener';
-  import { api, errorMessage, type HistoryEntry } from '../api';
+  import { api, errorMessage, type HistoryEntry, type LikedTrack } from '../api';
+  import { history } from '../history.svelte';
   import { player } from '../player.svelte';
-  import { shareText, TRACK_SERVICES } from '../trackLinks';
+  import { displayTitle, shareText, TRACK_SERVICES } from '../trackLinks';
   import styles from './HistoryPanel.module.css';
 
   const LIMIT = 200;
 
-  let entries = $state<HistoryEntry[]>([]);
+  type View = 'all' | 'liked';
+  const VIEWS: { id: View; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'liked', label: 'Liked' },
+  ];
+
+  /** A history entry or a liked track, as a row shows it. */
+  interface Row {
+    id: string;
+    historyId?: number;
+    track_key: string;
+    artist: string | null;
+    title: string;
+    station_id: string;
+    station_name: string | null;
+    at: Date;
+    liked: boolean;
+    search_query: string;
+  }
+
+  let view = $state<View>('all');
+  let text = $state('');
+  let rows = $state<Row[]>([]);
   let loaded = $state(false);
   /** Row whose action menu is open, and whether it opens upwards (row low in the window). */
-  let menu = $state<{ id: number; up: boolean } | null>(null);
+  let menu = $state<{ id: string; up: boolean } | null>(null);
   let toast = $state<string | null>(null);
   let confirmClear = $state(false);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+  // Id of the latest request: an older response is ignored.
+  let requestId = 0;
 
-  async function load() {
+  // SQLite stores UTC without a zone marker.
+  const utc = (sqlite: string) => new Date(`${sqlite.replace(' ', 'T')}Z`);
+
+  const fromEntry = (e: HistoryEntry): Row => ({
+    id: `h${e.id}`,
+    historyId: e.id,
+    track_key: e.track_key,
+    artist: e.artist,
+    title: e.title,
+    station_id: e.station_id,
+    station_name: e.station_name,
+    at: utc(e.played_at),
+    liked: e.liked,
+    search_query: e.search_query,
+  });
+
+  const fromLike = (l: LikedTrack): Row => ({
+    id: `l${l.track_key}`,
+    track_key: l.track_key,
+    artist: l.artist,
+    title: l.title,
+    station_id: l.station_id,
+    station_name: l.station_name,
+    at: utc(l.liked_at),
+    liked: true,
+    search_query: l.search_query,
+  });
+
+  async function load(current: View, query: string) {
+    const mine = ++requestId;
     try {
-      entries = await api.getListeningHistory(LIMIT);
+      const q = query.trim() || undefined;
+      const next =
+        current === 'all'
+          ? (await api.getListeningHistory(LIMIT, q)).map(fromEntry)
+          : (await api.listLikes(LIMIT, q)).map(fromLike);
+      if (mine === requestId) rows = next;
     } catch (e) {
-      player.error = errorMessage(e);
+      if (mine === requestId) player.error = errorMessage(e);
     } finally {
-      loaded = true;
+      if (mine === requestId) loaded = true;
     }
   }
 
-  // The backend logs a title before announcing it: reloading on each new title keeps the list live.
+  // Reload on a new title (the backend logs it before announcing it), a like change, or a new
+  // filter; typing waits for a pause.
   $effect(() => {
     void player.nowPlaying.title;
-    load();
+    void history.version;
+    const [current, query] = [view, text];
+    const timer = setTimeout(() => load(current, query), query.trim() ? 250 : 0);
+    return () => clearTimeout(timer);
   });
-
-  // SQLite stores UTC without a zone marker.
-  const playedAt = (e: HistoryEntry) => new Date(`${e.played_at.replace(' ', 'T')}Z`);
 
   function dayLabel(date: Date): string {
     const today = new Date();
@@ -47,16 +107,17 @@
   }
 
   const groups = $derived.by(() => {
-    const result: { label: string; entries: HistoryEntry[] }[] = [];
-    for (const entry of entries) {
-      const label = dayLabel(playedAt(entry));
-      if (result.at(-1)?.label === label) result.at(-1)!.entries.push(entry);
-      else result.push({ label, entries: [entry] });
+    const result: { label: string; rows: Row[] }[] = [];
+    for (const row of rows) {
+      const label = dayLabel(row.at);
+      if (result.at(-1)?.label === label) result.at(-1)!.rows.push(row);
+      else result.push({ label, rows: [row] });
     }
     return result;
   });
 
-  const time = (e: HistoryEntry) => playedAt(e).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const time = (r: Row) => r.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const meta = (r: Row) => [r.artist, r.station_name ?? 'Unknown station', time(r)].filter(Boolean).join(' · ');
 
   function notify(message: string) {
     toast = message;
@@ -64,31 +125,26 @@
     toastTimer = setTimeout(() => (toast = null), 1800);
   }
 
-  async function copy(text: string, message: string) {
+  /** Runs a menu action: closes the menu, reports a failure. */
+  async function act(action: () => Promise<unknown>, done?: string) {
     menu = null;
     try {
-      await writeText(text);
-      notify(message);
+      await action();
+      if (done) notify(done);
     } catch (e) {
       player.error = errorMessage(e);
     }
   }
 
-  async function open(url: string) {
-    menu = null;
-    try {
-      await openUrl(url);
-    } catch (e) {
-      player.error = errorMessage(e);
-    }
-  }
+  const copy = (text: string, done: string) => act(() => writeText(text), done);
+  const resolve = (r: Row) => api.resolveStation(r.station_id, r.station_name ?? undefined);
 
-  function toggleMenu(entry: HistoryEntry, button: HTMLElement) {
-    if (menu?.id === entry.id) {
+  function toggleMenu(row: Row, button: HTMLElement) {
+    if (menu?.id === row.id) {
       menu = null;
       return;
     }
-    menu = { id: entry.id, up: button.getBoundingClientRect().bottom > window.innerHeight * 0.6 };
+    menu = { id: row.id, up: button.getBoundingClientRect().bottom > window.innerHeight * 0.6 };
   }
 
   // Two clicks to clear: the history cannot be recovered.
@@ -100,12 +156,11 @@
       return;
     }
     confirmClear = false;
-    try {
+    await act(async () => {
       await api.clearListeningHistory();
-      entries = [];
-    } catch (e) {
-      player.error = errorMessage(e);
-    }
+      rows = [];
+      history.latest = null;
+    });
   }
 </script>
 
@@ -115,54 +170,113 @@
   onclick={(e) => menu && !(e.target as Element).closest(`.${styles.actions}`) && (menu = null)}
 />
 
-{#if loaded && entries.length === 0}
-  <p class={styles.empty}>No tracks yet. The titles announced by the stations you listen to will appear here.</p>
+<div class={styles.bar}>
+  <div class={styles.views} role="radiogroup" aria-label="Show">
+    {#each VIEWS as v (v.id)}
+      <button
+        class={styles.view}
+        type="button"
+        role="radio"
+        aria-checked={view === v.id}
+        onclick={() => ((view = v.id), (menu = null))}>{v.label}</button
+      >
+    {/each}
+  </div>
+  <input
+    class={styles.filter}
+    type="search"
+    placeholder="Filter by title, artist, station…"
+    aria-label="Filter the history"
+    bind:value={text}
+    spellcheck="false"
+    autocomplete="off"
+  />
+</div>
+
+{#if loaded && rows.length === 0}
+  <p class={styles.empty}>
+    {#if text.trim()}
+      Nothing matches “{text.trim()}”.
+    {:else if view === 'liked'}
+      No liked tracks yet. Tap ♡ next to a title to keep it here.
+    {:else}
+      No tracks yet. The titles announced by the stations you listen to will appear here.
+    {/if}
+  </p>
 {:else}
   {#each groups as group (group.label)}
     <section class={styles.group} aria-label={group.label}>
       <h3 class={styles.day}>{group.label}</h3>
       <ul class={styles.list}>
-        {#each group.entries as entry (entry.id)}
+        {#each group.rows as row (row.id)}
           <li class={styles.row}>
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-              class={styles.text}
-              title="Double-click to copy"
-              ondblclick={() => copy(entry.track_title, 'Title copied')}
+            <button
+              class={styles.like}
+              type="button"
+              aria-pressed={row.liked}
+              aria-label={row.liked ? `Unlike ${row.title}` : `Like ${row.title}`}
+              data-on={row.liked}
+              onclick={() => history.toggleLike(row)}>{row.liked ? '♥' : '♡'}</button
             >
-              <p class={styles.title}>{entry.track_title}</p>
-              <p class={styles.meta}>{entry.station_name ?? 'Unknown station'} · {time(entry)}</p>
+
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class={styles.text} title="Double-click to copy" ondblclick={() => copy(displayTitle(row), 'Title copied')}>
+              <p class={styles.title}>{row.title}</p>
+              <p class={styles.meta}>{meta(row)}</p>
             </div>
 
             <div class={styles.actions}>
               <button
                 class={styles.more}
                 type="button"
-                aria-label={`Actions for ${entry.track_title}`}
+                aria-label={`Actions for ${row.title}`}
                 aria-haspopup="menu"
-                aria-expanded={menu?.id === entry.id}
-                onclick={(e) => toggleMenu(entry, e.currentTarget)}>⋯</button
+                aria-expanded={menu?.id === row.id}
+                onclick={(e) => toggleMenu(row, e.currentTarget)}>⋯</button
               >
-              {#if menu?.id === entry.id}
+              {#if menu?.id === row.id}
                 <div class={styles.menu} data-up={menu.up} role="menu">
                   <p class={styles.heading}>Find this track on</p>
                   {#each TRACK_SERVICES as service (service.name)}
-                    <button class={styles.item} type="button" role="menuitem" onclick={() => open(service.url(entry.track_title))}>
+                    <button class={styles.item} type="button" role="menuitem" onclick={() => act(() => openUrl(service.url(row.search_query)))}>
                       {service.name}
                     </button>
                   {/each}
                   <hr class={styles.separator} />
-                  <button class={styles.item} type="button" role="menuitem" onclick={() => copy(entry.track_title, 'Title copied')}>
+                  <button class={styles.item} type="button" role="menuitem" onclick={() => copy(displayTitle(row), 'Title copied')}>
                     Copy title
                   </button>
                   <button
                     class={styles.item}
                     type="button"
                     role="menuitem"
-                    onclick={() => copy(shareText(entry.track_title, entry.station_name), 'Copied, ready to share')}
+                    onclick={() => copy(shareText(displayTitle(row), row.station_name), 'Copied, ready to share')}
                   >
                     Copy to share
                   </button>
+                  <hr class={styles.separator} />
+                  <button class={styles.item} type="button" role="menuitem" onclick={() => act(async () => player.play(await resolve(row)))}>
+                    Play {row.station_name ?? 'the station'}
+                  </button>
+                  {#if player.isFavorite(row.station_id)}
+                    <button
+                      class={styles.item}
+                      type="button"
+                      role="menuitem"
+                      onclick={() => act(() => player.toggleFavorite({ id: row.station_id, name: row.station_name ?? '', url: '' }), 'Station removed from favorites')}
+                    >
+                      Remove station from favorites
+                    </button>
+                  {:else}
+                    <button
+                      class={styles.item}
+                      type="button"
+                      role="menuitem"
+                      onclick={() => act(async () => player.toggleFavorite(await resolve(row)), 'Station added to favorites')}
+                    >
+                      Add station to favorites
+                    </button>
+                  {/if}
                 </div>
               {/if}
             </div>
@@ -172,9 +286,9 @@
     </section>
   {/each}
 
-  {#if entries.length > 0}
+  {#if view === 'all' && rows.length > 0 && !text.trim()}
     <button class={styles.clear} type="button" data-confirm={confirmClear} onclick={clear}>
-      {confirmClear ? 'Click again to clear the history' : 'Clear history'}
+      {confirmClear ? 'Click again to clear (likes are kept)' : 'Clear history'}
     </button>
   {/if}
 {/if}

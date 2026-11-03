@@ -30,10 +30,14 @@ onwards.
 ## 3. ⭐ Personal curation
 * **Favorites:** quick pinning of preferred stations, stored locally in SQLite.
 * **Listening history:** automatic, timestamped record of the tracks played on air, so a discovery is never lost. It
-  is the first tab, grouped by day, and records the station's name with each title. Titles that only repeat the
-  station's name are skipped. From each track: find it on YouTube, YouTube Music, Spotify, Deezer, Apple Music,
-  Bandcamp or Discogs (a plain search link opened in the browser), copy its title (also by double-click), or copy a
-  ready-to-share line. The history can be cleared at any time.
+  is the first tab, grouped by day, filterable by title, artist or station, and records the station's name with each
+  title. Titles that only repeat the station's name are skipped. Each raw title is split into artist and title, after
+  removing a station signature such as `- Classic Vinyl on walmradio.com`. From each track: find it on YouTube, YouTube
+  Music, Spotify, Deezer, Apple Music, Bandcamp or Discogs (a plain search link with the cleaned artist and title,
+  opened in the browser), copy `Artist - Title` (also by double-click), copy a ready-to-share line, play the station
+  again or add it to favorites. The history can be cleared at any time; likes are kept.
+* **Liked tracks:** ♡ on each history row and next to the title on air. A track is liked once, whatever station plays it
+  again later, and remembers the station it was liked on. The "Liked" view lists them.
 * **Personal stations:** your own streams, kept alongside catalog stations (marked "personal").
 
 ---

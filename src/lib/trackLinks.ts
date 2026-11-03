@@ -18,6 +18,10 @@ export const TRACK_SERVICES: TrackService[] = [
   { name: 'Discogs', url: (t) => `https://www.discogs.com/search/?q=${q(t)}&type=all` },
 ];
 
+/** `Artist - Title`, or the title alone. */
+export const displayTitle = (t: { artist: string | null; title: string }) =>
+  t.artist ? `${t.artist} - ${t.title}` : t.title;
+
 /** Text to paste in a message: the track, the station it was heard on, and where. */
-export const shareText = (title: string, station: string | null) =>
-  station ? `${title} — heard on ${station} (via Soundfolk)` : `${title} (via Soundfolk)`;
+export const shareText = (track: string, station: string | null) =>
+  station ? `${track} — heard on ${station} (via Soundfolk)` : `${track} (via Soundfolk)`;

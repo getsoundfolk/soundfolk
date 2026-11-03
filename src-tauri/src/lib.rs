@@ -4,6 +4,7 @@ mod catalog;
 mod commands;
 mod db;
 mod error;
+mod tracks;
 
 use std::sync::{Arc, Mutex};
 
@@ -103,8 +104,12 @@ pub fn run() {
             commands::list_favorites,
             commands::get_listening_history,
             commands::clear_listening_history,
+            commands::like_track,
+            commands::unlike_track,
+            commands::list_likes,
             commands::report_station,
             commands::search_stations,
+            commands::resolve_station,
             commands::get_click_counting,
             commands::set_click_counting,
             commands::add_personal_station,

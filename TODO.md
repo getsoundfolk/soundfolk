@@ -21,22 +21,22 @@ listening_sessions (station_id, started_at, ended_at)
 ## Batch 2 — Liked tracks & title parsing
 To do early: the station a track was liked on cannot be recovered later.
 
-- [ ] `likes` table: history entry, `station_id` at the time of the like, `liked_at`.
-- [ ] ♥ on each history row, and in the player next to the title on air.
-- [ ] "Liked" filter in the History tab.
-- [ ] Parse the raw title into `artist` + `title` columns, at logging time (Rust):
+- [x] `likes` table: history entry, `station_id` at the time of the like, `liked_at`.
+- [x] ♥ on each history row, and in the player next to the title on air.
+- [x] "Liked" filter in the History tab.
+- [x] Parse the raw title into `artist` + `title` columns, at logging time (Rust):
   - strip a trailing station signature (segment after ` - ` or ` | ` containing a domain, "on air", or a name close to
     the station's, e.g. `- Classic Vinyl on walmradio.com`);
   - `Artist - Title` (ICY convention) if a ` - ` remains, otherwise split on the **last** ` by ` (`Title by Artist`);
   - no separator: everything is the title, artist empty.
-- [ ] Re-parse existing rows at startup (safe: the raw title is kept).
-- [ ] Search query cleaned of noise (`(Remastered 2011)`, `[Live]`, `(Radio Edit)`, `/`, `:`, `!`); "Copy title"
+- [x] Re-parse existing rows at startup (safe: the raw title is kept).
+- [x] Search query cleaned of noise (`(Remastered 2011)`, `[Live]`, `(Radio Edit)`, `/`, `:`, `!`); "Copy title"
   copies `Artist - Title`.
-- [ ] Display: title in bold, `Artist · Station · time` below.
-- [ ] Tests on ~20 real raw titles (walmradio format, `Artist - Title`, "Stand By Me by Ben E. King", station
+- [x] Display: title in bold, `Artist · Station · time` below.
+- [x] Tests on ~20 real raw titles (walmradio format, `Artist - Title`, "Stand By Me by Ben E. King", station
   suffixes, titles without a separator).
-- [ ] Station favorite from a history row (stream URL resolved via Radio-Browser by UUID on click).
-- [ ] Text search in the history.
+- [x] Station favorite from a history row (stream URL resolved via Radio-Browser by UUID on click).
+- [x] Text search in the history.
 
 ## Batch 3 — Listening sessions
 Also to do early: without it, listening time and like rates cannot be computed for past days.

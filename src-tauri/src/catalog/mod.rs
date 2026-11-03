@@ -18,6 +18,9 @@ pub type CatalogFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T, CatalogErr
 pub trait CatalogSource: Send + Sync {
     fn search<'a>(&'a self, query: &'a SearchQuery) -> CatalogFuture<'a, SearchPage>;
 
+    /// One station by its catalog ID (`None` if the catalog no longer has it).
+    fn station<'a>(&'a self, id: &'a str) -> CatalogFuture<'a, Option<Station>>;
+
     /// Reports that a user started playing the station (popularity rankings).
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()>;
 }

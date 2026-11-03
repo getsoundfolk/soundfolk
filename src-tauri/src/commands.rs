@@ -11,7 +11,7 @@ use tauri::State;
 
 use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
-use crate::db::{Database, Favorite, HistoryEntry, PersonalStation, ReportType};
+use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType};
 use crate::error::AppResult;
 
 /// Station being played, as the history records it.
@@ -148,6 +148,51 @@ pub async fn search_stations(
     Ok(catalog.0.search(&query).await?)
 }
 
+/// What the player needs to play a station, whatever its origin.
+#[derive(Debug, Serialize)]
+pub struct ResolvedStation {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub genre: Option<String>,
+}
+
+/// Finds how to play a station known only by the ID stored in the history: personal stations
+/// from the database, catalog stations from the catalog (one request), and stations played
+/// without an ID are identified by their URL already.
+#[tauri::command]
+pub async fn resolve_station(
+    db: State<'_, Database>,
+    catalog: State<'_, CatalogState>,
+    station_id: String,
+    name: Option<String>,
+) -> AppResult<ResolvedStation> {
+    if let Some(p) = db.personal_station(&station_id)? {
+        return Ok(ResolvedStation { id: p.station_id, name: p.name, url: p.stream_url, genre: p.genre });
+    }
+    if let Some(f) = db.list_favorites()?.into_iter().find(|f| f.station_id == station_id) {
+        return Ok(ResolvedStation { id: f.station_id, name: f.name, url: f.stream_url, genre: f.genre });
+    }
+    if is_catalog_id(&station_id) {
+        let station = catalog
+            .0
+            .station(&station_id)
+            .await?
+            .ok_or_else(|| "This station is no longer in the catalog".to_owned())?;
+        return Ok(ResolvedStation {
+            genre: station.tags.first().cloned(),
+            id: station.id,
+            name: station.name,
+            url: station.url,
+        });
+    }
+    if station_id.starts_with("http://") || station_id.starts_with("https://") {
+        let name = name.unwrap_or_else(|| station_id.clone());
+        return Ok(ResolvedStation { id: station_id.clone(), name, url: station_id, genre: None });
+    }
+    Err(format!("Unknown station: {station_id}").into())
+}
+
 // ── Personal stations (private, never sent) ──────────────────────────────────
 
 /// Adds a station from a URL (direct stream, `.m3u` or `.pls`). The stream is **tested**
@@ -220,13 +265,35 @@ pub async fn list_favorites(db: State<'_, Database>) -> AppResult<Vec<Favorite>>
 pub async fn get_listening_history(
     db: State<'_, Database>,
     limit: Option<u32>,
+    query: Option<String>,
 ) -> AppResult<Vec<HistoryEntry>> {
-    Ok(db.recent_history(limit.unwrap_or(50).min(500))?)
+    Ok(db.recent_history(limit.unwrap_or(50).min(500), query.as_deref())?)
 }
 
 #[tauri::command]
 pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
     Ok(db.clear_history()?)
+}
+
+// ── Likes ────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn like_track(db: State<'_, Database>, history_id: i64) -> AppResult<bool> {
+    Ok(db.like_track(history_id)?)
+}
+
+#[tauri::command]
+pub async fn unlike_track(db: State<'_, Database>, track_key: String) -> AppResult<bool> {
+    Ok(db.unlike_track(&track_key)?)
+}
+
+#[tauri::command]
+pub async fn list_likes(
+    db: State<'_, Database>,
+    limit: Option<u32>,
+    query: Option<String>,
+) -> AppResult<Vec<LikedTrack>> {
+    Ok(db.list_likes(limit.unwrap_or(200).min(1000), query.as_deref())?)
 }
 
 #[tauri::command]

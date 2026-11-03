@@ -1,4 +1,80 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.views {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 0.55rem;
+  background: #121216;
+}
+
+.view {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.view:hover {
+  color: #ececf1;
+}
+
+.view[aria-checked='true'] {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.filter {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #34343f;
+  border-radius: 0.5rem;
+  background: #121216;
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+}
+
+.view:focus-visible,
+.filter:focus-visible,
+.like:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 1px;
+}
+
+.like {
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.like:hover {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.like[data-on='true'] {
+  color: #ff6b81;
+}
+
 .group {
   display: flex;
   flex-direction: column;
