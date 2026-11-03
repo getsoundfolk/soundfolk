@@ -198,6 +198,7 @@ pub fn run() {
             commands::like_track,
             commands::unlike_track,
             commands::list_likes,
+            commands::get_stats,
             commands::get_track_identification,
             commands::set_track_identification,
             commands::report_station,

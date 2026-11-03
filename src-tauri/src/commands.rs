@@ -11,7 +11,7 @@ use tauri::State;
 
 use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
-use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType};
+use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType, Stats};
 use crate::error::AppResult;
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 
@@ -287,6 +287,12 @@ pub async fn like_track(
     let liked = db.like_track(history_id)?;
     waker.0.notify_one();
     Ok(liked)
+}
+
+/// Stats over the last `days` days, or all time.
+#[tauri::command]
+pub async fn get_stats(db: State<'_, Database>, days: Option<u32>) -> AppResult<Stats> {
+    Ok(db.stats(days)?)
 }
 
 /// Whether liked tracks are identified on MusicBrainz (off by default).

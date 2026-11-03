@@ -1,0 +1,260 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.periods,
+.switch {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 0.55rem;
+  background: #121216;
+}
+
+.period,
+.switch button {
+  flex: 1;
+  white-space: nowrap;
+  padding: 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.period:hover,
+.switch button:hover {
+  color: #ececf1;
+}
+
+.period[aria-checked='true'],
+.switch button[aria-checked='true'] {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.period:focus-visible,
+.switch button:focus-visible,
+.action:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 1px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.6rem;
+  background: #20202a;
+  color: #9a9aab;
+  font-size: 0.72rem;
+}
+
+.big {
+  color: #ececf1;
+  font-size: 1.2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.notice {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid #34343f;
+  border-radius: 0.6rem;
+  color: #c9c9d6;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.notice p {
+  margin: 0;
+}
+
+.action {
+  align-self: flex-start;
+  padding: 0.4rem 0.8rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: #f0a028;
+  color: #1a1204;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.4rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.head .switch {
+  flex: none;
+}
+
+.title {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #ececf1;
+}
+
+.note,
+.empty {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: #9a9aab;
+}
+
+.empty {
+  text-align: center;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+}
+
+/* Label | bar | value: the bar track takes the room left. */
+.bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(3rem, 1fr) auto;
+  align-items: center;
+  gap: 0.6rem;
+  list-style: none;
+}
+
+.label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #c9c9d6;
+}
+
+.detail {
+  overflow: hidden;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  color: #7c7c8c;
+}
+
+.track {
+  height: 0.5rem;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 4px 4px 0;
+  background: #f0a028;
+}
+
+.bar:hover .fill,
+.column:hover .rise {
+  background: #ffb443;
+}
+
+.value {
+  min-width: 1.5rem;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: #ececf1;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(var(--count), 1fr);
+  gap: 2px;
+  height: 5.5rem;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.stick {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 1px solid #34343f;
+}
+
+.rise {
+  width: 100%;
+  max-width: 1.5rem;
+  border-radius: 4px 4px 0 0;
+  background: #f0a028;
+}
+
+.tick {
+  height: 1rem;
+  overflow: visible;
+  font-size: 0.65rem;
+  line-height: 1rem;
+  white-space: nowrap;
+  color: #7c7c8c;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid #2c2c36;
+  text-align: right;
+}
+
+.table th:first-child {
+  max-width: 9rem;
+  overflow: hidden;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.table thead th {
+  color: #7c7c8c;
+  font-weight: 500;
+}
+
+.table td,
+.table tbody th {
+  color: #c9c9d6;
+}

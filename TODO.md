@@ -57,13 +57,13 @@ identified (all the stats need), and only once the setting is turned on in ⚙ (
 - [x] Background queue, offline-tolerant (retries when the network is back).
 
 ## Batch 5 — Stats screen
-- [ ] Stations: likes, and **like rate** (likes ÷ tracks heard, likes per listening hour) — raw counts favour the
+- [x] Stations: likes, and **like rate** (likes ÷ tracks heard, likes per listening hour) — raw counts favour the
   station listened to most.
-- [ ] Artists, albums: tracks liked (MusicBrainz-recognised tracks only, with the unrecognised count shown).
-- [ ] Discovery: stations that brought new artists (first like of an artist), new artists liked per month, tracks heard
+- [x] Artists, albums: tracks liked (MusicBrainz-recognised tracks only, with the unrecognised count shown).
+- [x] Discovery: stations that brought new artists (first like of an artist), new artists liked per month, tracks heard
   on several stations.
-- [ ] Listening profile: time per station, day of week and hour; decades and genres of liked tracks; artist countries.
-- [ ] Station quality: repetition (same track per week), diversity (distinct artists per 100 tracks), share of
+- [x] Listening profile: time per station, day of week and hour; decades and genres of liked tracks; artist countries.
+- [x] Station quality: repetition (same track per week), diversity (distinct artists per 100 tracks), share of
   unrecognised titles (ads, jingles, missing metadata).
 
 Caveat: a title in the history means it was **announced** while listening, not that it was heard in full. Real

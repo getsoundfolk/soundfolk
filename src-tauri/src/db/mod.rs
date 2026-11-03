@@ -14,9 +14,11 @@ use serde::{Deserialize, Serialize};
 mod history;
 mod identify;
 mod sessions;
+mod stats;
 
 pub use history::{HistoryEntry, LikedTrack};
 pub use identify::TrackToIdentify;
+pub use stats::Stats;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS favorites (

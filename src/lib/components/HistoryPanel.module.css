@@ -165,10 +165,9 @@
 }
 
 .menu {
-  position: absolute;
-  top: calc(100% + 0.25rem);
-  right: 0;
+  position: fixed;
   z-index: 10;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   width: 12rem;
@@ -177,11 +176,6 @@
   border-radius: 0.7rem;
   background: #20202a;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
-}
-
-.menu[data-up='true'] {
-  top: auto;
-  bottom: calc(100% + 0.25rem);
 }
 
 .heading {

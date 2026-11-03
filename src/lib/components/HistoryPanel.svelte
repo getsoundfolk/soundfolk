@@ -7,13 +7,15 @@
   import { player } from '../player.svelte';
   import { displayTitle, shareText, TRACK_SERVICES } from '../trackLinks';
   import styles from './HistoryPanel.module.css';
+  import StatsPanel from './StatsPanel.svelte';
 
   const LIMIT = 200;
 
-  type View = 'all' | 'liked';
+  type View = 'all' | 'liked' | 'stats';
   const VIEWS: { id: View; label: string }[] = [
     { id: 'all', label: 'All' },
     { id: 'liked', label: 'Liked' },
+    { id: 'stats', label: 'Stats' },
   ];
 
   /** A history entry or a liked track, as a row shows it. */
@@ -34,8 +36,11 @@
   let text = $state('');
   let rows = $state<Row[]>([]);
   let loaded = $state(false);
-  /** Row whose action menu is open, and whether it opens upwards (row low in the window). */
-  let menu = $state<{ id: string; up: boolean } | null>(null);
+  /**
+   * Row whose action menu is open, and where. The menu is fixed to the window so the scrolling
+   * panel cannot clip it; it opens on the side of the button with more room.
+   */
+  let menu = $state<{ id: string; style: string } | null>(null);
   let toast = $state<string | null>(null);
   let confirmClear = $state(false);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -71,7 +76,7 @@
     search_query: l.search_query,
   });
 
-  async function load(current: View, query: string) {
+  async function load(current: 'all' | 'liked', query: string) {
     const mine = ++requestId;
     try {
       const q = query.trim() || undefined;
@@ -93,6 +98,7 @@
     void player.nowPlaying.title;
     void history.version;
     const [current, query] = [view, text];
+    if (current === 'stats') return;
     const timer = setTimeout(() => load(current, query), query.trim() ? 250 : 0);
     return () => clearTimeout(timer);
   });
@@ -144,8 +150,23 @@
       menu = null;
       return;
     }
-    menu = { id: row.id, up: button.getBoundingClientRect().bottom > window.innerHeight * 0.6 };
+    const rect = button.getBoundingClientRect();
+    const right = `right: ${window.innerWidth - rect.right}px;`;
+    const below = window.innerHeight - rect.bottom;
+    const style =
+      below >= rect.top
+        ? `${right} top: ${rect.bottom + 4}px; max-height: ${below - 12}px;`
+        : `${right} bottom: ${window.innerHeight - rect.top + 4}px; max-height: ${rect.top - 12}px;`;
+    menu = { id: row.id, style };
   }
+
+  // A fixed menu would stay put while its row scrolls away: close it on any scroll.
+  $effect(() => {
+    if (!menu) return;
+    const close = () => (menu = null);
+    document.addEventListener('scroll', close, { capture: true, passive: true });
+    return () => document.removeEventListener('scroll', close, { capture: true });
+  });
 
   // Two clicks to clear: the history cannot be recovered.
   async function clear() {
@@ -167,6 +188,7 @@
 <!-- Close the menu on Escape or on a click outside it. -->
 <svelte:window
   onkeydown={(e) => e.key === 'Escape' && (menu = null)}
+  onresize={() => (menu = null)}
   onclick={(e) => menu && !(e.target as Element).closest(`.${styles.actions}`) && (menu = null)}
 />
 
@@ -182,18 +204,22 @@
       >
     {/each}
   </div>
-  <input
-    class={styles.filter}
-    type="search"
-    placeholder="Filter by title, artist, station…"
-    aria-label="Filter the history"
-    bind:value={text}
-    spellcheck="false"
-    autocomplete="off"
-  />
+  {#if view !== 'stats'}
+    <input
+      class={styles.filter}
+      type="search"
+      placeholder="Filter by title, artist, station…"
+      aria-label="Filter the history"
+      bind:value={text}
+      spellcheck="false"
+      autocomplete="off"
+    />
+  {/if}
 </div>
 
-{#if loaded && rows.length === 0}
+{#if view === 'stats'}
+  <StatsPanel />
+{:else if loaded && rows.length === 0}
   <p class={styles.empty}>
     {#if text.trim()}
       Nothing matches “{text.trim()}”.
@@ -235,7 +261,7 @@
                 onclick={(e) => toggleMenu(row, e.currentTarget)}>⋯</button
               >
               {#if menu?.id === row.id}
-                <div class={styles.menu} data-up={menu.up} role="menu">
+                <div class={styles.menu} style={menu.style} role="menu">
                   <p class={styles.heading}>Find this track on</p>
                   {#each TRACK_SERVICES as service (service.name)}
                     <button class={styles.item} type="button" role="menuitem" onclick={() => act(() => openUrl(service.url(row.search_query)))}>

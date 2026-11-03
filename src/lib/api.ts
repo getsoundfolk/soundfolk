@@ -77,6 +77,44 @@ export interface LikedTrack {
   search_query: string;
 }
 
+export interface Count {
+  label: string;
+  detail: string | null;
+  count: number;
+}
+
+export interface StationStats {
+  station_id: string;
+  name: string;
+  likes: number;
+  tracks_heard: number;
+  listening_hours: number;
+  likes_per_hour: number | null;
+  like_rate: number | null;
+  repetition: number | null;
+  diversity: number | null;
+  unrecognised_share: number | null;
+}
+
+export interface Stats {
+  totals: { tracks_heard: number; likes: number; listening_hours: number };
+  identification: { enabled: boolean; matched: number; not_found: number; pending: number };
+  stations: StationStats[];
+  artists: Count[];
+  albums: Count[];
+  discovery_stations: Count[];
+  /** `YYYY-MM`, oldest first. */
+  new_artists_by_month: Count[];
+  shared_tracks: Count[];
+  /** Monday first. */
+  hours_by_weekday: number[];
+  hours_by_hour: number[];
+  decades: Count[];
+  genres: Count[];
+  /** ISO 3166-1 codes. */
+  countries: Count[];
+}
+
 export interface SearchQuery {
   text?: string;
   country_code?: string;
@@ -115,6 +153,8 @@ export const api = {
 
   resolveStation: (stationId: string, name?: string) =>
     invoke<Playable>('resolve_station', { stationId, name }),
+
+  getStats: (days?: number) => invoke<Stats>('get_stats', { days }),
 
   getTrackIdentification: () => invoke<boolean>('get_track_identification'),
   setTrackIdentification: (enabled: boolean) => invoke<void>('set_track_identification', { enabled }),

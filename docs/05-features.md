@@ -38,6 +38,18 @@ onwards.
   again or add it to favorites. The history can be cleared at any time; likes are kept.
 * **Liked tracks:** ♡ on each history row and next to the title on air. A track is liked once, whatever station plays it
   again later, and remembers the station it was liked on. The "Liked" view lists them.
+* **Listening sessions:** when each station was actually playing, so listening time is known (a title in the history
+  only says it was announced).
+* **Stats** (History tab, over 7 days, 30 days or all time):
+  * stations ranked by likes or by **likes per hour of listening** (fairer: the station listened to most is not
+    always the one liked most), with the share of announced tracks liked;
+  * artists, albums, genres, decades and artists' countries of liked tracks — only tracks identified on MusicBrainz
+    are counted, and the number left out is shown;
+  * where artists are discovered (station of each artist's first like), new artists liked per month, tracks heard on
+    several stations;
+  * listening time by hour of the day and by day of the week;
+  * station profiles: repetition (plays per distinct track), diversity (distinct artists per 100 tracks) and the share
+    of titles without an artist (ads, jingles, missing metadata).
 * **Personal stations:** your own streams, kept alongside catalog stations (marked "personal").
 
 ---
