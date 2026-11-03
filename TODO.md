@@ -41,9 +41,9 @@ To do early: the station a track was liked on cannot be recovered later.
 ## Batch 3 — Listening sessions
 Also to do early: without it, listening time and like rates cannot be computed for past days.
 
-- [ ] `listening_sessions` table: `station_id`, `started_at`, `ended_at` (start on play, end on stop, station change,
+- [x] `listening_sessions` table: `station_id`, `started_at`, `ended_at` (start on play, end on stop, station change,
   error or app exit).
-- [ ] Close sessions left open by a crash at the next startup.
+- [x] Close sessions left open by a crash at the next startup (at the last one-minute heartbeat).
 
 ## Batch 4 — MusicBrainz enrichment
 Can come later without losing anything: it works from the raw titles already stored.

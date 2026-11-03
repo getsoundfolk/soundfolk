@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Local SQLite persistence (offline-first): favorites, listening history, likes, reports.
+//! Local SQLite persistence (offline-first): favorites, listening history, likes, listening
+//! sessions, reports.
 //!
 //! The connection is single and protected by a `Mutex`: accesses are short and WAL mode
 //! prevents concurrent reads (future sync worker) from blocking writes.
@@ -11,6 +12,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 mod history;
+mod sessions;
 
 pub use history::{HistoryEntry, LikedTrack};
 
@@ -63,6 +65,18 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+
+-- When each station was actually playing. `last_seen_at` is a heartbeat: a session cut by a crash
+-- ends there.
+CREATE TABLE IF NOT EXISTS listening_sessions (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    station_id   TEXT NOT NULL,
+    station_name TEXT,
+    started_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at     DATETIME
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON listening_sessions (started_at);
 
 -- Manually added stations: strictly local, never sent anywhere.
 CREATE TABLE IF NOT EXISTS personal_stations (
@@ -144,6 +158,7 @@ impl Database {
         conn.execute_batch(INDEXES)?;
         let db = Self { conn: Mutex::new(conn) };
         db.reparse_history_if_outdated()?;
+        db.close_abandoned_sessions()?;
         Ok(db)
     }
 

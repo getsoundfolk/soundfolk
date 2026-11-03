@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
 
-use audio::{DesktopAudioEngine, NowPlaying};
+use audio::{DesktopAudioEngine, NowPlaying, PlayerState};
 use catalog::radio_browser::RadioBrowser;
 use commands::{AudioState, CatalogState, OnAir};
 use db::Database;
@@ -20,6 +20,8 @@ use db::Database;
 const PLAYER_STATE_EVENT: &str = "player:state";
 /// Event emitted when the on-air station or title changes (payload: `NowPlaying`).
 const NOW_PLAYING_EVENT: &str = "player:now-playing";
+/// How often an open listening session records that it is still playing.
+const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Adds the title to `listening_history`, without consecutive duplicates (a reconnection or a
 /// server repeating the same ICY block must not create extra rows). Some radios send their own
@@ -52,6 +54,22 @@ fn journalize_title(
     }
 }
 
+/// Opens a listening session when a station starts playing and closes it when playback stops.
+fn track_session(app: &tauri::AppHandle, station: &Mutex<Option<OnAir>>, state: &PlayerState) {
+    let db = app.state::<Database>();
+    let result = match state {
+        PlayerState::Playing => match station.lock().unwrap_or_else(|p| p.into_inner()).clone() {
+            Some(s) => db.start_session(&s.id, s.name.as_deref()),
+            None => Ok(()),
+        },
+        PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_) => db.end_session(),
+        PlayerState::Connecting => Ok(()),
+    };
+    if let Err(e) = result {
+        tracing::warn!("listening session not saved: {e}");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -74,8 +92,10 @@ pub fn run() {
             let state_handle = app.handle().clone();
             let title_handle = app.handle().clone();
             let station = on_air.clone();
+            let session_station = on_air.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
+                    track_session(&state_handle, &session_station, &state);
                     if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
                         tracing::warn!("failed to emit player state: {e}");
                     }
@@ -89,6 +109,16 @@ pub fn run() {
             );
             app.manage(AudioState::new(engine, on_air));
             app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
+
+            let heartbeat = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(SESSION_HEARTBEAT).await;
+                    if let Err(e) = heartbeat.state::<Database>().touch_session() {
+                        tracing::warn!("listening session heartbeat failed: {e}");
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -116,6 +146,13 @@ pub fn run() {
             commands::list_personal_stations,
             commands::remove_personal_station,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Soundfolk");
+        .build(tauri::generate_context!())
+        .expect("error while building Soundfolk")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Err(e) = app.state::<Database>().end_session() {
+                    tracing::warn!("listening session not closed: {e}");
+                }
+            }
+        });
 }
