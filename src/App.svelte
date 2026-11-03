@@ -3,7 +3,6 @@
   import { onMount } from 'svelte';
   import ClickNotice from './lib/components/ClickNotice.svelte';
   import PlayerControls from './lib/components/PlayerControls.svelte';
-  import SettingsFooter from './lib/components/SettingsFooter.svelte';
   import StationBrowser from './lib/components/StationBrowser.svelte';
   import { player } from './lib/player.svelte';
 
@@ -19,7 +18,6 @@
   <ClickNotice />
   <PlayerControls />
   <StationBrowser />
-  <SettingsFooter />
 </main>
 
 <style>

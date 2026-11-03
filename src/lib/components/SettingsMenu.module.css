@@ -1,0 +1,57 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.root {
+  position: relative;
+  flex: none;
+}
+
+.gear {
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #9a9aab;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gear:hover,
+.gear[aria-expanded='true'] {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.gear:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  z-index: 10;
+  width: 17rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #34343f;
+  border-radius: 0.7rem;
+  background: #20202a;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #c9c9d6;
+  cursor: pointer;
+}
+
+.label input {
+  flex: none;
+  margin-top: 0.15rem;
+  accent-color: #f0a028;
+}

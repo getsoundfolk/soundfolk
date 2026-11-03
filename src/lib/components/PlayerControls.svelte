@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
   import { player } from '../player.svelte';
+  import SettingsMenu from './SettingsMenu.svelte';
   import styles from './PlayerControls.module.css';
 
   const LABELS = {
@@ -24,9 +25,12 @@
 </script>
 
 <section class={styles.root} aria-label="Player">
-  <div class={styles.info}>
-    <p class={styles.headline} title={headline}>{headline}</p>
-    {#if subline}<p class={styles.subline}>{subline}</p>{/if}
+  <div class={styles.top}>
+    <div class={styles.info}>
+      <p class={styles.headline} title={headline}>{headline}</p>
+      {#if subline}<p class={styles.subline}>{subline}</p>{/if}
+    </div>
+    <SettingsMenu />
   </div>
 
   <div class={styles.row}>
