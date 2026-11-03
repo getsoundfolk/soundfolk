@@ -217,7 +217,7 @@ fn names(value: &Value, key: &str) -> Vec<String> {
         .flatten()
         .filter_map(|t| Some((t.get("count").and_then(Value::as_i64).unwrap_or(0), str_of(t, "name")?)))
         .collect();
-    items.sort_by(|a, b| b.0.cmp(&a.0));
+    items.sort_by_key(|(count, _)| std::cmp::Reverse(*count));
     items.into_iter().map(|(_, n)| n.to_lowercase()).take(5).collect()
 }
 

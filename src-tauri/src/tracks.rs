@@ -100,14 +100,6 @@ pub fn artist_key(artist: &str) -> String {
     key.strip_prefix("the ").map(str::to_owned).unwrap_or(key)
 }
 
-/// `Artist - Title`, or the title alone.
-pub fn display(parsed: &ParsedTitle) -> String {
-    match &parsed.artist {
-        Some(artist) => format!("{artist} - {}", parsed.title),
-        None => parsed.title.clone(),
-    }
-}
-
 fn text_key(text: &str) -> String {
     let folded: String = text
         .nfd()
@@ -194,7 +186,8 @@ mod tests {
 
     #[test]
     fn parses_real_titles() {
-        let cases: &[(&str, Option<&str>, (Option<String>, String))] = &[
+        type Case = (&'static str, Option<&'static str>, (Option<String>, String));
+        let cases: &[Case] = &[
             (
                 "Overture / Food, Glorious Food by Original Broadway Cast of Oliver! - Classic Vinyl on walmradio.com",
                 Some("Classic Vinyl HD"),
@@ -242,11 +235,5 @@ mod tests {
         assert_eq!(key("Beyoncé feat. Jay-Z - Crazy in Love"), key("Beyonce - Crazy In Love"));
         assert_ne!(key("Daft Punk - Around the World"), key("Daft Punk - One More Time"));
         assert_eq!(artist_key("The Original Broadway Cast"), "original broadway cast");
-    }
-
-    #[test]
-    fn display_joins_artist_and_title() {
-        assert_eq!(display(&parse("Overture by Cast - site.com", None)), "Cast - Overture");
-        assert_eq!(display(&parse("Clair de lune", None)), "Clair de lune");
     }
 }
