@@ -14,16 +14,23 @@ use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, PersonalStation, ReportType};
 use crate::error::AppResult;
 
+/// Station being played, as the history records it.
+#[derive(Debug, Clone)]
+pub struct OnAir {
+    pub id: String,
+    pub name: Option<String>,
+}
+
 /// The trait takes `&mut self`: the engine lives behind a `Mutex` in the Tauri state.
 pub struct AudioState {
     engine: Mutex<DesktopAudioEngine>,
     /// Station currently playing, shared with the listener that logs titles.
-    station_id: Arc<Mutex<Option<String>>>,
+    station: Arc<Mutex<Option<OnAir>>>,
 }
 
 impl AudioState {
-    pub fn new(engine: DesktopAudioEngine, station_id: Arc<Mutex<Option<String>>>) -> Self {
-        Self { engine: Mutex::new(engine), station_id }
+    pub fn new(engine: DesktopAudioEngine, station: Arc<Mutex<Option<OnAir>>>) -> Self {
+        Self { engine: Mutex::new(engine), station }
     }
 
     fn engine(&self) -> std::sync::MutexGuard<'_, DesktopAudioEngine> {
@@ -54,10 +61,12 @@ pub async fn play_stream(
     catalog: State<'_, CatalogState>,
     url: String,
     station_id: Option<String>,
+    station_name: Option<String>,
 ) -> AppResult<PlayOutcome> {
     // Without a catalog ID, the URL identifies the station in the history.
     let id = station_id.clone().unwrap_or_else(|| url.clone());
-    *audio.station_id.lock().unwrap_or_else(|p| p.into_inner()) = Some(id);
+    let name = station_name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name });
     audio.engine().play(&url)?;
 
     // Counting is never on the critical path: started after playback has begun.
@@ -213,6 +222,11 @@ pub async fn get_listening_history(
     limit: Option<u32>,
 ) -> AppResult<Vec<HistoryEntry>> {
     Ok(db.recent_history(limit.unwrap_or(50).min(500))?)
+}
+
+#[tauri::command]
+pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
+    Ok(db.clear_history()?)
 }
 
 #[tauri::command]

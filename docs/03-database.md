@@ -24,12 +24,16 @@ CREATE TABLE IF NOT EXISTS favorites (
 
 ### `listening_history`
 Tracks played on air, recorded from the stream's ICY metadata (consecutive duplicates are skipped).
+`station_name` is copied at listening time, because catalog stations are not stored locally: without it, a catalog
+UUID could not be shown by name. Rows from before this column have it `NULL`; the app then falls back to the favorite
+or personal station of the same ID, if any.
 ```sql
 CREATE TABLE IF NOT EXISTS listening_history (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    station_id  TEXT NOT NULL,
-    track_title TEXT NOT NULL,
-    played_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    station_id   TEXT NOT NULL,
+    station_name TEXT,
+    track_title  TEXT NOT NULL,
+    played_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 

@@ -29,7 +29,11 @@ onwards.
 
 ## 3. ⭐ Personal curation
 * **Favorites:** quick pinning of preferred stations, stored locally in SQLite.
-* **Listening history:** automatic, timestamped record of the tracks played on air, so a discovery is never lost.
+* **Listening history:** automatic, timestamped record of the tracks played on air, so a discovery is never lost. It
+  is the first tab, grouped by day, and records the station's name with each title. Titles that only repeat the
+  station's name are skipped. From each track: find it on YouTube, YouTube Music, Spotify, Deezer, Apple Music,
+  Bandcamp or Discogs (a plain search link opened in the browser), copy its title (also by double-click), or copy a
+  ready-to-share line. The history can be cleared at any time.
 * **Personal stations:** your own streams, kept alongside catalog stations (marked "personal").
 
 ---

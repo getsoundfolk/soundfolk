@@ -49,6 +49,15 @@ export interface Favorite {
   genre: string | null;
 }
 
+export interface HistoryEntry {
+  id: number;
+  station_id: string;
+  station_name: string | null;
+  track_title: string;
+  /** SQLite `CURRENT_TIMESTAMP`: UTC, `YYYY-MM-DD HH:MM:SS`. */
+  played_at: string;
+}
+
 export interface SearchQuery {
   text?: string;
   country_code?: string;
@@ -58,8 +67,8 @@ export interface SearchQuery {
 }
 
 export const api = {
-  playStream: (url: string, stationId?: string) =>
-    invoke<{ show_click_notice: boolean }>('play_stream', { url, stationId }),
+  playStream: (url: string, stationId?: string, stationName?: string) =>
+    invoke<{ show_click_notice: boolean }>('play_stream', { url, stationId, stationName }),
   stopStream: () => invoke<void>('stop_stream'),
   setVolume: (volume: number) => invoke<void>('set_volume', { volume }),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),
@@ -76,6 +85,9 @@ export const api = {
   listPersonalStations: () => invoke<PersonalStation[]>('list_personal_stations'),
   removePersonalStation: (stationId: string) =>
     invoke<boolean>('remove_personal_station', { stationId }),
+
+  getListeningHistory: (limit?: number) => invoke<HistoryEntry[]>('get_listening_history', { limit }),
+  clearListeningHistory: () => invoke<number>('clear_listening_history'),
 
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),

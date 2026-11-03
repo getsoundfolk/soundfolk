@@ -43,7 +43,7 @@ class PlayerStore {
   async play(station: Playable) {
     this.current = station;
     await this.run(async () => {
-      const outcome = await api.playStream(station.url, station.id);
+      const outcome = await api.playStream(station.url, station.id, station.name);
       if (outcome.show_click_notice) this.clickNotice = true;
     });
   }

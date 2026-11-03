@@ -4,18 +4,20 @@
   import { api, errorMessage, type Favorite, type PersonalStation, type Playable, type Station } from '../api';
   import { player } from '../player.svelte';
   import AddStationForm from './AddStationForm.svelte';
+  import HistoryPanel from './HistoryPanel.svelte';
   import StationRow from './StationRow.svelte';
   import styles from './StationBrowser.module.css';
 
-  type Tab = 'search' | 'favorites' | 'personal';
+  type Tab = 'history' | 'search' | 'favorites' | 'personal';
   const TABS: { id: Tab; label: string }[] = [
+    { id: 'history', label: 'History' },
     { id: 'search', label: 'Search' },
     { id: 'favorites', label: 'Favorites' },
     { id: 'personal', label: 'My stations' },
   ];
   const PAGE = 30;
 
-  let tab = $state<Tab>('search');
+  let tab = $state<Tab>('history');
 
   // ── Search (online catalog) ──────────────────────────────────────────
   let text = $state('');
@@ -124,7 +126,9 @@
   </div>
 
   <div class={styles.panel} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-    {#if tab === 'search'}
+    {#if tab === 'history'}
+      <HistoryPanel />
+    {:else if tab === 'search'}
       <input
         class={styles.search}
         type="search"
