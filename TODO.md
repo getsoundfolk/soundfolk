@@ -1,0 +1,69 @@
+# TODO — Listening history, likes & stats
+
+Goal: reliable personal stats (stations and artists whose tracks I like most, and more). Each batch builds on the
+previous one.
+
+**Principles**
+* The raw ICY title in `listening_history` is never altered: everything else is derived from it and can be recomputed.
+* The station is identified by its ID (Radio-Browser UUID or `user:…`), never by its name.
+* No manual correction of parsed titles (too complex for now). Stats rely on safe data instead: artist and album
+  rankings only count tracks recognised by MusicBrainz, and show the number of unrecognised tracks next to them.
+
+**Target model**
+```
+listening_history  (raw title + parsed artist / title)  ── track_id (via MusicBrainz) ──▶ tracks ──▶ artists, albums
+likes              (history entry, station_id, liked_at)
+listening_sessions (station_id, started_at, ended_at)
+```
+
+---
+
+## Batch 2 — Liked tracks & title parsing
+To do early: the station a track was liked on cannot be recovered later.
+
+- [ ] `likes` table: history entry, `station_id` at the time of the like, `liked_at`.
+- [ ] ♥ on each history row, and in the player next to the title on air.
+- [ ] "Liked" filter in the History tab.
+- [ ] Parse the raw title into `artist` + `title` columns, at logging time (Rust):
+  - strip a trailing station signature (segment after ` - ` or ` | ` containing a domain, "on air", or a name close to
+    the station's, e.g. `- Classic Vinyl on walmradio.com`);
+  - `Artist - Title` (ICY convention) if a ` - ` remains, otherwise split on the **last** ` by ` (`Title by Artist`);
+  - no separator: everything is the title, artist empty.
+- [ ] Re-parse existing rows at startup (safe: the raw title is kept).
+- [ ] Search query cleaned of noise (`(Remastered 2011)`, `[Live]`, `(Radio Edit)`, `/`, `:`, `!`); "Copy title"
+  copies `Artist - Title`.
+- [ ] Display: title in bold, `Artist · Station · time` below.
+- [ ] Tests on ~20 real raw titles (walmradio format, `Artist - Title`, "Stand By Me by Ben E. King", station
+  suffixes, titles without a separator).
+- [ ] Station favorite from a history row (stream URL resolved via Radio-Browser by UUID on click).
+- [ ] Text search in the history.
+
+## Batch 3 — Listening sessions
+Also to do early: without it, listening time and like rates cannot be computed for past days.
+
+- [ ] `listening_sessions` table: `station_id`, `started_at`, `ended_at` (start on play, end on stop, station change,
+  error or app exit).
+- [ ] Close sessions left open by a crash at the next startup.
+
+## Batch 4 — MusicBrainz enrichment
+Can come later without losing anything: it works from the raw titles already stored.
+
+- [ ] Look up `artist` + `title` on MusicBrainz (free, no key, 1 request/s, `User-Agent` required).
+- [ ] `tracks`, `artists`, `albums` tables keyed by MBID (recording, artist, release group — not a specific release,
+  so compilations do not skew the stats).
+- [ ] Release date, tags (genres), artist country.
+- [ ] Resolution status per track: `parsed` / `matched`.
+- [ ] Background queue, offline-tolerant (retries when the network is back).
+
+## Batch 5 — Stats screen
+- [ ] Stations: likes, and **like rate** (likes ÷ tracks heard, likes per listening hour) — raw counts favour the
+  station listened to most.
+- [ ] Artists, albums: tracks liked (MusicBrainz-recognised tracks only, with the unrecognised count shown).
+- [ ] Discovery: stations that brought new artists (first like of an artist), new artists liked per month, tracks heard
+  on several stations.
+- [ ] Listening profile: time per station, day of week and hour; decades and genres of liked tracks; artist countries.
+- [ ] Station quality: repetition (same track per week), diversity (distinct artists per 100 tracks), share of
+  unrecognised titles (ads, jingles, missing metadata).
+
+Caveat: a title in the history means it was **announced** while listening, not that it was heard in full. Real
+listening stats must be crossed with the sessions.
