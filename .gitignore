@@ -5,7 +5,7 @@ src-tauri/target/
 *.tsbuildinfo
 .vite/
 
-# Tauri: the schemas are generated. gen/android and gen/apple (mobile, phase 2) MUST be committed.
+# Tauri: the schemas are generated. gen/android and gen/apple (mobile) MUST be committed.
 src-tauri/gen/schemas/
 
 # Secrets and local configuration: never commit a key (use .env.example as a template).

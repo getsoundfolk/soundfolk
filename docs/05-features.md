@@ -14,6 +14,10 @@ onwards.
 * **Background playback:**
   * Desktop: 100 % Rust engine (`symphonia` + `cpal`).
   * Mobile (future): native `AVPlayer` (iOS) and `ExoPlayer/Media3` (Android).
+* **Playback resumption (mobile, future):** the last station stays in the system media controls (Android Quick
+  Settings and lock screen, Android 13+ through Media3's `onPlaybackResumption`; iOS Now Playing) after the app is
+  closed, and Play there starts it without opening the app. On by default; can be turned off in the settings, effective
+  immediately.
 
 ---
 
