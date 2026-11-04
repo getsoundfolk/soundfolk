@@ -171,4 +171,8 @@ export interface Playable {
   genre?: string | null;
 }
 
+export interface StationChange extends Playable {
+  show_click_notice: boolean;
+}
+
 export const errorMessage = (e: unknown): string => (typeof e === 'string' ? e : String(e));

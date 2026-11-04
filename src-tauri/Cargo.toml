@@ -42,6 +42,10 @@ rubato = "4.0.0"
 # Track titles: accent folding for comparison keys
 unicode-normalization = "0.1"
 
+# System media controls (MPRIS): pure Rust D-Bus (zbus), no libdbus needed
+[target.'cfg(target_os = "linux")'.dependencies]
+souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] }
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }
 

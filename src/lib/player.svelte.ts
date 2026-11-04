@@ -8,6 +8,7 @@ import {
   type NowPlaying,
   type Playable,
   type PlayerState,
+  type StationChange,
 } from './api';
 
 class PlayerStore {
@@ -30,6 +31,12 @@ class PlayerStore {
     const offs = [
       await listen<PlayerState>('player:state', (e) => (this.state = e.payload)),
       await listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
+      // Station switched from the system media controls (next / previous favorite)
+      await listen<StationChange>('player:station', (e) => {
+        const { show_click_notice, ...station } = e.payload;
+        this.current = station;
+        if (show_click_notice) this.clickNotice = true;
+      }),
     ];
     await this.run(async () => {
       this.state = await api.getPlayerState();

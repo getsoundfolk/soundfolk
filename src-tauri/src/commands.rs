@@ -4,10 +4,12 @@
 //! They are `async` so they run off the main thread: opening the audio output
 //! can take a few hundred ms and must not freeze the window.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 
 use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
@@ -20,6 +22,8 @@ use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 pub struct OnAir {
     pub id: String,
     pub name: Option<String>,
+    /// Stream URL, to play the station again from the system media controls.
+    pub url: String,
 }
 
 /// The trait takes `&mut self`: the engine lives behind a `Mutex` in the Tauri state.
@@ -27,15 +31,24 @@ pub struct AudioState {
     engine: Mutex<DesktopAudioEngine>,
     /// Station currently playing, shared with the listener that logs titles.
     station: Arc<Mutex<Option<OnAir>>>,
+    /// Incremented on every station start: a delayed click count checks that it is unchanged.
+    plays: AtomicU64,
+    /// Catalog station to report, waiting for its first sound (`(play, station_id)`).
+    pending_click: Mutex<Option<(u64, String)>>,
 }
 
 impl AudioState {
     pub fn new(engine: DesktopAudioEngine, station: Arc<Mutex<Option<OnAir>>>) -> Self {
-        Self { engine: Mutex::new(engine), station }
+        Self { engine: Mutex::new(engine), station, plays: AtomicU64::new(0), pending_click: Mutex::new(None) }
     }
 
-    fn engine(&self) -> std::sync::MutexGuard<'_, DesktopAudioEngine> {
+    pub(crate) fn engine(&self) -> std::sync::MutexGuard<'_, DesktopAudioEngine> {
         self.engine.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Last station played (kept after a stop).
+    pub(crate) fn station(&self) -> Option<OnAir> {
+        self.station.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 }
 
@@ -48,6 +61,9 @@ pub struct CatalogState(pub Arc<dyn CatalogSource>);
 const SETTING_CLICK_COUNTING: &str = "click_counting";
 /// True once the click-counting notice has been shown to the user.
 const SETTING_CLICK_NOTICE_SEEN: &str = "click_notice_seen";
+/// A station is only reported once it has been audible this long: zapping through
+/// stations (with the media keys, for instance) does not count.
+const CLICK_LISTEN_DELAY: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Serialize)]
 pub struct PlayOutcome {
@@ -57,30 +73,36 @@ pub struct PlayOutcome {
 
 #[tauri::command]
 pub async fn play_stream(
-    audio: State<'_, AudioState>,
-    db: State<'_, Database>,
-    catalog: State<'_, CatalogState>,
+    app: AppHandle,
     url: String,
     station_id: Option<String>,
     station_name: Option<String>,
 ) -> AppResult<PlayOutcome> {
+    start_station(&app, url, station_id, station_name)
+}
+
+/// Plays a station, from the window or from the system media controls.
+pub(crate) fn start_station(
+    app: &AppHandle,
+    url: String,
+    station_id: Option<String>,
+    station_name: Option<String>,
+) -> AppResult<PlayOutcome> {
+    let audio = app.state::<AudioState>();
+    let db = app.state::<Database>();
     // Without a catalog ID, the URL identifies the station in the history.
     let id = station_id.clone().unwrap_or_else(|| url.clone());
     let name = station_name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
-    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name });
-    audio.engine().play(&url)?;
+    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name, url: url.clone() });
+    let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
 
-    // Counting is never on the critical path: started after playback has begun.
+    // Decided before playing: the first sound may come before `play` returns.
     let mut show_click_notice = false;
+    let mut pending_click = None;
     if let Some(id) = station_id.filter(|id| is_catalog_id(id)) {
         if db.get_bool(SETTING_CLICK_COUNTING, true)? {
             if db.get_bool(SETTING_CLICK_NOTICE_SEEN, false)? {
-                let catalog = catalog.0.clone();
-                tauri::async_runtime::spawn(async move {
-                    if let Err(e) = catalog.count_click(&id).await {
-                        tracing::debug!("failed to count click: {e}");
-                    }
-                });
+                pending_click = Some((play, id));
             } else {
                 // Nothing is sent until the user has seen the notice: this first
                 // click is therefore not counted.
@@ -89,7 +111,44 @@ pub async fn play_stream(
             }
         }
     }
+    *audio.pending_click.lock().unwrap_or_else(|p| p.into_inner()) = pending_click;
+    audio.engine().play(&url)?;
     Ok(PlayOutcome { show_click_notice })
+}
+
+/// Called on every player state change: the listening delay before a click is reported starts
+/// with the first sound, not when the station is chosen (connecting can take several seconds).
+/// Resuming after a pause does not start it again.
+pub(crate) fn schedule_click(app: &AppHandle, state: &PlayerState) {
+    if *state != PlayerState::Playing {
+        return;
+    }
+    let Some(audio) = app.try_state::<AudioState>() else { return };
+    let Some((play, station_id)) = audio.pending_click.lock().unwrap_or_else(|p| p.into_inner()).take() else {
+        return;
+    };
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(CLICK_LISTEN_DELAY).await;
+        count_click_if_still_on_air(&app, play, &station_id).await;
+    });
+}
+
+/// Reports the station if `play` is still the current playback and it is audible (or paused by
+/// the user), and if counting has not been turned off in the meantime.
+async fn count_click_if_still_on_air(app: &AppHandle, play: u64, station_id: &str) {
+    let audio = app.state::<AudioState>();
+    let listening = matches!(audio.engine().state(), PlayerState::Playing | PlayerState::Paused);
+    if audio.plays.load(Ordering::SeqCst) != play || !listening {
+        return;
+    }
+    if !app.state::<Database>().get_bool(SETTING_CLICK_COUNTING, true).unwrap_or(false) {
+        return;
+    }
+    let catalog = app.state::<CatalogState>().0.clone();
+    if let Err(e) = catalog.count_click(station_id).await {
+        tracing::debug!("failed to count click: {e}");
+    }
 }
 
 /// Catalog stations have a UUID; personal stations (`user:…`) are never reported.

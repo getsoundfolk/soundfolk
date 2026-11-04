@@ -4,6 +4,7 @@ mod catalog;
 mod commands;
 mod db;
 mod error;
+mod media_controls;
 mod musicbrainz;
 mod tracks;
 
@@ -18,6 +19,7 @@ use audio::{DesktopAudioEngine, NowPlaying, PlayerState};
 use catalog::radio_browser::RadioBrowser;
 use commands::{AudioState, CatalogState, OnAir};
 use db::Database;
+use media_controls::SystemMedia;
 
 /// Event emitted on every player state change (payload: `PlayerState`).
 const PLAYER_STATE_EVENT: &str = "player:state";
@@ -79,13 +81,20 @@ fn toggle_main_window(app: &tauri::AppHandle) {
         return;
     };
     let visible = window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false);
-    let result = if visible {
-        window.hide()
-    } else {
-        window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus())
+    if !visible {
+        show_main_window(app);
+    } else if let Err(e) = window.hide() {
+        tracing::warn!("failed to hide the main window: {e}");
+    }
+}
+
+/// Brings the main window to the front, even from the notification area.
+fn show_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
     };
-    if let Err(e) = result {
-        tracing::warn!("failed to toggle the main window: {e}");
+    if let Err(e) = window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus()) {
+        tracing::warn!("failed to show the main window: {e}");
     }
 }
 
@@ -139,15 +148,21 @@ pub fn run() {
             let title_handle = app.handle().clone();
             let station = on_air.clone();
             let session_station = on_air.clone();
+            let media = Arc::new(SystemMedia::new(app.handle().clone()));
+            let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
                     track_session(&state_handle, &session_station, &state);
+                    commands::schedule_click(&state_handle, &state);
+                    state_media.show_state(&state);
                     if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
                         tracing::warn!("failed to emit player state: {e}");
                     }
                 }),
                 Arc::new(move |now_playing: NowPlaying| {
                     journalize_title(&title_handle, &station, &last_logged, &now_playing);
+                    let name = station.lock().unwrap_or_else(|p| p.into_inner()).as_ref().and_then(|s| s.name.clone());
+                    media.show_now_playing(&now_playing, name.as_deref());
                     if let Err(e) = title_handle.emit(NOW_PLAYING_EVENT, now_playing) {
                         tracing::warn!("failed to emit now-playing title: {e}");
                     }
