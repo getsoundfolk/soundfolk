@@ -1,0 +1,196 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.root {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid #2c2c36;
+  border-radius: 0.875rem;
+  background: #1a1a21;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #2c2c36;
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.back:hover {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.back:focus-visible,
+.toggle:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.error {
+  margin: 0.75rem 0.75rem 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  background: #3a1f22;
+  color: #f3b3b8;
+  font-size: 0.8rem;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  flex: 1;
+  min-height: 0;
+  padding: 1rem 0.9rem 1.25rem;
+  overflow-y: auto;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.groupTitle {
+  margin: 0;
+  color: #9a9aab;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.groupIntro {
+  margin: 0;
+  color: #9a9aab;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.option {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #2c2c36;
+  border-radius: 0.7rem;
+  background: #20202a;
+  cursor: pointer;
+}
+
+.option:hover {
+  border-color: #3a3a46;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.name {
+  color: #ececf1;
+  font-size: 0.88rem;
+}
+
+.detail {
+  color: #9a9aab;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+/* A switch drawn on the checkbox itself: native semantics, keyboard and label click for free. */
+.toggle {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 2.3rem;
+  height: 1.3rem;
+  margin: 0.1rem 0 0;
+  border-radius: 999px;
+  background: #3a3a46;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #ececf1;
+  transition: transform 0.15s;
+}
+
+.toggle:checked {
+  background: #f0a028;
+}
+
+.toggle:checked::after {
+  transform: translateX(1rem);
+}
+
+.about {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  border: 1px solid #2c2c36;
+  border-radius: 0.7rem;
+  background: #20202a;
+}
+
+.about div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.about div + div {
+  border-top: 1px solid #2c2c36;
+}
+
+.about dt {
+  color: #9a9aab;
+}
+
+.about dd {
+  margin: 0;
+  color: #ececf1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle,
+  .toggle::after {
+    transition: none;
+  }
+}

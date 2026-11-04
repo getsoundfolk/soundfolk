@@ -2,7 +2,7 @@
 <script lang="ts">
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
-  import SettingsMenu from './SettingsMenu.svelte';
+  import { ui } from '../ui.svelte';
   import styles from './PlayerControls.module.css';
 
   const LABELS = {
@@ -23,6 +23,15 @@
   const subline = $derived(
     player.nowPlaying.title ? (player.nowPlaying.station ?? player.current?.name) : null,
   );
+
+  // Back from the settings: focus returns to the gear that opened them.
+  let gear: HTMLButtonElement | undefined = $state();
+  let wasOpen = false;
+  $effect(() => {
+    const open = ui.settingsOpen;
+    if (wasOpen && !open) gear?.focus();
+    wasOpen = open;
+  });
 </script>
 
 <section class={styles.root} aria-label="Player">
@@ -42,7 +51,14 @@
         onclick={() => history.toggleLike({ ...track, historyId: track.id })}>{track.liked ? '♥' : '♡'}</button
       >
     {/if}
-    <SettingsMenu />
+    <button
+      class={styles.gear}
+      type="button"
+      aria-label="Settings"
+      title="Settings"
+      bind:this={gear}
+      onclick={ui.openSettings}>⚙&#xFE0E;</button
+    >
   </div>
 
   <div class={styles.row}>

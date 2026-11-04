@@ -1,0 +1,120 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<script lang="ts">
+  import { getVersion } from '@tauri-apps/api/app';
+  import { onMount } from 'svelte';
+  import { api, errorMessage } from '../api';
+  import { player } from '../player.svelte';
+  import { ui } from '../ui.svelte';
+  import styles from './SettingsPage.module.css';
+
+  let clickCounting = $state(true);
+  let identify = $state(false);
+  let version = $state<string | null>(null);
+  let back: HTMLButtonElement | undefined = $state();
+
+  onMount(async () => {
+    back?.focus();
+    try {
+      [clickCounting, identify] = await Promise.all([api.getClickCounting(), api.getTrackIdentification()]);
+    } catch (e) {
+      player.error = errorMessage(e);
+    }
+    version = await getVersion().catch(() => null);
+  });
+
+  async function changeClickCounting(enabled: boolean) {
+    clickCounting = enabled;
+    try {
+      await api.setClickCounting(enabled);
+      if (!enabled) player.clickNotice = false;
+    } catch (e) {
+      clickCounting = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
+
+  async function changeIdentify(enabled: boolean) {
+    identify = enabled;
+    try {
+      await api.setTrackIdentification(enabled);
+    } catch (e) {
+      identify = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
+</script>
+
+<svelte:window onkeydown={(e) => e.key === 'Escape' && ui.closeSettings()} />
+
+<section class={styles.root} aria-labelledby="settings-title">
+  <header class={styles.header}>
+    <button class={styles.back} type="button" bind:this={back} onclick={ui.closeSettings}>
+      <span aria-hidden="true">←</span> Back
+    </button>
+    <h1 class={styles.heading} id="settings-title">Settings</h1>
+  </header>
+
+  {#if player.error}<p class={styles.error} role="alert">{player.error}</p>{/if}
+
+  <div class={styles.body}>
+    <section class={styles.group} aria-labelledby="settings-privacy">
+      <h2 class={styles.groupTitle} id="settings-privacy">Privacy</h2>
+      <p class={styles.groupIntro}>
+        Soundfolk sends nothing about you unless you allow it here. Your history, likes and stations stay on this
+        device.
+      </p>
+
+      <label class={styles.option}>
+        <span class={styles.text}>
+          <span class={styles.name}>Report my listens to Radio-Browser</span>
+          <span class={styles.detail}>
+            Each station you start is counted (station + IP address) in the open Radio-Browser catalog, which helps
+            small radios get discovered.
+          </span>
+        </span>
+        <input
+          class={styles.toggle}
+          type="checkbox"
+          role="switch"
+          checked={clickCounting}
+          onchange={(e) => changeClickCounting(e.currentTarget.checked)}
+        />
+      </label>
+
+      <label class={styles.option}>
+        <span class={styles.text}>
+          <span class={styles.name}>Identify my liked tracks on MusicBrainz</span>
+          <span class={styles.detail}>
+            The artist and title of tracks you like (+ IP address) are looked up in the open MusicBrainz database to
+            show artist, album, genre, decade and country stats.
+          </span>
+        </span>
+        <input
+          class={styles.toggle}
+          type="checkbox"
+          role="switch"
+          checked={identify}
+          onchange={(e) => changeIdentify(e.currentTarget.checked)}
+        />
+      </label>
+    </section>
+
+    <section class={styles.group} aria-labelledby="settings-about">
+      <h2 class={styles.groupTitle} id="settings-about">About</h2>
+      <dl class={styles.about}>
+        <div>
+          <dt>Version</dt>
+          <dd>{version ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>License</dt>
+          <dd>MPL-2.0</dd>
+        </div>
+        <div>
+          <dt>Station catalog</dt>
+          <dd>Radio-Browser</dd>
+        </div>
+      </dl>
+    </section>
+  </div>
+</section>
