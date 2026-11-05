@@ -58,7 +58,9 @@
       case 'searching':
         return 'Looking for it…';
       case 'stream':
-        return 'Announced by the stream itself.';
+        return status?.adapter
+          ? `Announced by the stream itself; artist, title and next track from the streaming server (${status.adapter}).`
+          : 'Announced by the stream itself.';
       case 'recipe':
         switch (status?.recipe?.origin) {
           case 'local':
@@ -170,9 +172,12 @@
       {/if}
 
       <div class={styles.actions}>
-        <button class={styles.button} type="button" onclick={edit}>
-          {recipe || status?.local_error ? 'Edit locally' : 'Create a recipe'}
-        </button>
+        <!-- No new recipe where the stream announces its titles and the server's API completes them. -->
+        {#if recipe || status?.local_error || !(status?.state === 'stream' && status.adapter)}
+          <button class={styles.button} type="button" onclick={edit}>
+            {recipe || status?.local_error ? 'Edit locally' : 'Create a recipe'}
+          </button>
+        {/if}
         {#if recipe}
           <button class={styles.button} type="button" disabled={testing} onclick={runTest}>
             {testing ? 'Reading the page…' : 'Test'}

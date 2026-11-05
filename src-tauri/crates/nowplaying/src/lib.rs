@@ -12,7 +12,7 @@
 //!
 //! * [`recipe`]: declarative recipes (TOML), one per station, and how they match a stream.
 //! * [`extract`]: reads a page (HTML, JSON or text) as a recipe says.
-//! * [`adapters`]: generic readers for hosting platforms (Icecast, Shoutcast).
+//! * [`adapters`]: generic readers for hosting platforms (Icecast, Shoutcast, AzuraCast).
 //! * [`clock`]: turns a station's local `HH:MM:SS` into instants without knowing its time zone.
 //! * [`tracker`]: decides what to show and when, and when to fetch again, within enforced limits.
 

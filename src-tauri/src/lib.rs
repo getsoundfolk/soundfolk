@@ -42,7 +42,7 @@ const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60
 fn journalize_title(
     app: &tauri::AppHandle,
     station: &Mutex<Option<OnAir>>,
-    last_logged: &Mutex<Option<(String, String)>>,
+    last_logged: &Mutex<Option<Logged>>,
     now_playing: &NowPlaying,
 ) {
     let Some(title) = now_playing.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) else {
@@ -58,10 +58,19 @@ fn journalize_title(
 
     let mut last = last_logged.lock().unwrap_or_else(|p| p.into_inner());
     let entry = (station.id, title.to_owned());
-    if last.as_ref() == Some(&entry) {
+    let db = app.state::<Database>();
+    if let Some(logged) = last.as_mut().filter(|l| l.station_id == entry.0 && l.title == entry.1) {
+        // The same title, now with artist and title apart (a server API confirming the ICY title).
+        if let (Some(track), false) = (&now_playing.track, logged.structured) {
+            let parsed = tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() };
+            match db.set_track_parts(&entry.0, &entry.1, &parsed) {
+                Ok(()) => logged.structured = true,
+                Err(e) => tracing::warn!("listening history not updated: {e}"),
+            }
+        }
         return;
     }
-    let db = app.state::<Database>();
+    let structured = now_playing.track.is_some();
     let logged = match &now_playing.track {
         // Artist and title given apart by the source: stored as given, with the real start.
         Some(track) => {
@@ -72,9 +81,17 @@ fn journalize_title(
         None => db.log_track(&entry.0, station.name.as_deref(), &entry.1),
     };
     match logged {
-        Ok(()) => *last = Some(entry),
+        Ok(()) => *last = Some(Logged { station_id: entry.0, title: entry.1, structured }),
         Err(e) => tracing::warn!("listening history not saved: {e}"),
     }
+}
+
+/// The last title added to the history.
+struct Logged {
+    station_id: String,
+    title: String,
+    /// Stored with artist and title as the source gave them.
+    structured: bool,
 }
 
 /// An RFC 3339 start as stored in the history (`YYYY-MM-DD HH:MM:SS`, UTC), if plausible: not
@@ -211,7 +228,7 @@ pub fn run() {
             app.manage(WindowGeometry::default());
 
             let on_air = Arc::new(Mutex::new(None::<OnAir>));
-            let last_logged = Mutex::new(None::<(String, String)>);
+            let last_logged = Mutex::new(None::<Logged>);
 
             let state_handle = app.handle().clone();
             let title_handle = app.handle().clone();

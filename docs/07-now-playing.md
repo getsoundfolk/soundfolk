@@ -15,12 +15,32 @@ For each playback, the first source that gives a title wins:
 4. **A bundled recipe**: `src-tauri/recipes/stations/*.toml`, embedded in the app at build time (a snapshot used
    offline before the first download).
 5. **The streaming server's status page**, when the stream carries no metadata, or has announced nothing 20 s after
-   opening: Icecast `/status-json.xsl`, Shoutcast `/stats?sid=1&json=1` or `/7.html`. The adapter is used only if the
-   document has the expected shape; the result is cached per server for the session.
+   opening: Icecast `/status-json.xsl`, Shoutcast `/stats?sid=1&json=1` or `/7.html`, AzuraCast
+   `/api/nowplaying/{station}`. AzuraCast is tried first for streams under `/listen/{station}/…`, and for
+   `/radio/{port}/…` through `/api/nowplaying` matched on the stations' mount points; it gives artist and title apart,
+   start, length, cover, the next track, and the live DJ as the show. The adapter is used only if the document has
+   the expected shape; the result is cached per server for the session.
 
 `NowPlaying.source` says which one (`icy`, `stream_tags`, `recipe`, `server`). Recipes and status pages are read only
 while the station plays. They can be turned off in ⚙ › Privacy ("Find the track on air on the station's website"):
 the station's site sees the listener's IP address.
+
+**AzuraCast details on ICY titles.** Almost every AzuraCast stream sends ICY titles, so its API is still read for
+streams under `/listen/{station}/…` or `/radio/{port}/…`: once per ICY title (once more 10 s later if the API does
+not know it yet), never closer than the minimum interval. The ICY title stays the one shown and stored as
+`track_title`, and keeps its timing (the API runs 5–30 s ahead of the listener). When it matches the API's track on
+air or one of the last five played (`song.text`, or `artist - title`, case and spacing ignored; some stations put a
+track number in `text` and not in the ICY title), `NowPlaying.track` gets artist and title apart, length and cover,
+and `next` the next track (on air only). The history row already logged takes the artist and title
+(`title_source = 'source'`), and a like given meanwhile follows the new track key. An API that does not describe the
+stream is not read again for it in the session.
+
+**Checking it is AzuraCast and this stream.** The URL only says which adapter to try first. The document must have
+AzuraCast's shape (`station.shortcode`, `station.listen_url`, `station.mounts`, `now_playing.song.text`), and list
+the stream: one of the station's URLs has the same path (main, mount points, remote relays, HLS; any host), or,
+behind the proxy, the station named by `/listen/{station}/` has that mount point, or a mount point on the port of
+`/radio/{port}/` does. `/api/nowplaying` lists every station of the server: one that lists none of them is
+rejected, even alone. During a live show the next track is not announced (it is what the AutoDJ plays after it).
 
 When the source gives the artist and title apart (recipes, Vorbis comments), `NowPlaying.track` carries them, the
 history stores them as given (`listening_history.title_source = 'source'`, never re-parsed) with the real start time,
@@ -120,7 +140,7 @@ writes `../fixtures/<id>.<ext>` and replaces the recipe's `[[test]]`.
 ## 3. Engine (`src-tauri/crates/nowplaying`)
 A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the host fetches pages and passes them in.
 
-* `recipe`: format, validation, matching. `extract`: HTML / JSON / text. `adapters`: Icecast, Shoutcast.
+* `recipe`: format, validation, matching. `extract`: HTML / JSON / text. `adapters`: Icecast, Shoutcast, AzuraCast.
   `fixture`: the excerpt of a page a recipe reads, and its `[[test]]`. `check`: tests, the published list.
 * `clock`: local `HH:MM:SS` → instants without knowing the time zone. Real UTC offsets are multiples of 15 min; the
   current track started at most its length before the page's HTTP `Date`, which leaves one offset when the length is
@@ -156,5 +176,5 @@ A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the hos
   * on streams that also send ICY titles, compare their changes with the page's times;
   * otherwise, an optional `delay` field in the recipe, measured by the contributor.
   The time zone does not help here.
-* Platform adapters (AzuraCast, RadioKing…), detection from the station's homepage, push (SSE / WebSocket).
+* Other platform adapters (RadioKing…), detection from the station's homepage, push (SSE / WebSocket).
 * The element picker.

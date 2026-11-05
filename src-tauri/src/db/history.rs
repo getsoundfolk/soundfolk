@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Listening history (titles announced on air) and liked tracks.
 
-use rusqlite::{params, Row};
+use rusqlite::{params, OptionalExtension, Row};
 use serde::Serialize;
 
 use super::Database;
@@ -109,6 +109,41 @@ impl Database {
             ],
         )?;
         Ok(())
+    }
+
+    /// The source gave artist and title apart after the row was logged from the raw title (a
+    /// server API confirming an ICY title): the latest row of that title on that station takes
+    /// them and is no longer re-parsed. A like given in the meantime follows the new track key.
+    pub fn set_track_parts(&self, station_id: &str, track_title: &str, parsed: &ParsedTitle) -> rusqlite::Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let row: Option<(i64, Option<String>)> = tx
+            .query_row(
+                "SELECT id, track_key FROM listening_history
+                 WHERE station_id = ?1 AND track_title = ?2 AND title_source IS NULL
+                 ORDER BY id DESC LIMIT 1",
+                params![station_id, track_title],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let Some((id, old_key)) = row else { return Ok(()) };
+        let new_key = tracks::track_key(parsed);
+        tx.execute(
+            "UPDATE listening_history SET artist = ?2, title = ?3, track_key = ?4, title_source = 'source'
+             WHERE id = ?1",
+            params![id, parsed.artist, parsed.title, new_key],
+        )?;
+        if old_key.as_deref() != Some(new_key.as_str()) {
+            let moved = tx.execute(
+                "UPDATE OR IGNORE likes SET track_key = ?2, artist = ?3, title = ?4 WHERE history_id = ?1",
+                params![id, new_key, parsed.artist, parsed.title],
+            )?;
+            if moved == 0 {
+                // The new track was already liked: one like is enough.
+                tx.execute("DELETE FROM likes WHERE history_id = ?1 AND track_key != ?2", params![id, new_key])?;
+            }
+        }
+        tx.commit()
     }
 
     /// Newest first; `query` filters on the title, artist or station name.
@@ -288,6 +323,31 @@ mod structured_tests {
         assert_eq!(structured.artist.as_deref(), Some("MELLOW MOOD / ANTHONY B"));
         assert_eq!(structured.played_at, "2026-11-04 21:36:51");
         assert!(history.iter().any(|e| e.title == "Sexy Boy"));
+    }
+
+    #[test]
+    fn icy_rows_take_the_parts_a_server_api_gives() {
+        let db = Database::open_in_memory().unwrap();
+        // Parsed from the raw title: the track number is taken for the artist.
+        db.log_track("wc", Some("West Coast"), "082 - Dru Down - Pimp of the Year").unwrap();
+        let id = db.recent_history(1, None).unwrap()[0].id;
+        assert!(db.like_track(id).unwrap());
+
+        let parsed = ParsedTitle { artist: Some("Dru Down".into()), title: "Pimp of the Year".into() };
+        db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed).unwrap();
+        let entry = &db.recent_history(1, None).unwrap()[0];
+        assert_eq!((entry.artist.as_deref(), entry.title.as_str()), (Some("Dru Down"), "Pimp of the Year"));
+        assert_eq!(entry.track_title, "082 - Dru Down - Pimp of the Year"); // the raw title stays
+        assert!(entry.liked, "the like follows the new track key");
+
+        // Kept through a parser change, and a second call changes nothing.
+        db.set_str(SETTING_PARSER_VERSION, "0").unwrap();
+        db.reparse_history_if_outdated().unwrap();
+        db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed).unwrap();
+        assert_eq!(db.recent_history(1, None).unwrap()[0].artist.as_deref(), Some("Dru Down"));
+        // Another station's row is not touched.
+        db.set_track_parts("other", "082 - Dru Down - Pimp of the Year", &parsed).unwrap();
+        assert_eq!(db.history_summary().unwrap().count, 1);
     }
 }
 

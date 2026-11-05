@@ -8,6 +8,9 @@
 //!    **server's status page** (Icecast, Shoutcast), if it has the expected shape.
 //!
 //! A title announced by the stream itself always wins: the task stops as soon as one arrives.
+//! An **AzuraCast** server's API is still read then, once per ICY title, for the details of the
+//! track heard (artist and title apart, start, length, cover, next track); the title shown stays
+//! the stream's.
 //! The page is read only while the station plays, at the rate the tracker decides (minimum
 //! interval, hourly cap, jitter), with an identifiable User-Agent.
 //!
@@ -20,14 +23,14 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use serde::Serialize;
-use soundfolk_nowplaying::adapters::{self, Adapter};
+use soundfolk_nowplaying::adapters::{self, Adapter, Probe};
 use soundfolk_nowplaying::check;
 use soundfolk_nowplaying::clock::Offset;
 use soundfolk_nowplaying::tracker::{OnAir, Policy, Scheduled, Tracker};
-use soundfolk_nowplaying::{extract, SignedDuration, Snapshot, Timestamp};
+use soundfolk_nowplaying::{extract, RawTrack, SignedDuration, Snapshot, Start, Timestamp};
 use stream_download::http::reqwest::{header, Client, Url};
 
-use super::{Cancel, Reporter, StationRef, TitleSource};
+use super::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
 use crate::recipes::{Change, Entry, Origin, Recipes};
 
 /// Network and audio buffers between the broadcast and what the listener hears (the output
@@ -43,6 +46,11 @@ const INBAND_GRACE: Duration = Duration::from_secs(20);
 const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
 /// The task checks for cancellation (stop, other station) and recipe changes this often.
 const TICK: Duration = Duration::from_millis(500);
+/// An ICY title the server API does not know yet is looked up once more after this (the API may
+/// lag behind the stream, a cache in front of it too).
+const DETAILS_RETRY: Duration = Duration::from_secs(10);
+/// Wait after a failed request for details.
+const DETAILS_BACKOFF: Duration = Duration::from_secs(60);
 
 /// Where the title of the current playback comes from, for the station sheet.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -50,7 +58,8 @@ pub struct TitleStatus {
     pub state: SourceState,
     /// The recipe in use, or the one that would be used.
     pub recipe: Option<RecipeRef>,
-    /// The server status adapter in use (`icecast`, `shoutcast-v2`…).
+    /// The server status adapter in use (`icecast`, `shoutcast-v2`…); with `Stream`, the one
+    /// giving the details of the stream's titles (`azuracast`).
     pub adapter: Option<String>,
     /// Why the last reading failed (page unreachable, nothing found…).
     pub error: Option<String>,
@@ -150,6 +159,8 @@ pub struct WebTitles {
     offsets: Mutex<HashMap<String, Offset>>,
     /// Server status adapter found per stream origin (`None`: none works).
     servers: Mutex<HashMap<String, Option<Adapter>>>,
+    /// Streams whose AzuraCast API turned out not to describe them: not read again for details.
+    no_details: Mutex<std::collections::HashSet<String>>,
     client: OnceLock<Option<Client>>,
     sessions: AtomicU64,
     current: Mutex<Option<Session>>,
@@ -174,6 +185,7 @@ impl WebTitles {
             enabled: AtomicBool::new(enabled),
             offsets: Mutex::default(),
             servers: Mutex::default(),
+            no_details: Mutex::default(),
             client: OnceLock::new(),
             sessions: AtomicU64::new(0),
             current: Mutex::default(),
@@ -415,6 +427,7 @@ impl WebTitles {
             }
             if reporter.stream_meta().has_inband_title() {
                 self.set_status(&session, TitleStatus { state: SourceState::Stream, ..self.expected(&session) });
+                self.icy_details(&session, &client, &reporter, &cancel).await;
                 return;
             }
             let generation = self.recipes.generation();
@@ -568,6 +581,72 @@ impl WebTitles {
         }
     }
 
+    /// For AzuraCast streams: the details of each ICY title, from the server's API, until the
+    /// playback ends. One request per title (one more if the API does not know it yet), never
+    /// closer than the minimum interval. Stops for good if the API does not describe the stream.
+    async fn icy_details(&self, session: &Session, client: &Client, reporter: &Reporter, cancel: &Cancel) {
+        let adapter = Adapter::AzuraCast;
+        let stream = session.stream.as_str();
+        if !adapters::candidates(stream, None).contains(&adapter) || lock(&self.no_details).contains(stream) {
+            return;
+        }
+        let Some(Probe { url, .. }) = adapter.probe(stream) else { return };
+        let floor = Policy::default().floor;
+        // The ICY title being looked up, when to try, and the lookups left.
+        let mut target: Option<(String, Timestamp, u8)> = None;
+        let mut confirmed = false;
+        while !cancel.is_cancelled() {
+            let now = Timestamp::now();
+            let heard = reporter.stream_meta().icy_title();
+            if heard.is_some() && heard.as_deref() != target.as_ref().map(|(t, ..)| t.as_str()) {
+                target = heard.map(|h| (h, now, 2));
+            }
+            let earliest = lock(&self.last_fetch).get(&url).and_then(|last| last.checked_add(floor).ok());
+            let due = target.as_ref().is_some_and(|(_, at, left)| *left > 0 && *at <= now)
+                && earliest.is_none_or(|e| e <= now);
+            if let (true, Some((heard, at, left))) = (due, target.as_mut()) {
+                lock(&self.last_fetch).insert(url.clone(), now);
+                *left -= 1;
+                let page = match fetch(client, &url).await {
+                    Ok((page, _)) => page,
+                    Err(e) => {
+                        tracing::debug!(%url, "track details unavailable: {e}");
+                        *left += 1; // the network, not the title
+                        *at = now.checked_add(DETAILS_BACKOFF).unwrap_or(now);
+                        continue;
+                    }
+                };
+                match adapter.details(stream, &page, heard) {
+                    Ok(Some(snapshot)) => {
+                        if let Some(track) = snapshot.current.as_ref().and_then(track_info) {
+                            let next = snapshot.next.first().and_then(track_info);
+                            reporter.icy_details(heard, track, next, snapshot.show);
+                        }
+                        *left = 0;
+                        if !confirmed {
+                            confirmed = true;
+                            tracing::info!(adapter = adapter.name(), "track details from the server's API");
+                            self.update_status(session, |s| s.adapter = Some(adapter.name().to_owned()));
+                        }
+                    }
+                    // Not known yet, or not a track (jingle, live show the API does not see).
+                    Ok(None) => *at = now.checked_add(DETAILS_RETRY).unwrap_or(now),
+                    Err(e) if !confirmed => {
+                        tracing::debug!(%url, "no track details for this stream: {e}");
+                        lock(&self.no_details).insert(stream.to_owned());
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::debug!(%url, "track details unavailable: {e}");
+                        *at = now.checked_add(DETAILS_BACKOFF).unwrap_or(now);
+                    }
+                }
+                continue;
+            }
+            tokio::time::sleep(TICK).await;
+        }
+    }
+
     /// The streaming server's status adapter, once the stream turned out not to announce titles.
     async fn find_server(&self, client: &Client, stream: &Url, reporter: &Reporter, cancel: &Cancel) -> Option<Adapter> {
         let meta = reporter.stream_meta();
@@ -602,7 +681,7 @@ impl WebTitles {
             return *known;
         }
         let mut found = None;
-        for adapter in adapters::candidates(opened.server.as_deref()) {
+        for adapter in adapters::candidates(stream.as_str(), opened.server.as_deref()) {
             if cancel.is_cancelled() {
                 return None;
             }
@@ -626,6 +705,20 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 fn file_name(path: &std::path::Path) -> String {
     path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// A track as a source gave it, for the player (AzuraCast gives absolute starts only).
+fn track_info(raw: &RawTrack) -> Option<TrackInfo> {
+    Some(TrackInfo {
+        artist: raw.artist.clone(),
+        title: raw.title.clone()?,
+        started_at: match raw.start {
+            Some(Start::At(at)) => Some(at.to_string()),
+            _ => None,
+        },
+        duration_secs: raw.duration.and_then(|d| u32::try_from(d.as_secs()).ok()),
+        cover: raw.cover.clone(),
+    })
 }
 
 /// Why a page that was read gave no track, in words a recipe author can act on.

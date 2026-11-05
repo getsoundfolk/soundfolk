@@ -89,7 +89,7 @@ pub enum TitleSource {
     StreamTags,
     /// The station's web page, read with a recipe.
     Recipe,
-    /// The streaming server's status page (Icecast, Shoutcast).
+    /// The streaming server's status page (Icecast, Shoutcast, AzuraCast).
     Server,
 }
 
@@ -238,13 +238,20 @@ pub(crate) struct StreamMeta {
     pub(crate) created: Instant,
     /// The stream announced a title itself (ICY or tags): web sources stand down.
     inband_title: AtomicBool,
+    /// The last ICY `StreamTitle`, for the details a server API gives about it.
+    icy_title: Mutex<Option<String>>,
     /// Set once the stream is open.
     opened: Mutex<Option<OpenedInfo>>,
 }
 
 impl Default for StreamMeta {
     fn default() -> Self {
-        Self { created: Instant::now(), inband_title: AtomicBool::new(false), opened: Mutex::new(None) }
+        Self {
+            created: Instant::now(),
+            inband_title: AtomicBool::new(false),
+            icy_title: Mutex::new(None),
+            opened: Mutex::new(None),
+        }
     }
 }
 
@@ -260,6 +267,10 @@ pub(crate) struct OpenedInfo {
 impl StreamMeta {
     pub(crate) fn has_inband_title(&self) -> bool {
         self.inband_title.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn icy_title(&self) -> Option<String> {
+        self.icy_title.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
     pub(crate) fn opened(&self) -> Option<OpenedInfo> {
@@ -297,6 +308,7 @@ impl Reporter {
     /// ICY `StreamTitle`.
     pub(crate) fn title(&self, title: String) {
         self.stream.inband_title.store(true, Ordering::SeqCst);
+        *self.stream.icy_title.lock().unwrap_or_else(|p| p.into_inner()) = Some(title.clone());
         self.update_now_playing(|np| {
             *np = NowPlaying { station: np.station.take(), title: Some(title), source: Some(TitleSource::Icy), ..Default::default() };
         });
@@ -332,6 +344,25 @@ impl Reporter {
                 show: on_air.show.clone(),
                 source: Some(source),
             };
+        });
+    }
+
+    /// Details a server API gives about the ICY title `heard` (artist and title apart, start,
+    /// length, cover, next track, show). The title shown stays the stream's; ignored once the
+    /// stream moved on to another title.
+    pub(crate) fn icy_details(
+        &self,
+        heard: &str,
+        track: TrackInfo,
+        next: Option<TrackInfo>,
+        show: Option<String>,
+    ) {
+        self.update_now_playing(|np| {
+            if np.source == Some(TitleSource::Icy) && np.title.as_deref() == Some(heard) {
+                np.track = Some(track);
+                np.next = next;
+                np.show = show;
+            }
         });
     }
 
@@ -702,6 +733,48 @@ mod tests {
             }
         );
         assert!(reporter.stream_meta().has_inband_title());
+    }
+
+    #[test]
+    fn icy_details_complete_the_title_heard_only() {
+        let status = Arc::new(Status {
+            state: Mutex::new(PlayerState::Idle),
+            listener: Arc::new(|_| {}),
+            now_playing: Mutex::new(NowPlaying::default()),
+            now_playing_listener: Arc::new(|_| {}),
+        });
+        let reporter = Reporter {
+            status: status.clone(),
+            controls: Arc::new(Controls::new()),
+            cancel: Arc::new(Cancel::default()),
+            stream: Arc::new(StreamMeta::default()),
+        };
+        let track = |artist: &str, title: &str| TrackInfo {
+            artist: Some(artist.into()),
+            title: title.into(),
+            started_at: None,
+            duration_secs: Some(245),
+            cover: None,
+        };
+        reporter.title("082 - Dru Down - Pimp of the Year".into());
+        assert_eq!(reporter.stream_meta().icy_title().as_deref(), Some("082 - Dru Down - Pimp of the Year"));
+        reporter.icy_details(
+            "082 - Dru Down - Pimp of the Year",
+            track("Dru Down", "Pimp of the Year"),
+            Some(track("Kurupt", "We Can Freak It")),
+            None,
+        );
+        let np = status.now_playing().clone();
+        assert_eq!(np.title.as_deref(), Some("082 - Dru Down - Pimp of the Year")); // the stream's
+        assert_eq!(np.track.unwrap().artist.as_deref(), Some("Dru Down"));
+        assert_eq!(np.next.unwrap().title, "We Can Freak It");
+        assert_eq!(np.source, Some(TitleSource::Icy));
+
+        // Details arriving after the stream moved on are dropped.
+        reporter.title("Air - Sexy Boy".into());
+        reporter.icy_details("082 - Dru Down - Pimp of the Year", track("Dru Down", "Pimp of the Year"), None, None);
+        let np = status.now_playing().clone();
+        assert_eq!((np.title.as_deref(), np.track), (Some("Air - Sexy Boy"), None));
     }
 
     /// Plays Fréquence 7 muted: its stream has no metadata, the title comes from its web page.

@@ -282,7 +282,7 @@ export interface LocalRecipeError {
 export interface TitleStatus {
   state: 'idle' | 'off' | 'searching' | 'stream' | 'recipe' | 'server' | 'none';
   recipe: RecipeRef | null;
-  /** Streaming server status adapter (`icecast`, `shoutcast-v2`…). */
+  /** Streaming server status adapter (`icecast`, `shoutcast-v2`, `azuracast`…). */
   adapter: string | null;
   /** Why the last reading failed. */
   error: string | null;
