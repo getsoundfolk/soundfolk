@@ -176,5 +176,67 @@ A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the hos
   * on streams that also send ICY titles, compare their changes with the page's times;
   * otherwise, an optional `delay` field in the recipe, measured by the contributor.
   The time zone does not help here.
-* Other platform adapters (RadioKing…), detection from the station's homepage, push (SSE / WebSocket).
+* **TODO, other platform adapters.** Probed by hand on 2026-11-05 against real streams; station counts are from
+  Radio-Browser (62,596 stations, `hidebroken`), French ones in brackets. All read without a key. In order of value:
+  1. **RadioKing**, 382 (162): `listen.radioking.com/radio/{id}/stream/{stream id}`, or
+     `www.radioking.com/play/{slug}/{id}` (321 stations on `radioking.com` alone, 145 French).
+     `https://api.radioking.io/widgets/api/v1/radio/{id}/track/current` (the numeric radio id from the stream URL,
+     not a slug): `title`, `artist`, `album`, `started_at`, `end_at`, `duration`, `cover`, `default_cover`,
+     `is_live`, `next_track` (nulls during live shows).
+  2. **Triton / StreamTheWorld**, 2,814 (0): mount from `playerservices.streamtheworld.com/api/livestream-redirect/
+     {MOUNT}.mp3` (drop the extension) or `{n}.live.streamtheworld.com:{port}/{MOUNT}`.
+     `http://np.tritondigital.com/public/nowplaying?mountName={MOUNT}&numberToFetch=1&eventType=track`, **http
+     only** (https timed out): XML `nowplaying-info` with `cue_title`, `track_artist_name`, `track_album_name`,
+     `track_cover_url`, `cue_time_start` (ms). The list is empty for talk stations (Cadena SER) and some mounts, which
+     the adapter must take as "nothing known", not as an error.
+  3. **laut.fm**, 1,499 (7): `stream.laut.fm/{name}` or `{name}.stream.laut.fm/{name}`.
+     `https://api.laut.fm/station/{name}/current_song`: `title`, `artist.name`, `album`, `length`, `started_at`,
+     `ends_at`.
+  4. **Radio.co**, 633 (6): `{s2,streams,streaming}.radio.co/{id}/listen`.
+     `https://public.radio.co/stations/{id}/status`: `current_track.title` (artist and title in one string, as in
+     ICY), `start_time`, `artwork_url_large`, `history`, `source.type` (`automated` or live). Little beyond the cover.
+
+  These streams already send ICY titles (`icy-metaint: 16000`), so like AzuraCast the adapter adds
+  artist and title apart, cover, timing and next track to the ICY title, matched the same way. Not probed yet:
+  SonicPanel (`/cp/get_info.php?p={port}`, the port is in the stream URL), and ID3 timed metadata in HLS segments
+  (4,053 `.m3u8` streams, 135 French, among them RTL and France Inter), which would belong in the audio engine next
+  to ICY and Vorbis comments.
+
+  **Zeno.fm needs no adapter** (2,727 stations, 11 French; tried and dropped on 2026-11-05). Its streams
+  (`stream[-NNN].zeno.fm/{mount}`, redirected to `*.surfernetwork.com`) send ICY titles: 13 stations out of 13 tested
+  (3 popular, 10 random) had `icy-metaint: 16000` and, when the station names its tracks, a real `StreamTitle`.
+  Zeno also pushes the title as Server-Sent Events (`https://api.zeno.fm/mounts/metadata/subscribe/{mount}`:
+  `{"mount", "streamTitle"}` on connect and at each change, a ping every 5 s), but that is the same text as the ICY
+  title, and the 3 stations sending `" - "` or nothing in ICY sent nothing more there. No next track, start, length or
+  cover either way: Zeno relays what the station's encoder sends. Two pitfalls when probing: Zeno answers HTTP 401 to
+  a `Mozilla/5.0` User-Agent (which first made its streams look silent), and `StreamUrl` sometimes carries
+  `&artist=…&album=…` (artist and album apart, worth reading in the ICY parser) but sometimes a bare number.
+
+  **Other frequent stream hosts** in the same list (stations, French in brackets), besides the five above. The
+  `icy-metaint` header was checked on one stream each for NRJ, Infomaniak, Revma, Radiojar, Securenet, Live365 and
+  Airtime Pro: all send it (that says the server can send titles, not that they are filled in). So an adapter there
+  would only add details to the ICY title; whether each one has a public API is not checked yet.
+  Infomaniak and NRJ together carry over 1,500 French stations: the best French candidates for such an adapter,
+  ahead of RadioKing.
+
+  | Stations | French | Domain | What it is |
+  |---:|---:|---|---|
+  | 3,082 | 67 | *(bare IP address)* | self-hosted Icecast / Shoutcast, already covered by the status pages |
+  | 1,029 | 747 | `infomaniak.ch` | Swiss host on Icecast (`*.ice.infomaniak.ch`), first in France |
+  | 801 | 789 | `nrjaudio.fm` | NRJ group (NRJ, Chérie, Nostalgie, Rire & Chansons and their web radios) |
+  | 793 | 0 | `securenetsystems.net` | US host |
+  | 756 + 502 | 0 | `qtfm.cn`, `qingting.fm` | Qingting, China |
+  | 672 | 0 | `streamguys1.com` | US CDN on Icecast |
+  | 640 | 3 | `ihrhls.com` | iHeartRadio, HLS |
+  | 571 | 12 | `hostingradio.ru` | Radio Record and Russian stations |
+  | 508, 428, 359, 264, 237, 177 | ~30 | `radioca.st`, `asurahosting.com`, `fastcast4u.com`, `myradiostream.com`, `yesstreaming.net`, `shoutca.st` | low-cost hosts, usually Centova Cast or SonicPanel over Icecast / Shoutcast |
+  | 387 | 0 | `leanstream.co` | Canadian stations (Rogers…) |
+  | 380 | 5 | `radiojar.com` | online radio platform |
+  | 351 | 1 | `akamaized.net` | CDN (Radio-Canada…) |
+  | 336 | 0 | `live365.com` | online radio platform |
+  | 262 | 54 | `revma.com` | streaming for stations (RCS…) |
+  | 245 | 0 | `mdstrm.com` | Mediastream, Latin America, HLS |
+  | 224 | 0 | `radioboss.fm` | RadioBOSS hosting |
+  | 179 | 2 | `airtime.pro` | Airtime Pro, still running |
+* Detection from the station's homepage, push (SSE / WebSocket).
 * The element picker.
