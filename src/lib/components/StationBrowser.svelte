@@ -87,7 +87,13 @@
   );
 
   // ── Conversions to what the player can play ───────────────────────────
-  const fromStation = (s: Station): Playable => ({ id: s.id, name: s.name, url: s.url, genre: s.tags[0] ?? null });
+  const fromStation = (s: Station): Playable => ({
+    id: s.id,
+    name: s.name,
+    url: s.url,
+    genre: s.tags[0] ?? null,
+    homepage: s.homepage,
+  });
   const fromPersonal = (p: PersonalStation): Playable => ({ id: p.station_id, name: p.name, url: p.stream_url, genre: p.genre });
   const fromFavorite = (f: Favorite): Playable => ({ id: f.station_id, name: f.name, url: f.stream_url, genre: f.genre });
 

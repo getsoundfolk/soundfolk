@@ -8,7 +8,9 @@ import {
   type NowPlaying,
   type Playable,
   type PlayerState,
+  type RecipeNotice,
   type StationChange,
+  type TitleStatus,
 } from './api';
 
 class PlayerStore {
@@ -20,6 +22,10 @@ class PlayerStore {
   /** Error from a command (not a playback error, which arrives via `state`). */
   error = $state<string | null>(null);
   clickNotice = $state(false);
+  /** Where the title of the current playback comes from (station sheet). */
+  titleStatus = $state<TitleStatus | null>(null);
+  /** What a local recipe the user just saved reads (or why it is not used). */
+  recipeNotice = $state<RecipeNotice | null>(null);
 
   /** Audio is (or is about to be) playing: the main button becomes Stop. */
   active = $derived(this.state.status !== 'idle' && this.state.status !== 'error');
@@ -31,6 +37,8 @@ class PlayerStore {
     const offs = [
       await listen<PlayerState>('player:state', (e) => (this.state = e.payload)),
       await listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
+      await listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
+      await listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
       // Station switched from the system media controls (next / previous favorite)
       await listen<StationChange>('player:station', (e) => {
         const { show_click_notice, ...station } = e.payload;
@@ -41,6 +49,7 @@ class PlayerStore {
     await this.run(async () => {
       this.state = await api.getPlayerState();
       this.nowPlaying = await api.getNowPlaying();
+      this.titleStatus = await api.getTitleStatus();
       this.favorites = await api.listFavorites();
       await api.setVolume(this.volume);
     });

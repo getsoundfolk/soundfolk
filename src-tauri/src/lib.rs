@@ -16,7 +16,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Manager, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
-use audio::{DesktopAudioEngine, NowPlaying, PlayerState, WebTitles};
+use audio::{DesktopAudioEngine, NowPlaying, PlayerState, WebEvent, WebTitles};
 use catalog::radio_browser::RadioBrowser;
 use commands::{AudioState, CatalogState, OnAir};
 use db::Database;
@@ -26,6 +26,10 @@ use media_controls::SystemMedia;
 const PLAYER_STATE_EVENT: &str = "player:state";
 /// Event emitted when the on-air station or title changes (payload: `NowPlaying`).
 const NOW_PLAYING_EVENT: &str = "player:now-playing";
+/// Event emitted when the source of the title changes (payload: `TitleStatus`).
+const TITLE_STATUS_EVENT: &str = "player:title-status";
+/// Event emitted after a local recipe file was saved (payload: `RecipeNotice`).
+const RECIPE_NOTICE_EVENT: &str = "recipes:notice";
 /// How often an open listening session records that it is still playing.
 const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -170,9 +174,19 @@ pub fn run() {
             let session_station = on_air.clone();
             let media = Arc::new(SystemMedia::new(app.handle().clone()));
             let local_recipes = app.path().app_config_dir().ok().map(|dir| dir.join("recipes"));
+            let events = app.handle().clone();
             let web_titles = Arc::new(WebTitles::new(
-                Box::new(move || recipes::load(local_recipes.as_deref())),
+                Arc::new(recipes::Recipes::new(local_recipes)),
                 app.state::<Database>().get_bool(commands::SETTING_WEB_TITLES, true)?,
+                Box::new(move |event| {
+                    let sent = match event {
+                        WebEvent::Status(status) => events.emit(TITLE_STATUS_EVENT, status),
+                        WebEvent::Notice(notice) => events.emit(RECIPE_NOTICE_EVENT, notice),
+                    };
+                    if let Err(e) = sent {
+                        tracing::warn!("failed to emit a recipe event: {e}");
+                    }
+                }),
             ));
             app.manage(commands::WebTitlesState(web_titles.clone()));
             let state_media = media.clone();
@@ -250,6 +264,12 @@ pub fn run() {
             commands::set_click_counting,
             commands::get_web_titles,
             commands::set_web_titles,
+            commands::get_title_status,
+            commands::reload_recipes,
+            commands::test_recipe,
+            commands::edit_recipe,
+            commands::get_local_recipes,
+            commands::open_recipes_folder,
             commands::add_personal_station,
             commands::list_personal_stations,
             commands::remove_personal_station,

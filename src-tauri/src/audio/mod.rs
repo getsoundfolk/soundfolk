@@ -30,7 +30,7 @@ pub use stream_download::http::reqwest::Url;
 
 pub use decoder::probe as probe_stream;
 pub use playlist::resolve_stream_url;
-pub use web_source::WebTitles;
+pub use web_source::{RecipeTest, TitleStatus, WebEvent, WebTitles};
 
 /// Common facade for all platforms (see `docs/04-audio-engine.md`).
 pub trait AudioEngine {
@@ -533,7 +533,6 @@ fn start_session(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soundfolk_nowplaying::recipe::RecipeBook;
 
     #[test]
     fn cancel_runs_hook_once_even_if_registered_late() {
@@ -634,7 +633,8 @@ mod tests {
     fn live_title_from_a_recipe() {
         let seen = Arc::new(Mutex::new(Vec::<NowPlaying>::new()));
         let sink = seen.clone();
-        let web = Arc::new(WebTitles::new(Box::new(|| crate::recipes::load(None)), true));
+        let recipes = Arc::new(crate::recipes::Recipes::new(None));
+        let web = Arc::new(WebTitles::new(recipes, true, Box::new(|_| {})));
         let mut engine = DesktopAudioEngine::new(Arc::new(|_| {}), Arc::new(move |np| sink.lock().unwrap().push(np)), web);
         engine.set_volume(0.0).unwrap();
         engine.play("https://live.aurafm.org/Frequence7", StationRef { id: None }).unwrap();
@@ -653,6 +653,67 @@ mod tests {
         assert!(track.started_at.is_some(), "start resolved from the page's local time");
     }
 
+    /// Plays Fréquence 7 muted, then saves a local copy of its recipe: the playback switches to
+    /// it without reconnecting and the notice says what it reads.
+    #[test]
+    #[ignore = "network and sound card"]
+    fn live_saved_recipe_applies_while_playing() {
+        let dir = std::env::temp_dir().join(format!("soundfolk-live-recipes-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let events = Arc::new(Mutex::new(Vec::<String>::new()));
+        let sink = events.clone();
+        let recipes = Arc::new(crate::recipes::Recipes::new(Some(dir.clone())));
+        let web = Arc::new(WebTitles::new(
+            recipes.clone(),
+            true,
+            Box::new(move |event| {
+                let line = match event {
+                    WebEvent::Status(s) => format!("status {:?} {:?} {:?}", s.state, s.recipe.map(|r| (r.id, r.origin)), s.error),
+                    WebEvent::Notice(n) => format!("notice {} ok={} {}", n.file, n.ok, n.message),
+                };
+                sink.lock().unwrap().push(line);
+            }),
+        ));
+        let titles = Arc::new(Mutex::new(Vec::<NowPlaying>::new()));
+        let title_sink = titles.clone();
+        let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
+        let state_sink = states.clone();
+        let mut engine = DesktopAudioEngine::new(
+            Arc::new(move |s| state_sink.lock().unwrap().push(s)),
+            Arc::new(move |np| title_sink.lock().unwrap().push(np)),
+            web.clone(),
+        );
+        engine.set_volume(0.0).unwrap();
+        engine.play("https://live.aurafm.org/Frequence7", StationRef { id: None }).unwrap();
+        let wait_for = |what: &dyn Fn() -> bool, secs: u64| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+            while std::time::Instant::now() < deadline && !what() {
+                thread::sleep(std::time::Duration::from_millis(200));
+            }
+        };
+        wait_for(&|| titles.lock().unwrap().iter().any(|np| np.source == Some(TitleSource::Recipe)), 20);
+
+        // Broken first: reported, the shipped recipe stays in use.
+        std::fs::write(dir.join("frequence7.toml"), "schema = 1\nname = ").unwrap();
+        web.recipes_changed(&recipes.reload_if_changed().unwrap());
+        // Then a valid copy: applied to the playback, read within the minimum interval.
+        let copy = crate::recipes::local_copy(recipes.bundled_text("frequence7").unwrap());
+        std::fs::write(dir.join("frequence7.toml"), copy).unwrap();
+        web.recipes_changed(&recipes.reload_if_changed().unwrap());
+        wait_for(&|| events.lock().unwrap().iter().any(|e| e.starts_with("notice frequence7.toml ok=true")), 25);
+        engine.stop().unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+
+        let events = events.lock().unwrap();
+        println!("{events:#?}\nstates: {:?}", states.lock().unwrap());
+        assert!(events.iter().any(|e| e.starts_with("notice frequence7.toml ok=false")), "{events:?}");
+        assert!(events.iter().any(|e| e.starts_with("notice frequence7.toml ok=true Reads: ")), "{events:?}");
+        assert!(events.iter().any(|e| e.contains("Some((\"frequence7\", Local))")), "{events:?}");
+        // Switching recipes never touches the stream: no reconnection.
+        assert_eq!(*states.lock().unwrap(), vec![PlayerState::Connecting, PlayerState::Playing]);
+    }
+
     /// Plays an Ogg Vorbis stream muted: the title comes from its Vorbis comments. Set
     /// `SOUNDFOLK_OGG_SECS` to listen longer and see chain changes (one per track).
     #[test]
@@ -661,7 +722,7 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::<NowPlaying>::new()));
         let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
         let (sink, state_sink) = (seen.clone(), states.clone());
-        let web = Arc::new(WebTitles::new(Box::new(RecipeBook::default), false));
+        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
         let mut engine = DesktopAudioEngine::new(
             Arc::new(move |s| state_sink.lock().unwrap().push(s)),
             Arc::new(move |np| sink.lock().unwrap().push(np)),

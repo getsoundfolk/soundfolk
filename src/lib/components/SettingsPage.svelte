@@ -2,7 +2,7 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app';
   import { onMount } from 'svelte';
-  import { api, errorMessage } from '../api';
+  import { api, errorMessage, type LocalRecipes } from '../api';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
   import styles from './SettingsPage.module.css';
@@ -44,6 +44,25 @@
       await api.setWebTitles(enabled);
     } catch (e) {
       webTitles = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
+
+  let localRecipes = $state<LocalRecipes | null>(null);
+
+  // Loaded with the page, and again after a recipe file is saved.
+  $effect(() => {
+    void player.recipeNotice;
+    api
+      .getLocalRecipes()
+      .then((r) => (localRecipes = r))
+      .catch(() => (localRecipes = null));
+  });
+
+  async function openRecipesFolder() {
+    try {
+      await api.openRecipesFolder();
+    } catch (e) {
       player.error = errorMessage(e);
     }
   }
@@ -113,6 +132,25 @@
           onchange={(e) => changeWebTitles(e.currentTarget.checked)}
         />
       </label>
+
+      {#if webTitles}
+        <div class={styles.option}>
+          <span class={styles.text}>
+            <span class={styles.name}>My recipes</span>
+            <span class={styles.detail}>
+              {#if !localRecipes || localRecipes.count === 0}
+                Recipes you write to read a station's website. Start from a station's details (ⓘ in the player).
+              {:else}
+                {localRecipes.count === 1 ? '1 recipe' : `${localRecipes.count} recipes`}{#if localRecipes.errors.length}, {localRecipes.errors.length} not used{/if}.
+              {/if}
+            </span>
+            {#each localRecipes?.errors ?? [] as problem (problem.file)}
+              <span class={styles.recipeError}>{problem.file}: {problem.error}</span>
+            {/each}
+          </span>
+          <button class="{styles.link} {styles.folder}" type="button" onclick={openRecipesFolder}>Open folder</button>
+        </div>
+      {/if}
 
       <label class={styles.option}>
         <span class={styles.text}>

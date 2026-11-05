@@ -1,9 +1,13 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { onMount } from 'svelte';
+  import { api } from './lib/api';
   import ClickNotice from './lib/components/ClickNotice.svelte';
   import SettingsPage from './lib/components/SettingsPage.svelte';
   import PlayerControls from './lib/components/PlayerControls.svelte';
+  import RecipeNotice from './lib/components/RecipeNotice.svelte';
+  import StationSheet from './lib/components/StationSheet.svelte';
   import StationBrowser from './lib/components/StationBrowser.svelte';
   import { history } from './lib/history.svelte';
   import { player } from './lib/player.svelte';
@@ -11,8 +15,13 @@
 
   onMount(() => {
     const ready = player.init();
+    // Back from the editor: a recipe saved meanwhile is picked up now (the folder is not polled).
+    const focus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (focused) api.reloadRecipes().catch(() => {});
+    });
     return () => {
       ready.then((off) => off());
+      focus.then((off) => off());
     };
   });
 
@@ -31,6 +40,8 @@
     <PlayerControls />
     <StationBrowser />
   </div>
+  <StationSheet />
+  <RecipeNotice />
 </main>
 
 <style>

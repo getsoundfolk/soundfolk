@@ -181,9 +181,14 @@
   cursor: pointer;
 }
 
-.gear:hover {
+.gear:hover:not(:disabled) {
   background: #2c2c36;
   color: #ececf1;
+}
+
+.gear:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .gear:focus-visible {

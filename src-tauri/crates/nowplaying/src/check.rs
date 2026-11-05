@@ -11,6 +11,8 @@ pub struct Reading {
     pub snapshot: Snapshot,
     /// `None` when nothing is on air (or ignored).
     pub on_air: Option<OnAir>,
+    /// The station's UTC offset, when the page gives local times and it could be inferred.
+    pub offset: Option<crate::clock::Offset>,
 }
 
 /// Reads `page` with `recipe` as if it had been fetched at `at` (its HTTP `Date`).
@@ -20,7 +22,7 @@ pub fn read(recipe: &Recipe, page: &str, at: Timestamp) -> Result<Reading, Strin
     let mut tracker = Tracker::new(policy, recipe.every(), None, 0);
     let plan = tracker.on_snapshot(snapshot.clone(), at, Some(at));
     let on_air = plan.publish.into_iter().next().map(|s| s.on_air);
-    Ok(Reading { snapshot, on_air })
+    Ok(Reading { snapshot, on_air, offset: tracker.offset() })
 }
 
 /// Runs one fixture; returns what did not match (empty = passed).

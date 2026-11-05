@@ -1,0 +1,193 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.sheet {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 1px solid #2c2c36;
+  border-radius: 0.875rem;
+  background: #1a1a21;
+  color: #ececf1;
+  overflow-y: auto;
+}
+
+.sheet::backdrop {
+  background: rgb(0 0 0 / 0.55);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #2c2c36;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.close {
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  cursor: pointer;
+}
+
+.close:hover {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+}
+
+.details div {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+}
+
+.details dt {
+  color: #9a9aab;
+}
+
+.details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 0.76rem;
+  color: #c4c4d0;
+  user-select: text;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.8rem 0.9rem 1rem;
+  border-top: 1px solid #2c2c36;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: #9a9aab;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.text,
+.hint,
+.warning {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.hint {
+  color: #9a9aab;
+  font-size: 0.78rem;
+}
+
+.warning {
+  color: #f3b3b8;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.saved {
+  margin: 0;
+  color: #9ee0b0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #3a3a46;
+  border-radius: 0.5rem;
+  background: #20202a;
+  color: #ececf1;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  border-color: #55556a;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #f0a028;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.close:focus-visible,
+.button:focus-visible,
+.link:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #2c2c36;
+  border-radius: 0.6rem;
+  background: #20202a;
+}
+
+.result p {
+  margin: 0;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.label {
+  display: inline-block;
+  min-width: 5.5rem;
+  color: #9a9aab;
+}

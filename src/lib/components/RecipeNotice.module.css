@@ -1,0 +1,55 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.notice {
+  position: fixed;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  left: 0.75rem;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  max-width: 34rem;
+  margin-left: auto;
+  padding: 0.6rem 0.7rem 0.6rem 0.85rem;
+  border: 1px solid #2f4a37;
+  border-radius: 0.7rem;
+  background: #17261c;
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35);
+}
+
+.notice[data-ok='false'] {
+  border-color: #5a2c32;
+  background: #2a171a;
+}
+
+.text {
+  flex: 1;
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.file {
+  display: block;
+  color: #9a9aab;
+  font-size: 0.72rem;
+}
+
+.close {
+  flex: none;
+  border: 0;
+  background: none;
+  color: #9a9aab;
+  font: inherit;
+  cursor: pointer;
+}
+
+.close:hover {
+  color: #ececf1;
+}
+
+.close:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}

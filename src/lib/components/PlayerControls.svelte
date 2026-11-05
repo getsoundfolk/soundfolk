@@ -68,6 +68,14 @@
     <button
       class={styles.gear}
       type="button"
+      aria-label="Station details"
+      title="Station details"
+      disabled={!player.current}
+      onclick={ui.openStation}>ⓘ</button
+    >
+    <button
+      class={styles.gear}
+      type="button"
       aria-label="Settings"
       title="Settings"
       bind:this={gear}

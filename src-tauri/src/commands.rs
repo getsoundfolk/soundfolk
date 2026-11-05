@@ -11,7 +11,10 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, StationRef, WebTitles};
+use crate::audio::{
+    self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, RecipeTest, StationRef, TitleStatus, WebTitles,
+};
+use crate::recipes::{self, Origin};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType, Stats};
 use crate::error::AppResult;
@@ -119,6 +122,8 @@ pub(crate) fn start_station(
         }
     }
     *audio.pending_click.lock().unwrap_or_else(|p| p.into_inner()) = pending_click;
+    // A recipe saved since the last check applies from this playback.
+    app.state::<WebTitlesState>().0.reload_recipes();
     audio.engine().play(&url, station)?;
     Ok(PlayOutcome { show_click_notice })
 }
@@ -216,6 +221,146 @@ pub async fn set_web_titles(db: State<'_, Database>, web: State<'_, WebTitlesSta
     db.set_bool(SETTING_WEB_TITLES, enabled)?;
     web.0.set_enabled(enabled);
     Ok(())
+}
+
+// ── Recipes ──────────────────────────────────────────────────────────────────
+
+/// Where the title of the current playback comes from.
+#[tauri::command]
+pub async fn get_title_status(web: State<'_, WebTitlesState>) -> AppResult<TitleStatus> {
+    Ok(web.0.status())
+}
+
+/// Picks up recipe files saved since the last check (called when the window gets the focus
+/// back, typically from the editor): no polling of the folder.
+#[tauri::command]
+pub async fn reload_recipes(web: State<'_, WebTitlesState>) -> AppResult<()> {
+    web.0.reload_recipes();
+    Ok(())
+}
+
+/// Reads the station's recipe page now and says what it finds.
+#[tauri::command]
+pub async fn test_recipe(web: State<'_, WebTitlesState>, url: String, station_id: Option<String>) -> AppResult<RecipeTest> {
+    web.0.reload_recipes();
+    let station = StationRef { id: station_id.filter(|id| is_catalog_id(id)) };
+    Ok(web.0.test(&station, &url).await)
+}
+
+/// Opens the station's recipe in the user's editor, as a local file: the local recipe in use,
+/// a copy of the shipped one, the station's local file that does not load yet, or a new
+/// recipe to fill in. Returns the file's path.
+#[tauri::command]
+pub async fn edit_recipe(
+    app: AppHandle,
+    web: State<'_, WebTitlesState>,
+    url: String,
+    station_id: Option<String>,
+    name: Option<String>,
+    homepage: Option<String>,
+) -> AppResult<String> {
+    let recipes = web.0.recipes().clone();
+    let dir = recipes_folder(&recipes)?;
+    let station = StationRef { id: station_id.filter(|id| is_catalog_id(id)) };
+    let set = recipes.current();
+    let existing = set.find(station.id.as_deref(), &url).cloned();
+    let path = match existing {
+        Some(entry) if entry.origin == Origin::Local => entry.path.clone().unwrap_or_default(),
+        Some(entry) => {
+            let path = dir.join(format!("{}.toml", entry.id));
+            if !path.exists() {
+                let text = recipes.bundled_text(&entry.id).ok_or_else(|| "shipped recipe not found".to_owned())?;
+                std::fs::write(&path, recipes::local_copy(text))?;
+            }
+            path
+        }
+        None => match web.0.local_error_for(&station, &url) {
+            Some(broken) => broken.path.into(),
+            None => {
+                let name = name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+                let host = audio::Url::parse(&url).ok().and_then(|u| u.host_str().map(str::to_owned));
+                let base = recipes::slug(name.as_deref().or(host.as_deref()).unwrap_or("station"));
+                let path = (1..)
+                    .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
+                    .filter(|id| !recipes.is_bundled_id(id))
+                    .map(|id| dir.join(format!("{id}.toml")))
+                    .find(|path| !path.exists())
+                    .expect("an unused name");
+                let template = recipes::template(&recipes::Template {
+                    name: name.as_deref().or(host.as_deref()).unwrap_or("Station"),
+                    station_id: station.id.as_deref(),
+                    stream: &url,
+                    homepage: homepage.as_deref(),
+                });
+                std::fs::write(&path, template)?;
+                path
+            }
+        },
+    };
+    // Written by the app, not by the user: no "saved" notice for it.
+    recipes.reload_if_changed();
+    open_path(&app, &path)?;
+    Ok(path.display().to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalRecipes {
+    pub folder: Option<String>,
+    /// Files in the folder, valid or not.
+    pub count: usize,
+    pub errors: Vec<LocalRecipeError>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LocalRecipeError {
+    pub file: String,
+    pub error: String,
+}
+
+/// The user's own recipes, for the settings.
+#[tauri::command]
+pub async fn get_local_recipes(web: State<'_, WebTitlesState>) -> AppResult<LocalRecipes> {
+    let recipes = web.0.recipes();
+    let set = recipes.current();
+    Ok(LocalRecipes {
+        folder: recipes.local_dir().map(|d| d.display().to_string()),
+        count: set.local_count(),
+        errors: set
+            .errors()
+            .iter()
+            .map(|e| LocalRecipeError {
+                file: e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                error: e.error.clone(),
+            })
+            .collect(),
+    })
+}
+
+/// Opens the local recipes folder in the file manager (created if needed).
+#[tauri::command]
+pub async fn open_recipes_folder(app: AppHandle, web: State<'_, WebTitlesState>) -> AppResult<()> {
+    let dir = recipes_folder(web.0.recipes())?;
+    open_path(&app, &dir)
+}
+
+/// The local recipes folder, created with the JSON Schema next to the recipes (completion and
+/// checks in editors that read the `#:schema` line).
+fn recipes_folder(recipes: &recipes::Recipes) -> AppResult<std::path::PathBuf> {
+    let dir = recipes.local_dir().ok_or_else(|| "no configuration folder on this system".to_owned())?.to_path_buf();
+    std::fs::create_dir_all(&dir)?;
+    let schema = serde_json::to_string_pretty(&soundfolk_nowplaying::recipe::json_schema()).expect("schema serializes");
+    let schema_path = dir.join(recipes::SCHEMA_FILE);
+    if std::fs::read_to_string(&schema_path).ok().as_deref() != Some(schema.as_str()) {
+        std::fs::write(schema_path, schema)?;
+    }
+    Ok(dir)
+}
+
+fn open_path(app: &AppHandle, path: &std::path::Path) -> AppResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    app.opener()
+        .open_path(path.display().to_string(), None::<&str>)
+        .map_err(|e| crate::error::AppError::from(format!("could not open {}: {e}", path.display())))
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────

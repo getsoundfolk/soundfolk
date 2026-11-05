@@ -184,6 +184,19 @@ export const api = {
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),
   getWebTitles: () => invoke<boolean>('get_web_titles'),
   setWebTitles: (enabled: boolean) => invoke<void>('set_web_titles', { enabled }),
+  getTitleStatus: () => invoke<TitleStatus>('get_title_status'),
+  /** Picks up recipe files saved since the last check. */
+  reloadRecipes: () => invoke<void>('reload_recipes'),
+  testRecipe: (url: string, stationId?: string) => invoke<RecipeTest>('test_recipe', { url, stationId }),
+  editRecipe: (station: Playable) =>
+    invoke<string>('edit_recipe', {
+      url: station.url,
+      stationId: station.id,
+      name: station.name,
+      homepage: station.homepage ?? null,
+    }),
+  getLocalRecipes: () => invoke<LocalRecipes>('get_local_recipes'),
+  openRecipesFolder: () => invoke<void>('open_recipes_folder'),
 };
 
 /** What the player can play, whatever the station's origin. */
@@ -192,6 +205,58 @@ export interface Playable {
   name: string;
   url: string;
   genre?: string | null;
+  /** The station's website, when the catalog gives it. */
+  homepage?: string | null;
+}
+
+/** A now-playing recipe (`<id>.toml`), shipped with the app or in the user's folder. */
+export interface RecipeRef {
+  id: string;
+  name: string;
+  origin: 'bundled' | 'local';
+  path: string | null;
+}
+
+/** The station's local recipe file exists but cannot be used. */
+export interface LocalRecipeError {
+  path: string;
+  error: string;
+}
+
+/** Where the title of the current playback comes from. */
+export interface TitleStatus {
+  state: 'idle' | 'off' | 'searching' | 'stream' | 'recipe' | 'server' | 'none';
+  recipe: RecipeRef | null;
+  /** Streaming server status adapter (`icecast`, `shoutcast-v2`…). */
+  adapter: string | null;
+  /** Why the last reading failed. */
+  error: string | null;
+  local_error: LocalRecipeError | null;
+}
+
+/** What a test reading of a recipe found. */
+export interface RecipeTest {
+  recipe: RecipeRef | null;
+  local_error: LocalRecipeError | null;
+  url: string | null;
+  track: TrackInfo | null;
+  next: TrackInfo | null;
+  show: string | null;
+  utc_offset_minutes: number | null;
+  error: string | null;
+}
+
+/** Feedback after saving a local recipe. */
+export interface RecipeNotice {
+  file: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface LocalRecipes {
+  folder: string | null;
+  count: number;
+  errors: { file: string; error: string }[];
 }
 
 export interface StationChange extends Playable {

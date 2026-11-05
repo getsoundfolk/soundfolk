@@ -211,6 +211,24 @@ impl Recipe {
         }
         match &self.extract {
             Extract::Html(f) | Extract::Json(f) => {
+                let named = [
+                    ("item", &f.item),
+                    ("artist", &f.artist),
+                    ("title", &f.title),
+                    ("text", &f.text),
+                    ("start", &f.start),
+                    ("duration", &f.duration),
+                    ("cover", &f.cover),
+                    ("show", &f.show),
+                    ("next", &f.next),
+                ];
+                let empty: Vec<&str> =
+                    named.iter().filter(|(_, v)| v.as_deref().is_some_and(|v| v.trim().is_empty())).map(|(n, _)| *n).collect();
+                if !empty.is_empty() {
+                    problems.push(format!("fill in or remove the empty `extract` field(s): {}", empty.join(", ")));
+                    // Empty selectors would only add confusing errors below.
+                    return problems;
+                }
                 if f.title.is_none() && f.text.is_none() {
                     problems.push("`extract` needs `title` or `text`".into());
                 }
@@ -265,6 +283,11 @@ impl Recipe {
     pub fn published(&self) -> Recipe {
         Recipe { tests: Vec::new(), ..self.clone() }
     }
+}
+
+/// The form `match.streams` uses for a stream URL (`host[:port]/path`), to write a recipe for it.
+pub fn stream_pattern(url: &str) -> Option<String> {
+    normalize_stream(url)
 }
 
 /// `host[:port]/path`, lowercase, without scheme, query or trailing slash.

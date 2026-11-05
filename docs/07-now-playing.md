@@ -8,8 +8,8 @@ For each playback, the first source that gives a title wins:
 1. **The stream itself**: ICY `StreamTitle`, or Vorbis comments in Ogg / Opus / FLAC streams (Icecast starts a new
    Ogg chain at each title change; the decoder reads its tags and carries on without reconnecting). As soon as the
    stream announces a title, the web sources below stop.
-2. **A local recipe**: one the user wrote, in `<config dir>/recipes/*.toml` (`~/.config/fm.soundfolk.app/recipes`
-   on Linux). Read at each playback, so a change applies from the next play.
+2. **A local recipe**: one the user wrote, in `<config dir>/recipes/*.toml` (`~/.config/soundfolk/recipes`
+   on Linux). See *Writing a recipe in the app* below.
 3. **A bundled recipe**: `src-tauri/recipes/stations/*.toml`, embedded in the app at build time.
 4. **The streaming server's status page**, when the stream carries no metadata, or has announced nothing 20 s after
    opening: Icecast `/status-json.xsl`, Shoutcast `/stats?sid=1&json=1` or `/7.html`. The adapter is used only if the
@@ -59,6 +59,28 @@ next_title = "Nino"
 * Fixtures keep only the useful fragment of the page (third-party content, excluded from the recipes licence).
 * A recipe declaring a newer `schema` than the app reads is skipped, not an error.
 
+* A recipe's **id** is its file name without `.toml`. A local file with the id of a shipped recipe replaces it,
+  whatever its `match` says; other local recipes come before the shipped ones. A local file that does not load is
+  reported, and the shipped recipe stays in use.
+
+### Writing a recipe in the app
+Everything starts from the station, not from a list of recipes (no visible maintenance, see `06-ui-principles.md`):
+
+* **ⓘ in the player** opens the station sheet. *Track on air* says where the title comes from (the stream, a recipe
+  and which one, the server's status page, nothing), the last reading error, and a local file that does not load.
+* **Edit locally** copies the recipe in use into the local folder (schema line pointing next to it, fixtures dropped)
+  and opens it in the system editor. Without a recipe, **Create a recipe** writes a template with `match` already
+  filled in (Radio-Browser UUID and stream) and the station's website as `fetch.url`, and explains the rest. The
+  folder also gets `recipe.schema.json` for completion in editors that read `#:schema` (Taplo).
+* **Save, then come back to Soundfolk.** The folder is never polled: recipes are parsed once, kept in memory and
+  reloaded (only the files whose date or size changed) when the window gets the focus back, when a station starts and
+  before a test. The station playing switches to the new recipe without interrupting the sound (the minimum interval
+  between requests still holds). A notice then says what the recipe reads, or why the file is not used, or that it
+  does not apply to the station playing.
+* **Test** reloads the recipes, reads the page now and shows what was extracted: track, start, next track, show, the page's UTC offset,
+  or the step that failed.
+* ⚙ › Privacy › **My recipes** counts the local files, lists those not used and opens the folder.
+
 ### `recipe-check`
 ```bash
 cargo run -p soundfolk-nowplaying --bin recipe-check -- test recipes/stations/*.toml
@@ -91,7 +113,20 @@ A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the hos
   gaps between tracks included, the previous title stays.
 
 ## 4. Not done yet
-* The learned UTC offset is kept in memory for the app's lifetime, not in the database.
-* Time zone hint from the station's country (Radio-Browser) and measured playout clock drift.
+* **TODO, time zone.** Until then, a page that gives only start times (no duration, no next start) shows titles
+  without their real start time until a track change has been seen. The learned UTC offset is kept in memory only.
+  To resolve local times from the first fetch, in this order:
+  1. the time zone of the station's country (Radio-Browser `countrycode`), for countries with a single one;
+  2. an optional IANA `timezone` field in the recipe (e.g. `"Europe/Paris"`, never a fixed offset, which daylight
+     saving time breaks), for countries with several; `recipe-check test` checks it against the fixture and
+     `recipe-check run` suggests it;
+  3. the current inference, as a last resort and to check 1 and 2 on every fetch.
+  This also makes storing the learned offset unnecessary.
+* **TODO, drift.** A page's times are not when the listener hears the track: the station's playout clock can be off,
+  and the delay from studio to speaker is often 5–30 s, while the engine assumes a fixed 3 s (`AUDIO_LATENCY`). To
+  measure it:
+  * on streams that also send ICY titles, compare their changes with the page's times;
+  * otherwise, an optional `delay` field in the recipe, measured by the contributor.
+  The time zone does not help here.
 * Platform adapters (AzuraCast, RadioKing…), detection from the station's homepage, push (SSE / WebSocket).
 * The shared recipe list (`getsoundfolk/soundfolk-recipes`, ODbL) and its remote loading; the element picker.

@@ -4,9 +4,13 @@
 
 class UiStore {
   settingsOpen = $state(false);
+  /** The station sheet (details of the station in the player), shown over the home screen. */
+  stationOpen = $state(false);
 
   openSettings = () => (this.settingsOpen = true);
   closeSettings = () => (this.settingsOpen = false);
+  openStation = () => (this.stationOpen = true);
+  closeStation = () => (this.stationOpen = false);
 }
 
 export const ui = new UiStore();
