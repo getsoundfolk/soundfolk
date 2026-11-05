@@ -87,8 +87,8 @@ separate filter screen.
 * **HTTPS only**: the engine plays HTTP streams; nothing on desktop depends on it. The station sheet says when a
   stream is not encrypted.
 * **Region, map, near me**: 70 % of stations have no position, so a "near me" search (`geo_lat` / `geo_long` /
-  `geo_distance`) would miss most local stations. Later, in Discover, not in search; the country filter answers
-  "stations from my country" today.
+  `geo_distance`) would miss most local stations. Later, in Discover ([09-discovery.md](09-discovery.md)), not in
+  search; the country filter answers "stations from my country" today.
 
 ### 3.1 Genres
 One genre = one translated label + one catalog tag sent as a substring:

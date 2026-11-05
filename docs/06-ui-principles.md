@@ -33,7 +33,7 @@ these.
 ## 3. No empty screens
 * A screen never asks for work before showing something. "Discover" opens on **curated collections** (e.g.
   "Ad-free, listener-supported", "French community radios", "Jazz") and on stations from the listener's country or
-  language — not on an empty filter to configure.
+  language — not on an empty filter to configure. See [09-discovery.md](09-discovery.md).
 * Empty favorites or history show one sentence and a way forward ("Like a track with ♡ to find it here", a link to
   Discover), not "No results".
 

@@ -88,7 +88,8 @@ listening stats must be crossed with the sessions.
 - [ ] Setting to use the system title bar (window decorations).
 - [x] Launch at login (`tauri-plugin-autostart`), hidden in the notification area, without playing.
 - [ ] Audio quality Low / Auto / High: pick among a station's streams by bitrate (Radio-Browser often lists several).
-- [ ] When a stream fails, fall back to another stream of the same station, or a similar station.
+- [ ] When a stream fails, fall back to another stream of the same station (a similar station: see
+  `docs/09-discovery.md` §6.1).
 - [ ] Drop `tauri-plugin-clipboard-manager` (~10–15 crates fewer, mostly `image`, for text only): a small `copy_text`
   command on `arboard` with `default-features = false, features = ["wayland-data-control"]`. Not
   `navigator.clipboard`: WebKitGTK only allows it right after a click in the page, so "Copy" from the native
