@@ -61,10 +61,18 @@ tauri-plugin-single-instance = "2"
 
 # Wake from sleep, for the stream to reconnect at once (already pulled in by Tauri)
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Power", "Win32_UI_WindowsAndMessaging"] }
+# and Internet access as Windows sees it
+windows-sys = { version = "0.61", features = [
+    "Win32_System_Power",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Networking_WinSock",
+    "Win32_System_LibraryLoader",
+] }
 
 # System media controls (MPRIS): pure Rust D-Bus (zbus), no libdbus needed
 [target.'cfg(target_os = "linux")'.dependencies]
+# Internet access as the desktop sees it (portal, NetworkManager); already pulled in by Tauri
+zbus = "5"
 souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] }
 
 [dev-dependencies]

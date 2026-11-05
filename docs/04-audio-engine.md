@@ -56,17 +56,24 @@ HTTP ─▶ stream-download ─▶ ICY filter ─▶ symphonia ─▶ convert �
   * a connection that receives nothing for 3 s after a change or a wake is dropped and reopened at once, instead of
     waiting for the 8 s read timeout; one that keeps receiving is kept (Ethernet → Wi-Fi with both up does not cut
     the sound);
-  * after a failure, the player says **whose fault it is** (`audio/failure.rs`):
+  * after a failure, the player says **whose fault it is, only when proven** — a wrong culprit misleads more than
+    none (`audio/failure.rs`, `audio/connectivity.rs`):
     * *No network — waiting…*: no route at all;
-    * *No Internet access — waiting…*: a route, but the Radio-Browser API (already used for the catalog, so no new
-      third party) does not answer over HTTPS either — box down, captive portal, mobile data off;
-    * *The station is not broadcasting (reason) — retrying…*: Internet works, so the station is at fault, with the
-      reason in plain words: its server refuses connections (stopped), does not answer, its address no longer
-      exists, the stream no longer exists (HTTP 404), its server has a problem (HTTP 5xx), the stream stopped, it
-      does not send playable audio.
+    * *No Internet access — waiting…*: two independent signals agree — Soundfolk's own check fails (no HTTPS answer
+      from the Radio-Browser API, already used for the catalog, so no new third party) **and** the operating system
+      says there is no Internet (Windows: `GetNetworkConnectivityHint`; Linux: the desktop portal or
+      NetworkManager, which run their own checks). Either alone can be wrong (Radio-Browser down or blocked, a
+      network NetworkManager does not manage, a proxy that fools Windows);
+    * *Sign in to the network (captive portal) — waiting…*: the system says so, or the network answered HTTP 511;
+    * *The station is not broadcasting (reason) — retrying…*: proven — its address answered with an HTTP client
+      error, or Internet works (Radio-Browser answers). Reasons in plain words: its server refuses connections, does
+      not answer, its address no longer exists, the stream no longer exists (HTTP 404), its server has a problem
+      (HTTP 5xx), the stream stopped, it does not send playable audio;
+    * *Cannot play the station (what was seen) — retrying…*: no proof either way (e.g. macOS, which has no system
+      check, or the signals disagree): facts only — "its server's address cannot be found", not "no longer exists".
 
-    Without network or Internet the engine waits as long as it takes and reconnects as soon as either comes back.
-    A station at fault is retried, then given up after 5 minutes (*The station stopped broadcasting: reason*); on
+    Without network or Internet, and without proof, the engine waits as long as it takes and reconnects as soon as
+    the network comes back or changes. A station proven at fault is retried, then given up after 5 minutes (*The station stopped broadcasting: reason*); on
     the very first connection it is reported at once (*The station is not broadcasting: reason*);
   * a sound output that dies (device gone, sound server restarted, callback silent for 5 s) is reopened, keeping the
     pause and the title.

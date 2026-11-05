@@ -10,10 +10,11 @@
 //! as long as it takes when the network is down (sleep, Wi-Fi lost): the attempt starts as soon as
 //! it is back (see [`super::network`]). A connection still open across a network change or a
 //! sleep is dropped as soon as it stops receiving, instead of waiting for the read timeout.
-//! After a failure, the user is told whose fault it is (see [`super::failure`]): no network, no
-//! Internet access (both waited for as long as it takes), or the station itself (its server
-//! stopped, the stream was removed…: retried, then given up). A station failing on the very first
-//! connection is reported immediately.
+//! After a failure, the user is told whose fault it is, **only when proven** (see
+//! [`super::failure`]): no network, no Internet access, a captive portal (waited for as long as it
+//! takes), or the station itself (its server stopped, the stream was removed…: retried, then given
+//! up; on the very first connection, reported at once). Without proof, the player says what it
+//! sees and keeps trying.
 
 use std::io;
 use std::num::NonZeroUsize;
@@ -71,6 +72,7 @@ const GIVE_UP_AFTER: Duration = Duration::from_secs(5 * 60);
 const RECONNECTING: &str = "Reconnecting…";
 const NO_NETWORK: &str = "No network — waiting…";
 const NO_INTERNET: &str = "No Internet access — waiting…";
+const SIGN_IN: &str = "Sign in to the network (captive portal) — waiting…";
 
 pub struct Job {
     pub url: Url,
@@ -150,12 +152,18 @@ fn run(mut job: Job) {
             Some(failure) => {
                 tracing::warn!(url = %job.url, ?failure, "playback failed");
                 // Right after the sound stopped, the check is shown; later the last reason stays.
-                match blame(&job, ever_played && attempts == 0, failure) {
+                match blame(&job, ever_played && attempts == 0, &failure) {
                     Blame::Connection(message) => {
                         failing_since = None;
                         message.to_owned()
                     }
-                    Blame::Station(failure) => {
+                    // Nobody can be blamed: what was seen, and no giving up (it may be the
+                    // connection, which is waited for as long as it takes).
+                    Blame::Unknown => {
+                        failing_since = None;
+                        format!("Cannot play the station ({}) — retrying…", failure.symptom())
+                    }
+                    Blame::Station => {
                         let reason = failure.reason();
                         // Never played: dead URL, not audio… the user must be told right away.
                         if !ever_played {
@@ -183,15 +191,17 @@ fn run(mut job: Job) {
     }
 }
 
-/// Whose fault a failure is.
+/// Whose fault a failure is, on proof only (see [`failure::diagnose`]).
 enum Blame {
-    /// No network, or no Internet access: waited for as long as it takes.
+    /// No network, no Internet access, or a captive portal: waited for as long as it takes.
     Connection(&'static str),
     /// Internet works: the station is at fault.
-    Station(Failure),
+    Station,
+    /// Cannot be told: nobody is named.
+    Unknown,
 }
 
-fn blame(job: &Job, sound_just_stopped: bool, failure: Failure) -> Blame {
+fn blame(job: &Job, sound_just_stopped: bool, failure: &Failure) -> Blame {
     if !job.net.borrow().online {
         return Blame::Connection(NO_NETWORK);
     }
@@ -199,10 +209,11 @@ fn blame(job: &Job, sound_just_stopped: bool, failure: Failure) -> Blame {
         // The check takes a moment: the player must not look like it still plays.
         job.reporter.reconnecting(RECONNECTING);
     }
-    if failure::internet_reachable(&job.runtime) {
-        Blame::Station(failure)
-    } else {
-        Blame::Connection(NO_INTERNET)
+    match failure::diagnose(failure, &job.runtime) {
+        failure::Verdict::Station => Blame::Station,
+        failure::Verdict::NoInternet => Blame::Connection(NO_INTERNET),
+        failure::Verdict::SignIn => Blame::Connection(SIGN_IN),
+        failure::Verdict::Unknown => Blame::Unknown,
     }
 }
 

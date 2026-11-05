@@ -16,6 +16,7 @@
 //! Resilience: a dropped stream is reopened by the decoder (see [`network`] for sleep and network
 //! changes); a dead sound output (device gone, sound server restarted) is reopened by this thread.
 
+mod connectivity;
 mod decoder;
 mod failure;
 mod icy;
@@ -869,9 +870,10 @@ mod tests {
     }
 
     /// A local station plays for 1 s, then its server stops for good: the player says whose
-    /// fault it is. With Internet: the station's. Run it in a network namespace with a default
-    /// route that leads nowhere (`SOUNDFOLK_EXPECT=no-internet`), or with no route at all
-    /// (`SOUNDFOLK_EXPECT=no-network`): the connection's.
+    /// fault it is, only when proven. With Internet: the station's. With no route at all
+    /// (`unshare -rn`, `SOUNDFOLK_EXPECT=no-network`): the connection's. In a network namespace
+    /// whose default route leads nowhere while the desktop still sees Internet
+    /// (`SOUNDFOLK_EXPECT=unknown`): the signals disagree, nobody is blamed.
     #[test]
     #[ignore = "sound card"]
     fn live_tells_whether_the_station_or_internet_is_down() {
@@ -899,7 +901,7 @@ mod tests {
         engine.stop().unwrap();
         println!("states: {seen:#?}");
         let expected = match std::env::var("SOUNDFOLK_EXPECT").as_deref() {
-            Ok("no-internet") => "No Internet access — waiting…".to_owned(),
+            Ok("unknown") => "Cannot play the station (its server refuses connections) — retrying…".to_owned(),
             Ok("no-network") => "No network — waiting…".to_owned(),
             _ => "The station is not broadcasting (its server refuses connections) — retrying…".to_owned(),
         };

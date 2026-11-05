@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Why a station cannot be played, in words the listener can act on.
+//! Why a station cannot be played, in words the listener can act on — and never a wrong culprit.
 //!
 //! A failed connection does not say by itself whose fault it is: a server that does not answer
-//! and an Internet access that is down look the same. After a failure the decoder asks
-//! [`internet_reachable`]; if Internet works, the station is at fault and [`Failure::reason`]
-//! says how (server stopped, stream removed, not audio…); otherwise the connection is.
+//! and an Internet access that is down look the same. [`diagnose`] only blames someone on proof:
+//! * **the station**, when its address answered (an HTTP client error), or when Internet is shown
+//!   to work (a Radio-Browser server answers);
+//! * **the Internet access**, when two independent signals agree: Soundfolk's own check fails
+//!   *and* the operating system says there is no Internet (see [`super::connectivity`]);
+//! * otherwise **nobody**: the player says what it sees ("the server does not answer") without
+//!   guessing why.
 
 use std::error::Error as _;
 use std::io;
@@ -12,6 +16,8 @@ use std::time::Duration;
 
 use stream_download::http::reqwest::{self, Client};
 use stream_download::http::HttpStreamError;
+
+use super::connectivity::Connectivity;
 
 /// Servers asked whether Internet works: the Radio-Browser API, which Soundfolk already uses for
 /// its catalog (no new third party learns anything). Any HTTPS answer counts, even an error: it
@@ -40,8 +46,51 @@ pub(crate) enum Failure {
     Internal(String),
 }
 
+/// Whose fault a failure is, as far as can be proven.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Verdict {
+    /// Internet works: the station is at fault.
+    Station,
+    /// Proven: no Internet access.
+    NoInternet,
+    /// Proven: a captive portal wants the user to sign in.
+    SignIn,
+    /// Cannot be told apart: no culprit is named.
+    Unknown,
+}
+
+/// Whose fault `failure` is, on proof only (see the module). Blocking, at most a few seconds.
+pub(crate) fn diagnose(failure: &Failure, runtime: &tokio::runtime::Handle) -> Verdict {
+    decide(failure, || internet_reachable(runtime), super::connectivity::system)
+}
+
+/// [`diagnose`], with the checks passed in. They only run when the failure itself proves nothing.
+fn decide(
+    failure: &Failure,
+    internet_reachable: impl FnOnce() -> bool,
+    system: impl FnOnce() -> Option<Connectivity>,
+) -> Verdict {
+    match failure {
+        // "Network Authentication Required" (RFC 6585): sent by captive portals, never by a station.
+        Failure::Http(511) => return Verdict::SignIn,
+        // An HTTP client error came from the station's address (a 5xx can come from a proxy
+        // that cannot reach it, and goes through the checks).
+        Failure::Http(400..=499) => return Verdict::Station,
+        _ => {}
+    }
+    if internet_reachable() {
+        return Verdict::Station;
+    }
+    // Soundfolk's check failed: it is no proof alone (Radio-Browser may be down or blocked).
+    match system() {
+        Some(Connectivity::NoInternet) => Verdict::NoInternet,
+        Some(Connectivity::Portal) => Verdict::SignIn,
+        Some(Connectivity::Full) | None => Verdict::Unknown,
+    }
+}
+
 impl Failure {
-    /// What the station does wrong, to follow "The station is not broadcasting: ".
+    /// What the station does wrong, once proven, to follow "The station is not broadcasting: ".
     pub(crate) fn reason(&self) -> String {
         match self {
             Self::UnknownHost => "its server's address no longer exists".into(),
@@ -50,10 +99,21 @@ impl Failure {
             Self::Unreachable(detail) => format!("its server cannot be reached ({detail})"),
             Self::Http(status @ (404 | 410)) => format!("the stream no longer exists (HTTP {status})"),
             Self::Http(status @ 500..) => format!("its server has a problem (HTTP {status})"),
-            Self::Http(status) => format!("its server refuses the stream (HTTP {status})"),
+            Self::Http(status) => format!("the stream is refused (HTTP {status})"),
             Self::Stopped(_) => "the stream stopped".into(),
             Self::NotAudio(detail) => format!("it does not send playable audio ({detail})"),
             Self::Internal(detail) => detail.clone(),
+        }
+    }
+
+    /// What was seen, when nobody can be blamed: facts only, no cause ("cannot be found", not
+    /// "no longer exists"; "the connection was cut", not "the stream stopped").
+    pub(crate) fn symptom(&self) -> String {
+        match self {
+            Self::UnknownHost => "its server's address cannot be found".into(),
+            Self::Stopped(_) => "the connection was cut".into(),
+            Self::NotAudio(_) => "what it sends is not audio".into(),
+            other => other.reason(),
         }
     }
 
@@ -155,7 +215,41 @@ mod tests {
     fn reasons_read_after_the_lead() {
         assert_eq!(Failure::Refused.reason(), "its server refuses connections");
         assert_eq!(Failure::Http(503).reason(), "its server has a problem (HTTP 503)");
-        assert_eq!(Failure::Http(403).reason(), "its server refuses the stream (HTTP 403)");
+        assert_eq!(Failure::Http(403).reason(), "the stream is refused (HTTP 403)");
         assert_eq!(Failure::Stopped("ended".into()).reason(), "the stream stopped");
+    }
+
+    #[test]
+    fn symptoms_name_no_cause() {
+        assert_eq!(Failure::UnknownHost.symptom(), "its server's address cannot be found");
+        assert_eq!(Failure::Stopped("reset".into()).symptom(), "the connection was cut");
+        assert_eq!(Failure::NoAnswer.symptom(), "its server does not answer");
+    }
+
+    #[test]
+    fn answers_from_the_station_or_a_portal_need_no_check() {
+        let unused = || -> bool { panic!("no check needed") };
+        let no_system = || -> Option<Connectivity> { panic!("no check needed") };
+        assert_eq!(decide(&Failure::Http(404), unused, no_system), Verdict::Station);
+        assert_eq!(decide(&Failure::Http(511), unused, no_system), Verdict::SignIn);
+    }
+
+    #[test]
+    fn internet_working_blames_the_station() {
+        let never = || -> Option<Connectivity> { panic!("not asked once Internet is shown to work") };
+        assert_eq!(decide(&Failure::NoAnswer, || true, never), Verdict::Station);
+        // A 5xx may come from a proxy: checked like the rest.
+        assert_eq!(decide(&Failure::Http(502), || true, never), Verdict::Station);
+    }
+
+    #[test]
+    fn no_internet_needs_both_signals() {
+        let failure = Failure::UnknownHost;
+        assert_eq!(decide(&failure, || false, || Some(Connectivity::NoInternet)), Verdict::NoInternet);
+        assert_eq!(decide(&failure, || false, || Some(Connectivity::Portal)), Verdict::SignIn);
+        // Only Soundfolk's check failed (Radio-Browser down or blocked): nobody is blamed.
+        assert_eq!(decide(&failure, || false, || Some(Connectivity::Full)), Verdict::Unknown);
+        assert_eq!(decide(&failure, || false, || None), Verdict::Unknown);
+        assert_eq!(decide(&Failure::Http(503), || false, || None), Verdict::Unknown);
     }
 }
