@@ -19,6 +19,7 @@ use serde::Deserialize;
 use stream_download::http::reqwest::{Client, Url};
 use tokio::sync::OnceCell;
 
+use super::dedup::dedup;
 use super::name_query::NameQuery;
 use super::{
     rank, CatalogError, CatalogFuture, CatalogSource, Health, SearchPage, SearchQuery, Station,
@@ -236,6 +237,11 @@ impl CatalogSource for RadioBrowser {
                 let (page, raw_len) = parse_stations(&body)?;
                 offset += raw_len as u32;
                 stations.extend(page.into_iter().filter(wanted));
+                if name_query.is_some() {
+                    // Healthy entries first, so that a duplicate group keeps a playable one.
+                    rank(&mut stations);
+                    dedup(&mut stations, &q.favorites);
+                }
 
                 if raw_len < limit as usize {
                     exhausted = true;
@@ -488,6 +494,7 @@ mod tests {
             tag: Some(" Soul ".into()),
             limit: Some(10_000),
             offset: None,
+            ..Default::default()
         }
         .sanitized()
         .unwrap();

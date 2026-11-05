@@ -108,7 +108,7 @@ fn like_literal(text: &str) -> String {
 
 /// Text in the form the comparison uses: [`catalog_text`], then without case, accents or
 /// full-width forms, like the catalog's own comparison.
-fn fold(text: &str) -> String {
+pub(super) fn fold(text: &str) -> String {
     catalog_text(text)
         .nfkd()
         .filter(|c| !is_combining_mark(*c))

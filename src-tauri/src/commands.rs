@@ -529,8 +529,10 @@ pub async fn set_custom_track_services(db: State<'_, Database>, services: Vec<Cu
 #[tauri::command]
 pub async fn search_stations(
     catalog: State<'_, CatalogState>,
-    query: SearchQuery,
+    db: State<'_, Database>,
+    mut query: SearchQuery,
 ) -> AppResult<SearchPage> {
+    query.favorites = db.list_favorites()?.into_iter().map(|f| f.station_id).collect();
     Ok(catalog.0.search(&query).await?)
 }
 

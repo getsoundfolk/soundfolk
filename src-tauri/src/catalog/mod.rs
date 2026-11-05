@@ -6,9 +6,11 @@
 //! A station is never silently hidden: an unreachable station is ranked after the others
 //! and flagged, not removed.
 
+pub mod dedup;
 pub mod name_query;
 pub mod radio_browser;
 
+use std::collections::HashSet;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -101,6 +103,10 @@ pub struct SearchQuery {
     pub tag: Option<String>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
+    /// IDs of the user's favorites, filled by the app (never by the frontend): a duplicate group
+    /// that holds one shows that copy (see [`dedup`]).
+    #[serde(skip)]
+    pub favorites: HashSet<String>,
 }
 
 pub const DEFAULT_LIMIT: u32 = 30;
@@ -126,6 +132,7 @@ impl SearchQuery {
             tag: clean_text(&self.tag).map(|t| t.to_lowercase()),
             limit: Some(self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)),
             offset: Some(self.offset.unwrap_or(0)),
+            favorites: self.favorites.clone(),
         })
     }
 }
