@@ -16,10 +16,15 @@
 //!   `fipjazz-hifi.aac` from `direct.fipradio.fr` and from `icecast.radiofrance.fr`). Without the
 //!   country, three "Super FM" (Lithuania, Serbia, Poland) would be one: each plays a `superfm.mp3`.
 //!
-//! The first entry of a group is kept, so the list must already be in display order, except that a
-//! favorite always stays: the user chose that copy, and their history is tied to its ID.
+//! One entry of a group is kept, at the place of the group's first entry, so the list must already
+//! be in display order: the healthiest entry, then the highest bitrate (an unknown bitrate counts as
+//! the lowest), then the earliest in the list (the most clicked). Search results promise good
+//! quality by default (docs/08-search-filters.md), so a 128 kbit/s copy wins over a more clicked
+//! 64 kbit/s one. A favorite always stays instead, at its own place: the user chose that copy, and
+//! their history is tied to its ID.
 
-use std::collections::HashSet;
+use std::cmp::Reverse;
+use std::collections::{HashMap, HashSet};
 
 use url::Url;
 
@@ -46,27 +51,60 @@ fn ignored_param(key: &str, value: &str) -> bool {
         || (key == "sid" && !value.chars().all(|c| c.is_ascii_digit()))
 }
 
-/// Drops the entries that repeat an earlier one or a favorite (see the module). `favorites` are
-/// station IDs; a favorite is never dropped, even next to another favorite of the same group.
+/// Keeps one entry per station (see the module). `favorites` are station IDs; a favorite is never
+/// dropped, even next to another favorite of the same group.
 pub fn dedup(stations: &mut Vec<Station>, favorites: &HashSet<String>) {
-    let keys = |s: &Station| -> Vec<String> {
-        [stream_key(&s.url), name_key(&s.name, s.homepage.as_deref()), file_key(s)]
-            .into_iter()
-            .flatten()
-            .collect()
-    };
-    // Groups that hold a favorite are taken by it, wherever it stands in the list.
-    let mut seen: HashSet<String> =
-        stations.iter().filter(|s| favorites.contains(&s.id)).flat_map(keys).collect();
-    stations.retain(|s| {
-        if favorites.contains(&s.id) {
-            return true;
+    let group = groups(stations);
+    let is_favorite = |i: usize| favorites.contains(&stations[i].id);
+
+    // Per group: whether a favorite holds it, else the entry to keep.
+    let mut held = HashSet::new();
+    let mut best: HashMap<usize, usize> = HashMap::new();
+    for (i, &g) in group.iter().enumerate() {
+        if is_favorite(i) {
+            held.insert(g);
         }
-        let keys = keys(s);
-        let repeated = keys.iter().any(|k| seen.contains(k));
-        seen.extend(keys);
-        !repeated
-    });
+        let quality = |j: usize| (stations[j].health.rank(), Reverse(stations[j].bitrate));
+        best.entry(g).and_modify(|b| if quality(i) < quality(*b) { *b = i }).or_insert(i);
+    }
+
+    // A group's first entry is the group number (see `groups`): the kept entry takes its place.
+    let order: Vec<usize> = (0..stations.len())
+        .filter_map(|i| {
+            let g = group[i];
+            if held.contains(&g) {
+                is_favorite(i).then_some(i)
+            } else {
+                (i == g).then(|| best[&g])
+            }
+        })
+        .collect();
+    let mut taken: Vec<Option<Station>> = std::mem::take(stations).into_iter().map(Some).collect();
+    stations.extend(order.into_iter().filter_map(|i| taken[i].take()));
+}
+
+/// Group of each entry, named by the index of its first entry: entries sharing a key are in the
+/// same group, and so are entries linked through others.
+fn groups(stations: &[Station]) -> Vec<usize> {
+    fn root(parent: &mut [usize], mut i: usize) -> usize {
+        while parent[i] != i {
+            parent[i] = parent[parent[i]];
+            i = parent[i];
+        }
+        i
+    }
+    let mut parent: Vec<usize> = (0..stations.len()).collect();
+    let mut owner: HashMap<String, usize> = HashMap::new();
+    for (i, s) in stations.iter().enumerate() {
+        let keys = [stream_key(&s.url), name_key(&s.name, s.homepage.as_deref()), file_key(s)];
+        for key in keys.into_iter().flatten() {
+            let other = *owner.entry(key).or_insert(i);
+            let (a, b) = (root(&mut parent, other), root(&mut parent, i));
+            // The smaller index stays the root: a group is named by its first entry.
+            parent[a.max(b)] = a.min(b);
+        }
+    }
+    (0..stations.len()).map(|i| root(&mut parent, i)).collect()
 }
 
 fn stream_key(url: &str) -> Option<String> {
@@ -223,6 +261,49 @@ mod tests {
         dedup(&mut stations, &HashSet::from(["b".to_string(), "c".to_string()]));
         let ids: Vec<_> = stations.iter().map(|s| s.id.as_str()).collect();
         assert_eq!(ids, ["b", "c"]);
+    }
+
+    #[test]
+    fn the_best_copy_is_kept_in_place_of_the_first() {
+        let copy = |name: &str, url: &str, bitrate: u32, health: Health| Station {
+            bitrate,
+            health,
+            ..station(name, url, Some("https://nova.fr"))
+        };
+        let down = || Health::Unreachable { last_ok: None };
+        let mut stations = vec![
+            copy("Nova", "https://a.example/nova-64.aac", 64, Health::Ok),
+            copy("Other", "https://b.example/other.mp3", 128, Health::Ok),
+            // Higher bitrate, fewer clicks: wins, at the first copy's place.
+            copy("Nova", "https://a.example/nova-128.mp3", 128, Health::Ok),
+            // Unknown bitrate: the lowest.
+            copy("Nova", "https://a.example/nova.mp3", 0, Health::Ok),
+            // Higher still, but the last check failed: a working copy wins.
+            copy("Nova", "https://a.example/nova-320.mp3", 320, down()),
+        ];
+        dedup(&mut stations, &HashSet::new());
+        let urls: Vec<_> = stations.iter().map(|s| s.url.as_str()).collect();
+        assert_eq!(urls, ["https://a.example/nova-128.mp3", "https://b.example/other.mp3"]);
+
+        // Same bitrate: the earlier (more clicked) copy stays.
+        let mut stations = vec![
+            copy("Nova", "https://a.example/first.mp3", 128, Health::Ok),
+            copy("Nova", "https://a.example/second.mp3", 128, Health::Ok),
+        ];
+        dedup(&mut stations, &HashSet::new());
+        assert_eq!(stations[0].url, "https://a.example/first.mp3");
+        assert_eq!(stations.len(), 1);
+    }
+
+    #[test]
+    fn entries_linked_through_another_are_one_group() {
+        // A shares the stream with B, B the website and name with C: one station.
+        let names = kept(vec![
+            station("A", "https://a.example/live.mp3", None),
+            station("Radio X", "https://a.example/live.mp3", Some("https://x.example")),
+            station("Radio X", "https://b.example/x.mp3", Some("https://x.example")),
+        ]);
+        assert_eq!(names, ["A"]);
     }
 
     #[test]
