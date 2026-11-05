@@ -14,6 +14,17 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: deps
+    # Held back on purpose: a newer version would put a second copy of a big crate in the tree
+    # (cargo-deny fails it, see src-tauri/deny.toml). Remove an entry once its reason is gone.
+    ignore:
+      # 0.28+ is on html5ever 0.40: a second HTML engine next to wry's dom_query 0.28
+      # (html5ever 0.39). Lift once wry is on dom_query 0.29.
+      - dependency-name: scraper
+        versions: [">=0.28"]
+      # zbus 6 would sit next to zbus 5, which souvlaki, ksni and the Tauri plugins
+      # (opener, single-instance) still use. Lift once they are all on zbus 6.
+      - dependency-name: zbus
+        versions: [">=6"]
     groups:
       # Tauri, its plugins and its build crates move together.
       tauri:
