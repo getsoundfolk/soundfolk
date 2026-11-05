@@ -75,7 +75,7 @@ windows-sys = { version = "0.61", features = [
 [target.'cfg(target_os = "linux")'.dependencies]
 # Internet access as the desktop sees it (portal, NetworkManager); already pulled in by Tauri
 zbus = "5"
-souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] }
+souvlaki = { version = "0.9", default-features = false, features = ["use_zbus"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }
