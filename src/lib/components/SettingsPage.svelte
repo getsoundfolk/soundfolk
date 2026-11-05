@@ -236,8 +236,8 @@
           <span class={styles.name}>Find the track on air on the station's website</span>
           <span class={styles.detail}>
             When a stream doesn't announce its tracks, Soundfolk reads the station's web page or its streaming
-            server's status, only while you listen to it. That site sees your IP address. Applies from the next
-            station you play.
+            server's status, only while you listen to it. That site sees your IP address. The list of recipes that
+            say where to look is downloaded from GitHub once a day. Applies from the next station you play.
           </span>
         </span>
         <input

@@ -49,9 +49,14 @@
       case 'stream':
         return 'Announced by the stream itself.';
       case 'recipe':
-        return status?.recipe?.origin === 'local'
-          ? `Read from the station's website with your recipe ${fileName(status.recipe.path ?? '')}.`
-          : `Read from the station's website with the recipe “${status?.recipe?.name}” shipped with Soundfolk.`;
+        switch (status?.recipe?.origin) {
+          case 'local':
+            return `Read from the station's website with your recipe ${fileName(status.recipe.path ?? '')}.`;
+          case 'shared':
+            return `Read from the station's website with the shared recipe “${status.recipe.name}”.`;
+          default:
+            return `Read from the station's website with the recipe “${status?.recipe?.name}” shipped with Soundfolk.`;
+        }
       case 'server':
         return `Read from the streaming server's status page (${status?.adapter}).`;
       case 'none':

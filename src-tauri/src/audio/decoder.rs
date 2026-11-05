@@ -192,6 +192,8 @@ fn build_client() -> Result<Client, String> {
     Client::builder()
         .default_headers(headers)
         .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
+        // The stream is read as raw bytes (ICY blocks, range requests): never compressed.
+        .no_gzip()
         .connect_timeout(CONNECT_TIMEOUT)
         .read_timeout(READ_TIMEOUT)
         .build()

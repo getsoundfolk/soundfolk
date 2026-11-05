@@ -283,6 +283,11 @@ impl Recipe {
     pub fn published(&self) -> Recipe {
         Recipe { tests: Vec::new(), ..self.clone() }
     }
+
+    /// The recipe as a TOML file (comments are not kept: written from a published list).
+    pub fn to_toml(&self) -> String {
+        toml::to_string_pretty(self).expect("recipe serializes to TOML")
+    }
 }
 
 /// The form `match.streams` uses for a stream URL (`host[:port]/path`), to write a recipe for it.
@@ -414,5 +419,12 @@ mod tests {
     fn schema_describes_the_format() {
         let schema = json_schema().to_string();
         assert!(schema.contains("\"streams\"") && schema.contains("\"html\""), "{schema}");
+    }
+
+    #[test]
+    fn toml_export_reads_back() {
+        let recipe = Recipe::from_toml(FREQUENCE7).unwrap().published();
+        let text = recipe.to_toml();
+        assert_eq!(Recipe::from_toml(&text).unwrap(), recipe, "{text}");
     }
 }

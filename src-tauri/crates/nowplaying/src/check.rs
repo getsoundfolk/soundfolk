@@ -60,21 +60,80 @@ pub fn run_test(recipe: &Recipe, test: &Test, page: &str) -> Vec<String> {
     failures
 }
 
-/// The published list: every recipe without its tests.
-pub fn compile(recipes: &[Recipe]) -> serde_json::Value {
-    serde_json::json!({
-        "schema": SCHEMA_VERSION,
-        "recipes": recipes.iter().map(Recipe::published).collect::<Vec<_>>(),
-    })
+/// The published list (`recipes.json`): every recipe without its tests, with its id (the file
+/// name without `.toml`), which lets a user's own file replace it.
+///
+/// ```json
+/// { "schema": 1, "recipes": [ { "id": "frequence7", "schema": 1, "name": "Fréquence 7", … } ] }
+/// ```
+pub fn compile(recipes: &[(String, Recipe)]) -> serde_json::Value {
+    let recipes = recipes
+        .iter()
+        .map(|(id, recipe)| {
+            let mut value = serde_json::to_value(recipe.published()).expect("recipe serializes");
+            if let Some(object) = value.as_object_mut() {
+                object.insert("id".into(), id.clone().into());
+            }
+            value
+        })
+        .collect::<Vec<_>>();
+    serde_json::json!({ "schema": SCHEMA_VERSION, "recipes": recipes })
 }
 
-/// Reads a published list; recipes this version cannot read are skipped.
-pub fn load_compiled(json: &str) -> Result<Vec<Recipe>, String> {
+/// Reads a published list as `(id, recipe)`. Recipes this version cannot read (newer schema,
+/// unknown fields, invalid) and entries without a valid id are skipped: an old app keeps
+/// working with a newer list.
+pub fn load_compiled(json: &str) -> Result<Vec<(String, Recipe)>, String> {
     let value: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
     let recipes = value.get("recipes").and_then(|r| r.as_array()).ok_or("no `recipes` list")?;
     Ok(recipes
         .iter()
-        .filter_map(|r| serde_json::from_value::<Recipe>(r.clone()).ok())
-        .filter(|r| r.problems().is_empty())
+        .filter_map(|r| {
+            let mut object = r.as_object()?.clone();
+            let id = object.remove("id")?.as_str().filter(|id| is_valid_id(id))?.to_owned();
+            let recipe = serde_json::from_value::<Recipe>(object.into()).ok()?;
+            recipe.problems().is_empty().then_some((id, recipe))
+        })
         .collect())
+}
+
+/// A recipe id is a file name: lowercase ASCII letters, digits, `-` and `_`.
+pub fn is_valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FREQUENCE7: &str = include_str!("../../../recipes/stations/frequence7.toml");
+
+    #[test]
+    fn published_lists_carry_ids_and_no_tests() {
+        let recipe = Recipe::from_toml(FREQUENCE7).unwrap();
+        let json = compile(&[("frequence7".into(), recipe.clone())]).to_string();
+        assert!(!json.contains("fixtures"), "{json}");
+        let loaded = load_compiled(&json).unwrap();
+        assert_eq!(loaded, vec![("frequence7".to_owned(), recipe.published())]);
+    }
+
+    #[test]
+    fn unreadable_entries_are_skipped() {
+        let recipe = Recipe::from_toml(FREQUENCE7).unwrap();
+        let mut list = compile(&[("ok".into(), recipe.clone()), ("newer".into(), recipe.clone())]);
+        let entries = list["recipes"].as_array_mut().unwrap();
+        entries[1]["schema"] = 2.into();
+        entries.push(serde_json::json!({ "id": "unknown-field", "schema": 1, "future": true }));
+        let mut no_id = entries[0].clone();
+        no_id.as_object_mut().unwrap().remove("id");
+        entries.push(no_id);
+        let mut bad_id = entries[0].clone();
+        bad_id["id"] = "../etc".into();
+        entries.push(bad_id);
+        let loaded = load_compiled(&list.to_string()).unwrap();
+        assert_eq!(loaded.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["ok"]);
+        assert!(load_compiled("{}").is_err());
+    }
 }

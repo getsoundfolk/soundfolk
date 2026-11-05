@@ -276,8 +276,8 @@ pub async fn edit_recipe(
         Some(entry) => {
             let path = dir.join(format!("{}.toml", entry.id));
             if !path.exists() {
-                let text = recipes.bundled_text(&entry.id).ok_or_else(|| "shipped recipe not found".to_owned())?;
-                std::fs::write(&path, recipes::local_copy(text))?;
+                let text = recipes.local_copy_of(&entry).ok_or_else(|| "recipe not found".to_owned())?;
+                std::fs::write(&path, text)?;
             }
             path
         }
@@ -289,7 +289,7 @@ pub async fn edit_recipe(
                 let base = recipes::slug(name.as_deref().or(host.as_deref()).unwrap_or("station"));
                 let path = (1..)
                     .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
-                    .filter(|id| !recipes.is_bundled_id(id))
+                    .filter(|id| !recipes.is_known_id(id))
                     .map(|id| dir.join(format!("{id}.toml")))
                     .find(|path| !path.exists())
                     .expect("an unused name");

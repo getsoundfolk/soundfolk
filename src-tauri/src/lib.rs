@@ -7,6 +7,7 @@ mod error;
 mod export;
 mod media_controls;
 mod musicbrainz;
+mod recipe_list;
 mod recipes;
 mod track_services;
 mod tracks;
@@ -197,6 +198,7 @@ pub fn run() {
                 }),
             ));
             app.manage(commands::WebTitlesState(web_titles.clone()));
+            recipe_list::start(web_titles.clone(), app.path().app_cache_dir().ok().map(|dir| dir.join("recipes")));
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {

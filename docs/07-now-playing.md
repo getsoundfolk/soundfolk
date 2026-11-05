@@ -10,8 +10,11 @@ For each playback, the first source that gives a title wins:
    stream announces a title, the web sources below stop.
 2. **A local recipe**: one the user wrote, in `<config dir>/recipes/*.toml` (`~/.config/soundfolk/recipes`
    on Linux). See *Writing a recipe in the app* below.
-3. **A bundled recipe**: `src-tauri/recipes/stations/*.toml`, embedded in the app at build time.
-4. **The streaming server's status page**, when the stream carries no metadata, or has announced nothing 20 s after
+3. **A shared recipe**: the list compiled from [`getsoundfolk/soundfolk-recipes`](https://github.com/getsoundfolk/soundfolk-recipes)
+   (ODbL), downloaded once a day. See *The shared list* below.
+4. **A bundled recipe**: `src-tauri/recipes/stations/*.toml`, embedded in the app at build time (a snapshot used
+   offline before the first download).
+5. **The streaming server's status page**, when the stream carries no metadata, or has announced nothing 20 s after
    opening: Icecast `/status-json.xsl`, Shoutcast `/stats?sid=1&json=1` or `/7.html`. The adapter is used only if the
    document has the expected shape; the result is cached per server for the session.
 
@@ -59,9 +62,24 @@ next_title = "Nino"
 * Fixtures keep only the useful fragment of the page (third-party content, excluded from the recipes licence).
 * A recipe declaring a newer `schema` than the app reads is skipped, not an error.
 
-* A recipe's **id** is its file name without `.toml`. A local file with the id of a shipped recipe replaces it,
-  whatever its `match` says; other local recipes come before the shipped ones. A local file that does not load is
-  reported, and the shipped recipe stays in use.
+* A recipe's **id** is its file name without `.toml`. Layers, highest first: local, shared, bundled. A recipe
+  replaces the ones with the same id below it, whatever their `match` says; otherwise the first layer whose recipe
+  matches wins. A local file that does not load is reported, and the recipe below it stays in use.
+
+### The shared list
+New recipes and fixes go to [`getsoundfolk/soundfolk-recipes`](https://github.com/getsoundfolk/soundfolk-recipes)
+(its `README.md` is the contributor guide, `ARCHITECTURE.md` the design). Its CI replays the fixtures with
+`recipe-check` built from this repository's `main`, then compiles every recipe, without tests, into
+`https://getsoundfolk.github.io/soundfolk-recipes/v1/recipes.json` (`{"schema": 1, "recipes": [{"id": …, …}]}`;
+`v1` is the list format, each recipe keeps its own `schema`).
+
+`src-tauri/src/recipe_list.rs`: the cached list (`<cache dir>/recipes/recipes.json`) is used at startup; it is
+downloaded again when older than 24 h, with `If-None-Match`, only while web titles are on (GitHub sees the IP
+address). A list that does not parse is ignored; entries this version cannot read are skipped one by one. The
+station playing moves to its new recipe without interrupting the sound. `SOUNDFOLK_RECIPES_URL` overrides the
+address (a fork, a local server). *Edit locally* on a shared recipe writes it as TOML (the list has no comments).
+
+`src-tauri/recipes/stations` stays a copy of a few recipes of the shared list, refreshed by hand before a release.
 
 ### Writing a recipe in the app
 Everything starts from the station, not from a list of recipes (no visible maintenance, see `06-ui-principles.md`):
@@ -85,7 +103,7 @@ Everything starts from the station, not from a list of recipes (no visible maint
 ```bash
 cargo run -p soundfolk-nowplaying --bin recipe-check -- test recipes/stations/*.toml
 cargo run -p soundfolk-nowplaying --features cli --bin recipe-check -- run recipes/stations/frequence7.toml
-cargo run -p soundfolk-nowplaying --bin recipe-check -- compile recipes/stations -o recipes.json
+cargo run -p soundfolk-nowplaying --bin recipe-check -- compile recipes/stations -o recipes.json  # ids = file names
 cargo run -p soundfolk-nowplaying --bin recipe-check -- schema > recipes/recipe.schema.json
 ```
 (from `src-tauri/`). `run` without `--page` fetches the live page (needs `--features cli`).
@@ -129,4 +147,4 @@ A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the hos
   * otherwise, an optional `delay` field in the recipe, measured by the contributor.
   The time zone does not help here.
 * Platform adapters (AzuraCast, RadioKing…), detection from the station's homepage, push (SSE / WebSocket).
-* The shared recipe list (`getsoundfolk/soundfolk-recipes`, ODbL) and its remote loading; the element picker.
+* The element picker.

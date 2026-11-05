@@ -188,6 +188,11 @@ impl WebTitles {
         &self.recipes
     }
 
+    /// Whether station websites (and the shared recipe list) may be read.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::SeqCst)
+    }
+
     /// Turns web titles on or off (applies from the next playback).
     pub fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::SeqCst);

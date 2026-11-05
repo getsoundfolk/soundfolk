@@ -175,8 +175,18 @@ fn compile(args: &[String]) -> Result<(), String> {
         .collect();
     paths.sort();
     // Any invalid recipe fails the build: the published list must stay readable by every app.
-    let recipes = paths.iter().map(|p| load(p)).collect::<Result<Vec<_>, _>>()?;
-    let json = serde_json::to_string_pretty(&check::compile(&recipes)).expect("list serializes");
+    let recipes = paths
+        .iter()
+        .map(|p| {
+            let id = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            if !check::is_valid_id(&id) {
+                return Err(format!("{}: file names are lowercase letters, digits, `-` and `_`", p.display()));
+            }
+            load(p).map(|recipe| (id, recipe))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    // Compact: downloaded by every app (pipe through `jq .` to read it).
+    let json = serde_json::to_string(&check::compile(&recipes)).expect("list serializes");
     match output {
         Some(file) => std::fs::write(file, json + "\n").map_err(|e| format!("{file}: {e}"))?,
         None => println!("{json}"),

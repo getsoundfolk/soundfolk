@@ -41,6 +41,9 @@ stream-download = { version = "0.24", default-features = false, features = ["req
 symphonia = { version = "0.6", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm", "id3v2"] }
 cpal = "0.18"
 rtrb = "0.4"
+# Same reqwest as stream-download's, with gzip: the shared recipe list and station pages come
+# compressed. The audio client turns it off (`no_gzip`).
+reqwest = { version = "0.13", default-features = false, features = ["gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 rubato = "4.0.0"
 

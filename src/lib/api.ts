@@ -236,11 +236,11 @@ export interface Playable {
   homepage?: string | null;
 }
 
-/** A now-playing recipe (`<id>.toml`), shipped with the app or in the user's folder. */
+/** A now-playing recipe (`<id>.toml`): shipped with the app, from the shared list, or in the user's folder. */
 export interface RecipeRef {
   id: string;
   name: string;
-  origin: 'bundled' | 'local';
+  origin: 'bundled' | 'shared' | 'local';
   path: string | null;
 }
 

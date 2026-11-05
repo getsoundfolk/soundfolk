@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Now-playing recipes available to the app: the user's own (`<config dir>/recipes/*.toml`) and
-//! those shipped with the app (`src-tauri/recipes/stations`). See `docs/07-now-playing.md`.
+//! Now-playing recipes available to the app, highest priority first: the user's own
+//! (`<config dir>/recipes/*.toml`), the shared list downloaded from `getsoundfolk/soundfolk-recipes`
+//! (see [`crate::recipe_list`]), and those shipped with the app (`src-tauri/recipes/stations`).
+//! See `docs/07-now-playing.md`.
 //!
-//! A recipe's **id** is its file name without `.toml` (`frequence7`). A local file replaces the
-//! shipped recipe with the same id, whatever its `match` says; other local recipes come before
-//! the shipped ones. An invalid local file is reported and the shipped recipe stays in use.
+//! A recipe's **id** is its file name without `.toml` (`frequence7`). A recipe replaces the ones
+//! with the same id further down, whatever its `match` says; otherwise the order above decides.
+//! An invalid local file is reported and the recipe below it stays in use.
 //!
 //! Recipes are parsed once and kept in memory; [`Recipes::reload_if_changed`] picks up edits to
 //! the local folder. The app calls it when a station starts, before a test reading, and when its
@@ -29,6 +31,8 @@ pub const SCHEMA_FILE: &str = "recipe.schema.json";
 pub enum Origin {
     /// Shipped with the app.
     Bundled,
+    /// From the shared list (`getsoundfolk/soundfolk-recipes`), downloaded by the app.
+    Shared,
     /// In the user's recipes folder.
     Local,
 }
@@ -101,13 +105,23 @@ pub struct Change {
 
 type Fingerprint = HashMap<PathBuf, (Option<SystemTime>, u64)>;
 
-/// All recipes, reloaded when the local folder changes.
+/// What the set in use is built from, besides the shipped recipes.
+#[derive(Default)]
+struct Layers {
+    fingerprint: Fingerprint,
+    local: Vec<Entry>,
+    errors: Vec<FileError>,
+    local_count: usize,
+    shared: Vec<Entry>,
+}
+
+/// All recipes, rebuilt when the local folder or the shared list changes.
 pub struct Recipes {
     local_dir: Option<PathBuf>,
     bundled: Vec<Entry>,
     current: RwLock<Arc<RecipeSet>>,
     generation: AtomicU64,
-    fingerprint: Mutex<Fingerprint>,
+    layers: Mutex<Layers>,
 }
 
 impl Recipes {
@@ -127,7 +141,7 @@ impl Recipes {
             bundled,
             current: RwLock::default(),
             generation: AtomicU64::new(0),
-            fingerprint: Mutex::default(),
+            layers: Mutex::default(),
         };
         recipes.reload_if_changed();
         recipes
@@ -147,13 +161,61 @@ impl Recipes {
         self.generation.load(Ordering::SeqCst)
     }
 
-    /// The shipped TOML of a recipe, to copy it into the local folder.
-    pub fn bundled_text(&self, id: &str) -> Option<&'static str> {
+    /// The shipped TOML of a recipe.
+    pub(crate) fn bundled_text(&self, id: &str) -> Option<&'static str> {
         BUNDLED.iter().find(|(file, _)| file.trim_end_matches(".toml") == id).map(|(_, text)| *text)
     }
 
-    pub fn is_bundled_id(&self, id: &str) -> bool {
-        self.bundled.iter().any(|e| e.id == id)
+    /// A shipped or shared recipe as a local file to edit (see [`local_copy`]).
+    pub fn local_copy_of(&self, entry: &Entry) -> Option<String> {
+        match entry.origin {
+            Origin::Bundled => self.bundled_text(&entry.id).map(local_copy),
+            Origin::Shared => Some(shared_copy(entry)),
+            Origin::Local => None,
+        }
+    }
+
+    /// Whether a shipped or shared recipe has this id (a new local file must not take it).
+    pub fn is_known_id(&self, id: &str) -> bool {
+        self.bundled.iter().any(|e| e.id == id) || self.lock_layers().shared.iter().any(|e| e.id == id)
+    }
+
+    /// Number of recipes in the shared list in use.
+    #[cfg(test)]
+    pub fn shared_count(&self) -> usize {
+        self.lock_layers().shared.len()
+    }
+
+    /// Replaces the shared list (downloaded or read from the cache). The station playing switches
+    /// to its new recipe, if it has one.
+    pub fn set_shared(&self, recipes: Vec<(String, Recipe)>) {
+        let mut layers = self.lock_layers();
+        layers.shared = recipes
+            .into_iter()
+            .map(|(id, recipe)| Entry { id, origin: Origin::Shared, path: None, recipe: Arc::new(recipe) })
+            .collect();
+        self.publish(&layers);
+    }
+
+    fn lock_layers(&self) -> std::sync::MutexGuard<'_, Layers> {
+        self.layers.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Builds the set in use: local, then shared, then shipped; an id appears once, from the
+    /// highest layer that has it.
+    fn publish(&self, layers: &Layers) {
+        let mut seen = std::collections::HashSet::new();
+        let entries = layers
+            .local
+            .iter()
+            .chain(&layers.shared)
+            .chain(&self.bundled)
+            .filter(|e| seen.insert(e.id.clone()))
+            .cloned()
+            .collect();
+        let set = RecipeSet { local: layers.local_count, entries, errors: layers.errors.clone() };
+        *self.current.write().unwrap_or_else(|p| p.into_inner()) = Arc::new(set);
+        self.generation.fetch_add(1, Ordering::SeqCst);
     }
 
     /// Reloads the local folder if a file appeared, changed or disappeared. Returns the files that
@@ -167,13 +229,13 @@ impl Recipes {
                 (path.clone(), (meta.as_ref().and_then(|m| m.modified().ok()), meta.map_or(0, |m| m.len())))
             })
             .collect();
-        let mut previous = self.fingerprint.lock().unwrap_or_else(|p| p.into_inner());
+        let mut layers = self.lock_layers();
         let first = self.generation() == 0;
-        if !first && *previous == fingerprint {
+        if !first && layers.fingerprint == fingerprint {
             return None;
         }
         let changed: Vec<&PathBuf> =
-            files.iter().filter(|p| !first && previous.get(*p) != fingerprint.get(*p)).collect();
+            files.iter().filter(|p| !first && layers.fingerprint.get(*p) != fingerprint.get(*p)).collect();
 
         let mut local = Vec::new();
         let mut errors = Vec::new();
@@ -202,14 +264,11 @@ impl Recipes {
             })
             .collect();
 
-        // A valid local file replaces the shipped recipe with the same id.
-        let replaced: Vec<&str> = local.iter().map(|e| e.id.as_str()).collect();
-        let bundled = self.bundled.iter().filter(|e| !replaced.contains(&e.id.as_str())).cloned();
-        let set = RecipeSet { local: files.len(), entries: local.iter().cloned().chain(bundled).collect(), errors };
-
-        *self.current.write().unwrap_or_else(|p| p.into_inner()) = Arc::new(set);
-        *previous = fingerprint;
-        self.generation.fetch_add(1, Ordering::SeqCst);
+        layers.fingerprint = fingerprint;
+        layers.local = local;
+        layers.errors = errors;
+        layers.local_count = files.len();
+        self.publish(&layers);
         Some(changes)
     }
 }
@@ -273,6 +332,7 @@ pub fn template(t: &Template) -> String {
 # Where the website of {name} shows the track on air, and how to read it.
 # Save the file: Soundfolk reloads it and reads the page again while the station plays.
 # Format: https://github.com/getsoundfolk/soundfolk/blob/main/docs/07-now-playing.md
+# Works? Share it with every listener: https://github.com/getsoundfolk/soundfolk-recipes
 schema = 1
 name = {name_toml}
 match = {{ {matches} }}
@@ -293,6 +353,17 @@ title = ""        # or text = "…" when the page shows "Artist - Title" in one 
         name_toml = quote(t.name),
         matches = matches.join(", "),
         homepage = quote(homepage),
+    )
+}
+
+/// A recipe of the shared list as a local file (the list carries no comments).
+fn shared_copy(entry: &Entry) -> String {
+    format!(
+        "#:schema {SCHEMA_FILE}\n# {name}: copy of the shared recipe `{id}`. This file replaces it on this device.\n\
+         # Improved it? Share it: https://github.com/getsoundfolk/soundfolk-recipes\n{toml}",
+        name = entry.recipe.name,
+        id = entry.id,
+        toml = entry.recipe.to_toml(),
     )
 }
 
@@ -423,6 +494,37 @@ mod tests {
         assert_eq!(recipes.reload_if_changed(), Some(Vec::new()));
         assert_eq!(recipes.current().get("frequence7").unwrap().origin, Origin::Bundled);
         assert_eq!(recipes.generation(), start + 3);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn shared_recipes_sit_between_local_and_shipped_ones() {
+        let dir = temp_dir("shared");
+        let recipes = Recipes::new(Some(dir.clone()));
+        let shipped = Recipe::from_toml(frequence7()).unwrap();
+        let other = Recipe::from_toml(&frequence7().replace("live.aurafm.org/Frequence7", "example.org/other")).unwrap();
+        let start = recipes.generation();
+        recipes.set_shared(vec![("frequence7".into(), other.published()), ("new".into(), shipped.published())]);
+        assert_eq!(recipes.generation(), start + 1);
+        let set = recipes.current();
+        // Same id as the shipped recipe: the shared one replaces it, and only it is used.
+        assert_eq!(set.get("frequence7").unwrap().origin, Origin::Shared);
+        assert_eq!(set.len(), 2);
+        assert_eq!(set.find(None, "https://live.aurafm.org/Frequence7").unwrap().id, "new");
+        assert!(recipes.is_known_id("new") && recipes.shared_count() == 2);
+
+        // A local file replaces the shared recipe, and the shared list survives local reloads.
+        std::fs::write(dir.join("new.toml"), local_copy(frequence7())).unwrap();
+        recipes.reload_if_changed().unwrap();
+        let set = recipes.current();
+        assert_eq!(set.get("new").unwrap().origin, Origin::Local);
+        assert_eq!(set.get("frequence7").unwrap().origin, Origin::Shared);
+
+        // An edited copy of a shared recipe reads back as the same recipe.
+        let entry = set.get("frequence7").unwrap().clone();
+        let copy = recipes.local_copy_of(&entry).unwrap();
+        assert!(copy.starts_with(&format!("#:schema {SCHEMA_FILE}\n")), "{copy}");
+        assert_eq!(Recipe::from_toml(&copy).unwrap(), *entry.recipe);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
