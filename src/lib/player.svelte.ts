@@ -51,6 +51,7 @@ class PlayerStore {
       this.nowPlaying = await api.getNowPlaying();
       this.titleStatus = await api.getTitleStatus();
       this.favorites = await api.listFavorites();
+      this.volume = (await api.getVolume()) ?? this.volume;
       await api.setVolume(this.volume);
       // The window may be opened again while the app kept playing in the background.
       this.current = await api.getCurrentStation();
@@ -78,6 +79,11 @@ class PlayerStore {
   async setVolume(volume: number) {
     this.volume = volume;
     await this.run(() => api.setVolume(volume));
+  }
+
+  /** Remembers the current volume for the next launch (once the slider is released). */
+  async saveVolume() {
+    await this.run(() => api.saveVolume(this.volume));
   }
 
   async toggleFavorite(station: Playable) {

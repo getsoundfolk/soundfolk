@@ -162,6 +162,8 @@ export const api = {
   stopStream: () => invoke<void>('stop_stream'),
   setVolume: (volume: number) => invoke<void>('set_volume', { volume }),
   getCurrentStation: () => invoke<Playable | null>('get_current_station'),
+  getVolume: () => invoke<number | null>('get_volume'),
+  saveVolume: (volume: number) => invoke<void>('save_volume', { volume }),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),
   getNowPlaying: () => invoke<NowPlaying>('get_now_playing'),
 

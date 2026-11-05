@@ -308,6 +308,8 @@ pub fn run() {
             commands::pause_stream,
             commands::resume_stream,
             commands::set_volume,
+            commands::get_volume,
+            commands::save_volume,
             commands::get_player_state,
             commands::get_now_playing,
             commands::get_current_station,

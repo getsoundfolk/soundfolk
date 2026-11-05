@@ -104,6 +104,7 @@
       aria-label="Volume"
       value={player.volume}
       oninput={(e) => player.setVolume(e.currentTarget.valueAsNumber)}
+      onchange={() => player.saveVolume()}
     />
   </div>
 

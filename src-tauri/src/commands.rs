@@ -71,6 +71,8 @@ pub const SETTING_WEB_TITLES: &str = "web_titles";
 const SETTING_TRACK_SERVICES: &str = "track_services";
 /// Sites the user added to that menu (JSON list of `CustomService`).
 const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
+/// Volume the user last chose (`0.0..=1.0`), restored at the next launch.
+const SETTING_VOLUME: &str = "volume";
 
 /// Web title sources, to turn them on or off from the settings.
 pub struct WebTitlesState(pub Arc<WebTitles>);
@@ -193,6 +195,23 @@ pub async fn resume_stream(audio: State<'_, AudioState>) -> AppResult<()> {
 #[tauri::command]
 pub async fn set_volume(audio: State<'_, AudioState>, volume: f32) -> AppResult<()> {
     Ok(audio.engine().set_volume(volume)?)
+}
+
+/// Volume saved by `save_volume`, or `None` if the user never moved the slider.
+#[tauri::command]
+pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
+    let saved = db.get_str(SETTING_VOLUME)?.and_then(|v| v.parse::<f32>().ok());
+    Ok(saved.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0)))
+}
+
+/// Remembers the volume for the next launch. Called once the slider is released, not on every
+/// step of a drag: concurrent commands could otherwise land out of order and keep a stale value.
+#[tauri::command]
+pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> {
+    if !volume.is_finite() {
+        return Err("Invalid volume".to_owned().into());
+    }
+    Ok(db.set_str(SETTING_VOLUME, &volume.clamp(0.0, 1.0).to_string())?)
 }
 
 #[tauri::command]
