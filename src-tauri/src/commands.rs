@@ -310,6 +310,64 @@ pub async fn edit_recipe(
     Ok(path.display().to_string())
 }
 
+/// What *Share this recipe* did.
+#[derive(Debug, Serialize)]
+pub struct SharedRecipe {
+    pub id: String,
+    /// Where the recipe and fixture were saved, as in the repository (`stations/`, `fixtures/`).
+    pub folder: String,
+    /// The fixture was too long for the link: it is in the clipboard, to paste in the form.
+    pub fixture_in_clipboard: bool,
+}
+
+/// Prepares the station's local recipe for the shared list: reads the page now, keeps the
+/// excerpt the recipe reads as its fixture, writes the `[[test]]`, and opens the "Share a recipe"
+/// issue form filled in. A bot turns the issue into a pull request.
+#[tauri::command]
+pub async fn share_recipe(
+    app: AppHandle,
+    web: State<'_, WebTitlesState>,
+    url: String,
+    station_id: Option<String>,
+) -> AppResult<SharedRecipe> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    use tauri_plugin_opener::OpenerExt;
+
+    web.0.reload_recipes();
+    let recipes = web.0.recipes().clone();
+    let station = StationRef { id: station_id.filter(|id| is_catalog_id(id)) };
+    let entry = recipes.current().find(station.id.as_deref(), &url).cloned().ok_or_else(|| "No recipe matches this station.".to_owned())?;
+    let path = match (&entry.origin, &entry.path) {
+        (Origin::Local, Some(path)) => path.clone(),
+        _ => return Err("Only your own recipes can be shared: edit this one locally first.".to_owned().into()),
+    };
+    let text = std::fs::read_to_string(&path)?;
+    let page_url = entry.recipe.fetch.url.clone();
+    let (page, date) = web.0.read_page(&page_url).await.map_err(|e| format!("Could not read the page: {e}."))?;
+    let at = date.unwrap_or_else(soundfolk_nowplaying::Timestamp::now);
+    let shared = soundfolk_nowplaying::fixture::prepare(&entry.id, &text, &entry.recipe, &page_url, &page, at)
+        .map_err(|e| format!("Not ready to share: {e}."))?;
+
+    // A copy laid out as in the repository, for a pull request by hand.
+    let folder = recipes_folder(&recipes)?.join("to-share");
+    std::fs::create_dir_all(folder.join("stations"))?;
+    std::fs::create_dir_all(folder.join("fixtures"))?;
+    std::fs::write(folder.join("stations").join(format!("{}.toml", entry.id)), &shared.recipe)?;
+    std::fs::write(folder.join("fixtures").join(&shared.fixture_file), &shared.fixture)?;
+
+    let name = &entry.recipe.name;
+    let mut link = recipes::share_link(&entry.id, name, &shared.recipe, Some(&shared.fixture));
+    let fixture_in_clipboard = link.len() > recipes::MAX_LINK;
+    if fixture_in_clipboard {
+        app.clipboard()
+            .write_text(shared.fixture.clone())
+            .map_err(|e| format!("could not copy the excerpt: {e}"))?;
+        link = recipes::share_link(&entry.id, name, &shared.recipe, None);
+    }
+    app.opener().open_url(&link, None::<&str>).map_err(|e| format!("could not open the browser: {e}"))?;
+    Ok(SharedRecipe { id: entry.id, folder: folder.display().to_string(), fixture_in_clipboard })
+}
+
 #[derive(Debug, Serialize)]
 pub struct LocalRecipes {
     pub folder: Option<String>,

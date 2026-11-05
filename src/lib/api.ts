@@ -211,6 +211,8 @@ export const api = {
       name: station.name,
       homepage: station.homepage ?? null,
     }),
+  /** Opens the "Share a recipe" form on GitHub, filled in with the recipe and its fixture. */
+  shareRecipe: (url: string, stationId?: string) => invoke<SharedRecipe>('share_recipe', { url, stationId }),
   getLocalRecipes: () => invoke<LocalRecipes>('get_local_recipes'),
   openRecipesFolder: () => invoke<void>('open_recipes_folder'),
   getTrackServices: () => invoke<string[] | null>('get_track_services'),
@@ -242,6 +244,31 @@ export interface RecipeRef {
   name: string;
   origin: 'bundled' | 'shared' | 'local';
   path: string | null;
+}
+
+/** What "Share this recipe" did. */
+export interface SharedRecipe {
+  id: string;
+  /** The recipe and fixture, laid out as in the repository. */
+  folder: string;
+  /** The fixture was too long for the link: it is in the clipboard. */
+  fixture_in_clipboard: boolean;
+}
+
+/** The shared recipes repository. */
+export const RECIPES_REPOSITORY = 'https://github.com/getsoundfolk/soundfolk-recipes';
+
+/** The "Request a station" issue form, filled in with what is known about the station. */
+export function recipeRequestLink(station: Playable): string {
+  const catalog = station.id && !station.id.startsWith('user:') && station.id.length === 36;
+  const params = new URLSearchParams({
+    template: 'station.yml',
+    title: `Station: ${station.name}`,
+    station: catalog ? `${station.name} (https://www.radio-browser.info/history/${station.id})` : station.name,
+    page: '',
+    notes: [`Stream: ${station.url}`, station.homepage ? `Website: ${station.homepage}` : ''].filter(Boolean).join('\n'),
+  });
+  return `${RECIPES_REPOSITORY}/issues/new?${params}`;
 }
 
 /** The station's local recipe file exists but cannot be used. */

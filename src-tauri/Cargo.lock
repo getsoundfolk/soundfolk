@@ -4758,6 +4758,7 @@ dependencies = [
 name = "soundfolk-nowplaying"
 version = "0.1.0"
 dependencies = [
+ "ego-tree",
  "fastrand 2.5.0",
  "jiff",
  "regex-lite",

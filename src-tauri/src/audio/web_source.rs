@@ -262,6 +262,12 @@ impl WebTitles {
         }
     }
 
+    /// Reads a page now: its text and HTTP `Date` (to save it as a recipe's fixture).
+    pub async fn read_page(&self, url: &str) -> Result<(String, Option<Timestamp>), String> {
+        let client = self.client().ok_or("cannot make web requests")?;
+        fetch(client, url).await
+    }
+
     /// Reads the station's recipe page now and says what it finds, for the station sheet.
     pub async fn test(&self, station: &StationRef, stream: &str) -> RecipeTest {
         let set = self.recipes.current();

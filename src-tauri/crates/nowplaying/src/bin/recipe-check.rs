@@ -7,6 +7,10 @@
 //! recipe-check run <recipe.toml> [--page FILE] [--at RFC3339]
 //!                                               show what the recipe reads (live without --page,
 //!                                               needs the `cli` feature)
+//! recipe-check fixture <recipe.toml> [--page FILE] [--at RFC3339]
+//!                                               save the excerpt of the page the recipe reads in
+//!                                               ../fixtures/ and write the recipe's [[test]] (live
+//!                                               without --page, needs the `cli` feature)
 //! recipe-check compile <dir> [-o recipes.json]  build the published list
 //! recipe-check schema                           print the JSON Schema
 //! ```
@@ -19,7 +23,7 @@ use soundfolk_nowplaying::recipe::{json_schema, Recipe};
 use soundfolk_nowplaying::Timestamp;
 
 const USAGE: &str = "usage: recipe-check validate|test <recipe.toml>... \
-    | run <recipe.toml> [--page FILE] [--at TIME] | compile <dir> [-o FILE] | schema";
+    | run|fixture <recipe.toml> [--page FILE] [--at TIME] | compile <dir> [-o FILE] | schema";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -27,6 +31,7 @@ fn main() -> ExitCode {
         Some("validate") => validate(&args[1..]),
         Some("test") => test(&args[1..]),
         Some("run") => run(&args[1..]),
+        Some("fixture") => fixture(&args[1..]),
         Some("compile") => compile(&args[1..]),
         Some("schema") => {
             println!("{}", serde_json::to_string_pretty(&json_schema()).expect("schema serializes"));
@@ -113,15 +118,7 @@ fn test(paths: &[String]) -> Result<(), String> {
 fn run(args: &[String]) -> Result<(), String> {
     let path = args.first().ok_or(USAGE)?;
     let recipe = load(Path::new(path))?;
-    let option = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
-    let at = match option("--at") {
-        Some(at) => at.parse::<Timestamp>().map_err(|e| format!("--at: {e}"))?,
-        None => Timestamp::now(),
-    };
-    let page = match option("--page") {
-        Some(page) => std::fs::read_to_string(page).map_err(|e| format!("{page}: {e}"))?,
-        None => fetch(&recipe.fetch.url)?,
-    };
+    let (page, at) = page_and_time(&recipe, args)?;
     let reading = check::read(&recipe, &page, at)?;
     let Some(on_air) = reading.on_air else {
         println!("nothing on air");
@@ -145,8 +142,41 @@ fn run(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// The page (`--page`, else fetched now) and when it was read (`--at`, else its HTTP `Date`,
+/// else now).
+fn page_and_time(recipe: &Recipe, args: &[String]) -> Result<(String, Timestamp), String> {
+    let option = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
+    let at = option("--at").map(|at| at.parse::<Timestamp>().map_err(|e| format!("--at: {e}"))).transpose()?;
+    let (page, date) = match option("--page") {
+        Some(page) => (std::fs::read_to_string(page).map_err(|e| format!("{page}: {e}"))?, None),
+        None => fetch(&recipe.fetch.url)?,
+    };
+    Ok((page, at.or(date).unwrap_or_else(Timestamp::now)))
+}
+
+fn fixture(args: &[String]) -> Result<(), String> {
+    let path = Path::new(args.first().ok_or(USAGE)?);
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let recipe = load(path)?;
+    let id = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    if !check::is_valid_id(&id) {
+        return Err(format!("{}: file names are lowercase letters, digits, `-` and `_`", path.display()));
+    }
+    let (page, at) = page_and_time(&recipe, args)?;
+    let shared = soundfolk_nowplaying::fixture::prepare(&id, &text, &recipe, &recipe.fetch.url, &page, at)?;
+    let dir = path.parent().unwrap_or(Path::new(".")).join("../fixtures");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let fixture_path = dir.join(&shared.fixture_file);
+    std::fs::write(&fixture_path, &shared.fixture).map_err(|e| format!("{}: {e}", fixture_path.display()))?;
+    std::fs::write(path, &shared.recipe).map_err(|e| format!("{}: {e}", path.display()))?;
+    println!("wrote   {} ({} bytes)", fixture_path.display(), shared.fixture.len());
+    println!("updated {} ([[test]] at {at})", path.display());
+    Ok(())
+}
+
+/// The page and its HTTP `Date`.
 #[cfg(feature = "cli")]
-fn fetch(url: &str) -> Result<String, String> {
+fn fetch(url: &str) -> Result<(String, Option<Timestamp>), String> {
     let agent = ureq::Agent::config_builder()
         .user_agent(concat!(
             "recipe-check/",
@@ -157,11 +187,17 @@ fn fetch(url: &str) -> Result<String, String> {
         .build()
         .new_agent();
     let mut response = agent.get(url).call().map_err(|e| e.to_string())?;
-    response.body_mut().read_to_string().map_err(|e| e.to_string())
+    let date = response
+        .headers()
+        .get("date")
+        .and_then(|d| d.to_str().ok())
+        .and_then(|d| jiff::fmt::rfc2822::DateTimeParser::new().parse_timestamp(d).ok());
+    let body = response.body_mut().read_to_string().map_err(|e| e.to_string())?;
+    Ok((body, date))
 }
 
 #[cfg(not(feature = "cli"))]
-fn fetch(_url: &str) -> Result<String, String> {
+fn fetch(_url: &str) -> Result<(String, Option<Timestamp>), String> {
     Err("live fetching needs the `cli` feature (cargo run --features cli); or pass --page FILE".into())
 }
 

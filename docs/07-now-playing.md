@@ -97,21 +97,31 @@ Everything starts from the station, not from a list of recipes (no visible maint
   does not apply to the station playing.
 * **Test** reloads the recipes, reads the page now and shows what was extracted: track, start, next track, show, the page's UTC offset,
   or the step that failed.
+* **Share this recipe** (local recipes) reads the page now, keeps the excerpt the recipe reads as a fixture
+  (`soundfolk_nowplaying::fixture`: the elements read and their ancestors, checked to read exactly like the whole
+  page), writes the `[[test]]` at the page's HTTP `Date`, and opens the *Share a recipe* issue form of
+  `soundfolk-recipes` filled in; a bot there turns it into a pull request. A fixture too long for the link goes to
+  the clipboard. Both files are also written to `<recipes folder>/to-share/`, laid out as in the repository.
+* **Ask for a recipe** (no source found) opens the repository's *Request a station* form, filled in with the
+  station's name, Radio-Browser page, stream and website.
 * ⚙ › Privacy › **My recipes** counts the local files, lists those not used and opens the folder.
 
 ### `recipe-check`
 ```bash
 cargo run -p soundfolk-nowplaying --bin recipe-check -- test recipes/stations/*.toml
 cargo run -p soundfolk-nowplaying --features cli --bin recipe-check -- run recipes/stations/frequence7.toml
+cargo run -p soundfolk-nowplaying --features cli --bin recipe-check -- fixture recipes/stations/frequence7.toml
 cargo run -p soundfolk-nowplaying --bin recipe-check -- compile recipes/stations -o recipes.json  # ids = file names
 cargo run -p soundfolk-nowplaying --bin recipe-check -- schema > recipes/recipe.schema.json
 ```
-(from `src-tauri/`). `run` without `--page` fetches the live page (needs `--features cli`).
+(from `src-tauri/`). `run` and `fixture` without `--page` fetch the live page (needs `--features cli`); `fixture`
+writes `../fixtures/<id>.<ext>` and replaces the recipe's `[[test]]`.
 
 ## 3. Engine (`src-tauri/crates/nowplaying`)
 A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the host fetches pages and passes them in.
 
 * `recipe`: format, validation, matching. `extract`: HTML / JSON / text. `adapters`: Icecast, Shoutcast.
+  `fixture`: the excerpt of a page a recipe reads, and its `[[test]]`. `check`: tests, the published list.
 * `clock`: local `HH:MM:SS` → instants without knowing the time zone. Real UTC offsets are multiples of 15 min; the
   current track started at most its length before the page's HTTP `Date`, which leaves one offset when the length is
   under 15 min (example: `Date` 21:39:08 UTC, track 22:36:51 → 22:41:27 local ⇒ +1:00). Otherwise the offset is

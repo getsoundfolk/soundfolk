@@ -20,6 +20,7 @@ pub mod adapters;
 pub mod check;
 pub mod clock;
 pub mod extract;
+pub mod fixture;
 pub mod recipe;
 pub mod tracker;
 mod value;

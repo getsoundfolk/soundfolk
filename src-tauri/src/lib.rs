@@ -284,6 +284,7 @@ pub fn run() {
             commands::reload_recipes,
             commands::test_recipe,
             commands::edit_recipe,
+            commands::share_recipe,
             commands::get_local_recipes,
             commands::open_recipes_folder,
             commands::get_track_services,

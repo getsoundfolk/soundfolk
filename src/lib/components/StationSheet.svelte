@@ -3,7 +3,15 @@
      from, with the way to fix it (a local recipe) when it is wrong or missing. -->
 <script lang="ts">
   import { openUrl } from '@tauri-apps/plugin-opener';
-  import { api, errorMessage, type RecipeTest, type TitleStatus, type TrackInfo } from '../api';
+  import {
+    api,
+    errorMessage,
+    recipeRequestLink,
+    type RecipeTest,
+    type SharedRecipe,
+    type TitleStatus,
+    type TrackInfo,
+  } from '../api';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
   import styles from './StationSheet.module.css';
@@ -11,6 +19,8 @@
   let dialog: HTMLDialogElement | undefined = $state();
   let test = $state<RecipeTest | null>(null);
   let testing = $state(false);
+  let sharing = $state(false);
+  let shared = $state<SharedRecipe | null>(null);
   let opened = $state<string | null>(null);
   let error = $state<string | null>(null);
 
@@ -23,6 +33,7 @@
     if (ui.stationOpen && !dialog.open) {
       test = null;
       opened = null;
+      shared = null;
       error = null;
       dialog.showModal();
     } else if (!ui.stationOpen && dialog.open) {
@@ -83,6 +94,20 @@
       opened = await api.editRecipe(station);
     } catch (e) {
       error = errorMessage(e);
+    }
+  }
+
+  async function share() {
+    if (!station) return;
+    sharing = true;
+    error = null;
+    shared = null;
+    try {
+      shared = await api.shareRecipe(station.url, station.id);
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      sharing = false;
     }
   }
 
@@ -153,7 +178,27 @@
             {testing ? 'Reading the page…' : 'Test'}
           </button>
         {/if}
+        {#if recipe?.origin === 'local'}
+          <button class={styles.button} type="button" disabled={sharing} onclick={share}>
+            {sharing ? 'Reading the page…' : 'Share this recipe'}
+          </button>
+        {/if}
+        {#if status?.state === 'none' && !recipe}
+          <button class={styles.button} type="button" onclick={() => openUrl(recipeRequestLink(station))}>
+            Ask for a recipe
+          </button>
+        {/if}
       </div>
+      {#if shared}
+        <p class={styles.hint} role="status">
+          GitHub is open with your recipe and an excerpt of the page filled in. Submit the form: a bot checks the
+          recipe and proposes it for every listener.
+          {#if shared.fixture_in_clipboard}
+            <strong>The excerpt is too long for the link: it is in your clipboard, paste it into the Fixture field.</strong>
+          {/if}
+          A copy is in {shared.folder}.
+        </p>
+      {/if}
       {#if opened}
         <p class={styles.hint}>
           {fileName(opened)} is open in your editor. Save it and come back here: Soundfolk reloads it and reads the

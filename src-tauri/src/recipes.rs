@@ -356,6 +356,28 @@ title = ""        # or text = "…" when the page shows "Artist - Title" in one 
     )
 }
 
+/// The shared recipes repository.
+pub const REPOSITORY: &str = "https://github.com/getsoundfolk/soundfolk-recipes";
+/// Longest link opened in the browser: GitHub refuses longer ones.
+pub const MAX_LINK: usize = 7500;
+
+/// The "Share a recipe" issue form, filled in (the fixture is left out when `None`). The
+/// repository's `share` workflow turns the issue into a pull request.
+pub fn share_link(id: &str, name: &str, recipe: &str, fixture: Option<&str>) -> String {
+    let mut params = vec![
+        ("template", "share.yml".to_owned()),
+        ("title", format!("Recipe: {name}")),
+        ("recipe-id", id.to_owned()),
+        ("recipe", recipe.to_owned()),
+    ];
+    if let Some(fixture) = fixture {
+        params.push(("fixture", fixture.to_owned()));
+    }
+    crate::audio::Url::parse_with_params(&format!("{REPOSITORY}/issues/new"), &params)
+        .expect("valid URL")
+        .to_string()
+}
+
 /// A recipe of the shared list as a local file (the list carries no comments).
 fn shared_copy(entry: &Entry) -> String {
     format!(
@@ -554,6 +576,20 @@ mod tests {
         assert_eq!(error, "fill in or remove the empty `extract` field(s): item, artist, title", "{text}");
         let filled = text.replace("item = \"\"", "item = \"li\"").replace("artist = \"\"", "artist = \".a\"").replace("title = \"\"", "title = \".t\"");
         assert!(parse(&filled).is_ok(), "{:?}", parse(&filled));
+    }
+
+    #[test]
+    fn share_links_fill_in_the_issue_form() {
+        let link = share_link("radio-x", "Radio X & co", "schema = 1\nname = \"X\"\n", Some("<li>a</li>"));
+        let url = crate::audio::Url::parse(&link).unwrap();
+        assert_eq!(url.as_str().split('?').next(), Some("https://github.com/getsoundfolk/soundfolk-recipes/issues/new"));
+        let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
+        assert_eq!(params["template"], "share.yml");
+        assert_eq!(params["title"], "Recipe: Radio X & co");
+        assert_eq!(params["recipe-id"], "radio-x");
+        assert_eq!(params["recipe"], "schema = 1\nname = \"X\"\n");
+        assert_eq!(params["fixture"], "<li>a</li>");
+        assert!(!share_link("a", "A", "", None).contains("fixture"));
     }
 
     #[test]
