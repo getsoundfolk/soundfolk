@@ -41,7 +41,7 @@ stream-download = { version = "0.24", default-features = false, features = ["req
 symphonia = { version = "0.6", default-features = false, features = ["mp3", "aac", "isomp4", "ogg", "vorbis", "flac", "wav", "pcm", "id3v2"] }
 cpal = "0.18"
 rtrb = "0.4"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 rubato = "4.0.0"
 
 # Track titles: accent folding for comparison keys
@@ -51,6 +51,10 @@ unicode-normalization = "0.1"
 soundfolk-nowplaying = { path = "crates/nowplaying" }
 # HTTP `Date` headers and timestamps
 jiff = { version = "0.2", default-features = false, features = ["std"] }
+
+# One running copy only: launching Soundfolk again brings the existing window forward
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+tauri-plugin-single-instance = "2"
 
 # System media controls (MPRIS): pure Rust D-Bus (zbus), no libdbus needed
 [target.'cfg(target_os = "linux")'.dependencies]

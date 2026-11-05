@@ -158,7 +158,13 @@ pub fn run() {
         )
         .init();
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Registered first, as the plugin asks: a second launch hands over to the running copy
+    // (which keeps playing and shows its window) and exits before opening the database or the audio
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)));
+
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
