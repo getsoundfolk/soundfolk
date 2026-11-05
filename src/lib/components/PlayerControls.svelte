@@ -34,6 +34,16 @@
     return { text, time };
   });
 
+  // Cover art of the track on air, from the sources set in ⚙ › Cover art (only while it is
+  // still the title it was found for), or the station's logo. An image that fails to load is
+  // hidden rather than shown broken.
+  let brokenCover = $state<string | null>(null);
+  const cover = $derived.by(() => {
+    const { title, url } = player.cover;
+    if (!url || title !== player.nowPlaying.title || url === brokenCover) return null;
+    return /^https?:\/\//i.test(url) ? url : null;
+  });
+
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
   let wasOpen = false;
@@ -46,6 +56,16 @@
 
 <section class={styles.root} aria-label="Player">
   <div class={styles.top}>
+    {#if cover}
+      <img
+        class={styles.cover}
+        data-logo={player.cover.logo === true}
+        src={cover}
+        alt=""
+        referrerpolicy="no-referrer"
+        onerror={() => (brokenCover = cover)}
+      />
+    {/if}
     <div class={styles.info}>
       <p class={styles.headline} title={headline}>{headline}</p>
       {#if subline}<p class={styles.subline}>{subline}</p>{/if}

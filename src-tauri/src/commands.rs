@@ -19,6 +19,7 @@ use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType, Stats};
 use crate::export;
 use crate::error::AppResult;
+use crate::covers::{self, Cover, CoverSource, Covers};
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 use crate::track_services::{self, CustomService};
 
@@ -113,6 +114,7 @@ pub(crate) fn start_station(
     // Lets a recipe recognise the station by its Radio-Browser UUID.
     let station = StationRef { id: station_id.clone().filter(|id| is_catalog_id(id)) };
     *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name, url: url.clone() });
+    app.state::<CoversState>().0.set_station(station.id.clone());
     let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
 
     // Decided before playing: the first sound may come before `play` returns.
@@ -714,6 +716,32 @@ pub async fn set_track_identification(
     db.set_bool(SETTING_IDENTIFY, enabled)?;
     waker.0.notify_one();
     Ok(())
+}
+
+/// Cover art of the track on air, chosen from the sources the user put in order.
+pub struct CoversState(pub Arc<Covers>);
+
+#[tauri::command]
+pub async fn get_cover_sources(db: State<'_, Database>) -> AppResult<Vec<CoverSource>> {
+    Ok(covers::load_sources(&db)?)
+}
+
+/// Saves the order and switches, and chooses the cover of the track on air again.
+#[tauri::command]
+pub async fn set_cover_sources(
+    db: State<'_, Database>,
+    covers: State<'_, CoversState>,
+    sources: Vec<CoverSource>,
+) -> AppResult<Vec<CoverSource>> {
+    let saved = covers::save_sources(&db, sources)?;
+    covers.0.refresh();
+    Ok(saved)
+}
+
+/// The cover shown for the track on air (the window may open while a track is playing).
+#[tauri::command]
+pub async fn get_cover(covers: State<'_, CoversState>) -> AppResult<Cover> {
+    Ok(covers.0.current())
 }
 
 #[tauri::command]

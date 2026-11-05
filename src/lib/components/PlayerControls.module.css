@@ -16,6 +16,21 @@
   gap: 0.75rem;
 }
 
+.cover {
+  flex: none;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 0.5rem;
+  object-fit: cover;
+  background: #2c2c36;
+}
+
+/* Logos come in any shape and size (often a small favicon): shown whole, on a plain tile. */
+.cover[data-logo='true'] {
+  padding: 0.35rem;
+  object-fit: contain;
+}
+
 .info {
   flex: 1;
   display: flex;

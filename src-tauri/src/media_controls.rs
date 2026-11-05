@@ -5,7 +5,7 @@
 //!
 //! In a radio app the station comes first (next / previous change it), so the desktop's first
 //! line, the MPRIS title, is the station and its second line, the MPRIS artist, is the track.
-//! The station is also the album, for desktops that show it.
+//! The station is also the album, for desktops that show it, and the track's cover art the picture.
 //!
 //! Linux only for now: Windows needs the window's HWND and macOS the main thread's run loop.
 //! Elsewhere [`SystemMedia`] does nothing.
@@ -44,7 +44,7 @@ impl SystemMedia {
 
     pub fn show_state(&self, _state: &PlayerState) {}
 
-    pub fn show_now_playing(&self, _now_playing: &NowPlaying, _station: Option<&str>) {}
+    pub fn show_now_playing(&self, _now_playing: &NowPlaying, _station: Option<&str>, _cover: Option<&str>) {}
 }
 
 /// What the desktop displays: the station as the title, the track on air as the artist.
@@ -140,12 +140,14 @@ mod linux {
             }
         }
 
-        pub fn show_now_playing(&self, now_playing: &NowPlaying, station: Option<&str>) {
+        /// `cover`: address of the track's cover art, as resolved by `covers.rs`.
+        pub fn show_now_playing(&self, now_playing: &NowPlaying, station: Option<&str>, cover: Option<&str>) {
             let shown = display(now_playing, station);
             let metadata = MediaMetadata {
                 title: shown.title.as_deref(),
                 artist: shown.artist.as_deref(),
                 album: shown.album.as_deref(),
+                cover_url: cover,
                 ..Default::default()
             };
             if let Some(Err(e)) = self.controls().map(|mut c| c.set_metadata(metadata)) {

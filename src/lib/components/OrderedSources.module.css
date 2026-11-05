@@ -1,0 +1,199 @@
+/* SPDX-License-Identifier: MPL-2.0 */
+.box {
+  border: 1px solid #2c2c36;
+  border-radius: 0.7rem;
+  background: #20202a;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.title,
+.name {
+  color: #ececf1;
+  font-size: 0.88rem;
+}
+
+.detail {
+  color: #9a9aab;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.reset {
+  flex: none;
+  padding: 0.2rem 0.4rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.reset:hover {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.75rem 0.9rem 0.75rem 0.4rem;
+  border-top: 1px solid #2c2c36;
+  background: #20202a;
+}
+
+.row:last-child {
+  border-radius: 0 0 0.7rem 0.7rem;
+}
+
+.row[data-dragged='true'] {
+  position: relative;
+  z-index: 1;
+  background: #262632;
+  box-shadow: 0 0.3rem 1rem rgb(0 0 0 / 0.35);
+}
+
+.handle {
+  flex: none;
+  width: 1.5rem;
+  height: 1.7rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #74748a;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+
+.handle:hover {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.row[data-dragged='true'] .handle {
+  cursor: grabbing;
+}
+
+.rank {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-top: 0.1rem;
+  border-radius: 50%;
+  background: #2c2c36;
+  color: #c4c4d2;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.option {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 0.35rem;
+  background: #2c2c36;
+  color: #c4c4d2;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* The same switch as the other settings: drawn on the checkbox itself. */
+.toggle {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 2.3rem;
+  height: 1.3rem;
+  margin: 0.1rem 0 0;
+  border-radius: 999px;
+  background: #3a3a46;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #ececf1;
+  transition: transform 0.15s;
+}
+
+.toggle:checked {
+  background: #f0a028;
+}
+
+.toggle:checked::after {
+  transform: translateX(1rem);
+}
+
+.handle:focus-visible,
+.reset:focus-visible,
+.toggle:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+.live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle,
+  .toggle::after {
+    transition: none;
+  }
+}

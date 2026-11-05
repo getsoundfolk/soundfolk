@@ -21,6 +21,7 @@ use crate::tracks;
 pub const SETTING_IDENTIFY: &str = "identify_tracks";
 
 const API: &str = "https://musicbrainz.org/ws/2/";
+const COVER_ART_ARCHIVE: &str = "https://coverartarchive.org/";
 const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"), " ( https://github.com/getsoundfolk/soundfolk )");
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// The API allows one request per second on average.
@@ -72,6 +73,9 @@ pub enum LookupError {
 
 pub struct MusicBrainz {
     client: Client,
+    /// When the last request left: the identification worker and the cover lookups share the
+    /// one-request-per-second budget.
+    last_request: tokio::sync::Mutex<Option<tokio::time::Instant>>,
 }
 
 impl MusicBrainz {
@@ -81,12 +85,22 @@ impl MusicBrainz {
             .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| LookupError::Network(e.to_string()))?;
-        Ok(Self { client })
+        Ok(Self { client, last_request: tokio::sync::Mutex::new(None) })
+    }
+
+    /// Waits until a request to MusicBrainz is allowed (at most one per [`REQUEST_INTERVAL`]).
+    async fn throttle(&self) {
+        let mut last = self.last_request.lock().await;
+        if let Some(at) = *last {
+            tokio::time::sleep_until(at + REQUEST_INTERVAL).await;
+        }
+        *last = Some(tokio::time::Instant::now());
     }
 
     async fn get(&self, path: &str, params: &[(&str, &str)]) -> Result<Value, LookupError> {
         let mut url = Url::parse(API).and_then(|u| u.join(path)).map_err(|e| LookupError::Invalid(e.to_string()))?;
         url.query_pairs_mut().extend_pairs(params).append_pair("fmt", "json");
+        self.throttle().await;
         let response = self.client.get(url).send().await.map_err(|e| LookupError::Network(e.to_string()))?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(Value::Null);
@@ -107,6 +121,17 @@ impl MusicBrainz {
         Ok(best_recording(&body))
     }
 
+    /// Release groups that may show a track's cover art, best first (see [`cover_candidates`]).
+    pub async fn albums_of(&self, artist: &str, title: &str) -> Result<Vec<String>, LookupError> {
+        let query = format!(
+            "recording:{} AND artist:{}",
+            lucene_phrase(&tracks::clean_for_search(title)),
+            lucene_phrase(&tracks::clean_for_search(artist)),
+        );
+        let body = self.get("recording", &[("query", &query), ("limit", "25")]).await?;
+        Ok(cover_candidates(&body))
+    }
+
     pub async fn artist(&self, mbid: &str) -> Result<Option<ArtistInfo>, LookupError> {
         // The ID ends up in the URL path: only a UUID is accepted.
         if !is_mbid(mbid) {
@@ -115,15 +140,28 @@ impl MusicBrainz {
         let body = self.get(&format!("artist/{mbid}"), &[("inc", "genres")]).await?;
         Ok(parse_artist(&body))
     }
+
+    /// Front cover of a release group on the Cover Art Archive (https://coverartarchive.org), as a
+    /// 500 px thumbnail address, if it has one.
+    pub async fn release_group_cover(&self, mbid: &str) -> Result<Option<String>, LookupError> {
+        if !is_mbid(mbid) {
+            return Err(LookupError::Invalid(format!("invalid release group ID: {mbid}")));
+        }
+        let url = format!("{COVER_ART_ARCHIVE}release-group/{mbid}");
+        let response = self.client.get(url).send().await.map_err(|e| LookupError::Network(e.to_string()))?;
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let response = response.error_for_status().map_err(|e| LookupError::Network(e.to_string()))?;
+        let bytes = response.bytes().await.map_err(|e| LookupError::Network(e.to_string()))?;
+        let body: Value = serde_json::from_slice(&bytes).map_err(|e| LookupError::Invalid(e.to_string()))?;
+        Ok(front_cover(&body))
+    }
 }
 
 /// Runs for the whole life of the app: identifies liked tracks one by one while the setting is on.
-pub fn spawn_worker(app: tauri::AppHandle, wake: Arc<Notify>) {
+pub fn spawn_worker(app: tauri::AppHandle, mb: Arc<MusicBrainz>, wake: Arc<Notify>) {
     tauri::async_runtime::spawn(async move {
-        let mb = match MusicBrainz::new() {
-            Ok(mb) => mb,
-            Err(e) => return tracing::warn!("track identification disabled: {e}"),
-        };
         loop {
             let db = app.state::<Database>();
             let next = match db.get_bool(SETTING_IDENTIFY, false) {
@@ -251,26 +289,66 @@ fn best_album(recording: &Value) -> Option<Album> {
         .filter_map(|r| r.get("release-group"))
         .collect();
     let primary = |g: &Value| g.get("primary-type").and_then(Value::as_str).map(str::to_owned);
-    let secondary = |g: &Value| -> Vec<String> {
-        g.get("secondary-types")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|s| s.as_str().map(str::to_owned))
-            .collect()
-    };
-    let rank = |g: &Value| -> u8 {
-        let second = secondary(g);
-        let bad = second.iter().any(|s| s == "Compilation" || s == "Live");
-        match primary(g).as_deref() {
-            Some("Album") if second.is_empty() => 0,
-            Some("Album" | "EP") if !bad => 1,
-            Some("Single") if !bad => 2,
-            _ => 3,
-        }
-    };
-    let group = groups.into_iter().min_by_key(|g| rank(g))?;
+    let group = groups.into_iter().min_by_key(|g| album_rank(g))?;
     Some(Album { mbid: str_of(group, "id")?, title: str_of(group, "title")?, primary_type: primary(group) })
+}
+
+/// How well a release group stands for "the album" (lower is better): a plain album, then an album
+/// or EP that is not a compilation or a live recording, then a single, then anything else.
+fn album_rank(group: &Value) -> u8 {
+    let primary = group.get("primary-type").and_then(Value::as_str);
+    let secondary: Vec<&str> =
+        group.get("secondary-types").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
+    let bad = secondary.iter().any(|s| *s == "Compilation" || *s == "Live");
+    match primary {
+        Some("Album") if secondary.is_empty() => 0,
+        Some("Album" | "EP") if !bad => 1,
+        Some("Single") if !bad => 2,
+        _ => 3,
+    }
+}
+
+/// Most release groups a cover lookup tries.
+pub const MAX_COVER_CANDIDATES: usize = 3;
+
+/// Release groups of every trustworthy recording, best first: by [`album_rank`], then by how many
+/// releases of them carry the track (the well-known album has many editions), then as listed.
+/// The best-scored recording alone is often an obscure compilation without cover art.
+fn cover_candidates(body: &Value) -> Vec<String> {
+    let mut groups: Vec<(String, u8, usize, usize)> = Vec::new();
+    let recordings = body.get("recordings").and_then(Value::as_array).into_iter().flatten();
+    for recording in recordings.filter(|r| score_of(r) >= MIN_SCORE) {
+        let releases = recording.get("releases").and_then(Value::as_array).into_iter().flatten();
+        for group in releases.filter_map(|r| r.get("release-group")) {
+            let Some(id) = str_of(group, "id").filter(|id| is_mbid(id)) else { continue };
+            match groups.iter_mut().find(|g| g.0 == id) {
+                Some(seen) => seen.2 += 1,
+                None => {
+                    let order = groups.len();
+                    groups.push((id, album_rank(group), 1, order));
+                }
+            }
+        }
+    }
+    groups.sort_by_key(|&(_, rank, count, order)| (rank, std::cmp::Reverse(count), order));
+    groups.into_iter().map(|g| g.0).take(MAX_COVER_CANDIDATES).collect()
+}
+
+/// The image marked as front in a Cover Art Archive listing: its 500 px thumbnail, or the largest
+/// one given. Addresses are moved to https.
+fn front_cover(body: &Value) -> Option<String> {
+    let images = body.get("images")?.as_array()?;
+    let front = images.iter().find(|i| i.get("front").and_then(Value::as_bool) == Some(true))?;
+    let thumbnails = front.get("thumbnails");
+    let url = ["500", "large", "250", "small"]
+        .iter()
+        .find_map(|size| thumbnails.and_then(|t| str_of(t, size)))
+        .or_else(|| str_of(front, "image"))?;
+    let url = match url.strip_prefix("http://") {
+        Some(rest) => format!("https://{rest}"),
+        None => url,
+    };
+    url.starts_with("https://").then_some(url)
 }
 
 fn parse_artist(body: &Value) -> Option<ArtistInfo> {
@@ -326,6 +404,38 @@ mod tests {
         let artist = parse_artist(&body).unwrap();
         assert_eq!(artist.country.as_deref(), Some("FR"));
         assert_eq!(artist.genres, ["downtempo", "electronic"]);
+    }
+
+    #[test]
+    fn cover_candidates_prefer_the_well_known_album() {
+        let group = |id: u32, kind: &str, second: &[&str]| {
+            serde_json::json!({"release-group":{"id":format!("cccccccc-0000-0000-0000-{id:012}"),"title":"t",
+                "primary-type":kind,"secondary-types":second}})
+        };
+        let body = serde_json::json!({"recordings":[
+            {"id":"a","score":100,"releases":[group(1, "Album", &["Compilation"]), group(2, "Album", &["Compilation"])]},
+            {"id":"b","score":98,"releases":[group(3, "Single", &[]), group(4, "Album", &[]), group(5, "Album", &[])]},
+            {"id":"c","score":95,"releases":[group(5, "Album", &[])]},
+            {"id":"d","score":60,"releases":[group(6, "Album", &[])]}
+        ]});
+        let ids: Vec<String> = cover_candidates(&body).into_iter().map(|id| id[24..].to_string()).collect();
+        // Two plain albums, the one with more releases first, then the single; never the low score
+        assert_eq!(ids, ["000000000005", "000000000004", "000000000003"]);
+        assert!(cover_candidates(&Value::Null).is_empty());
+    }
+
+    #[test]
+    fn picks_the_front_cover() {
+        let body = serde_json::json!({"images":[
+            {"front":false,"image":"http://coverartarchive.org/release/r/back.jpg","thumbnails":{}},
+            {"front":true,"image":"http://coverartarchive.org/release/r/1.jpg",
+             "thumbnails":{"250":"http://coverartarchive.org/release/r/1-250.jpg","500":"http://coverartarchive.org/release/r/1-500.jpg"}}
+        ]});
+        assert_eq!(front_cover(&body).as_deref(), Some("https://coverartarchive.org/release/r/1-500.jpg"));
+        let only_image = serde_json::json!({"images":[{"front":true,"image":"https://x/1.jpg"}]});
+        assert_eq!(front_cover(&only_image).as_deref(), Some("https://x/1.jpg"));
+        assert_eq!(front_cover(&serde_json::json!({"images":[{"front":false,"image":"https://x/1.jpg"}]})), None);
+        assert_eq!(front_cover(&serde_json::json!({"images":[{"front":true,"image":"ftp://x/1.jpg"}]})), None);
     }
 
     #[test]

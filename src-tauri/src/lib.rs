@@ -2,6 +2,7 @@
 mod audio;
 mod catalog;
 mod commands;
+mod covers;
 mod db;
 mod error;
 mod export;
@@ -235,6 +236,12 @@ pub fn run() {
             let station = on_air.clone();
             let session_station = on_air.clone();
             let media = Arc::new(SystemMedia::new(app.handle().clone()));
+            let musicbrainz = musicbrainz::MusicBrainz::new()
+                .map(Arc::new)
+                .inspect_err(|e| tracing::warn!("MusicBrainz lookups disabled: {e}"))
+                .ok();
+            let covers = covers::Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
+            app.manage(commands::CoversState(covers.clone()));
             let local_recipes = app.path().app_config_dir().ok().map(|dir| dir.join("recipes"));
             let events = app.handle().clone();
             let web_titles = Arc::new(WebTitles::new(
@@ -265,7 +272,7 @@ pub fn run() {
                 Arc::new(move |now_playing: NowPlaying| {
                     journalize_title(&title_handle, &station, &last_logged, &now_playing);
                     let name = station.lock().unwrap_or_else(|p| p.into_inner()).as_ref().and_then(|s| s.name.clone());
-                    media.show_now_playing(&now_playing, name.as_deref());
+                    covers.update(now_playing.clone(), name);
                     if let Err(e) = title_handle.emit(NOW_PLAYING_EVENT, now_playing) {
                         tracing::warn!("failed to emit now-playing title: {e}");
                     }
@@ -276,7 +283,9 @@ pub fn run() {
             app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
 
             let identify = Arc::new(tokio::sync::Notify::new());
-            musicbrainz::spawn_worker(app.handle().clone(), identify.clone());
+            if let Some(mb) = musicbrainz {
+                musicbrainz::spawn_worker(app.handle().clone(), mb, identify.clone());
+            }
             app.manage(musicbrainz::IdentifyWaker(identify));
 
             let heartbeat = app.handle().clone();
@@ -325,6 +334,9 @@ pub fn run() {
             commands::list_likes,
             commands::get_stats,
             commands::get_track_identification,
+            commands::get_cover_sources,
+            commands::set_cover_sources,
+            commands::get_cover,
             commands::set_track_identification,
             commands::report_station,
             commands::search_stations,

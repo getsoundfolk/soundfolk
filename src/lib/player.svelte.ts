@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event';
 import {
   api,
   errorMessage,
+  type Cover,
   type Favorite,
   type NowPlaying,
   type Playable,
@@ -16,6 +17,8 @@ import {
 class PlayerStore {
   state = $state<PlayerState>({ status: 'idle' });
   nowPlaying = $state<NowPlaying>({ station: null, title: null });
+  /** Cover art of the track on air, chosen by the backend from the sources set in ⚙. */
+  cover = $state<Cover>({ title: null, url: null });
   current = $state<Playable | null>(null);
   volume = $state(0.8);
   favorites = $state<Favorite[]>([]);
@@ -37,6 +40,7 @@ class PlayerStore {
     const offs = [
       await listen<PlayerState>('player:state', (e) => (this.state = e.payload)),
       await listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
+      await listen<Cover>('player:cover', (e) => (this.cover = e.payload)),
       await listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
       await listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
       // Station switched from the system media controls (next / previous favorite)
@@ -49,6 +53,7 @@ class PlayerStore {
     await this.run(async () => {
       this.state = await api.getPlayerState();
       this.nowPlaying = await api.getNowPlaying();
+      this.cover = await api.getCover();
       this.titleStatus = await api.getTitleStatus();
       this.favorites = await api.listFavorites();
       this.volume = (await api.getVolume()) ?? this.volume;

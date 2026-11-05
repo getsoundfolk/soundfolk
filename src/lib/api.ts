@@ -29,6 +29,17 @@ export type NowPlaying = {
   source?: TitleSource | null;
 };
 
+/** Cover art of the track on air; `title` is the `NowPlaying.title` it belongs to. */
+export type Cover = {
+  title: string | null;
+  url: string | null;
+  /** `url` is the station's logo, shown when no source has the track's cover art. */
+  logo?: boolean;
+};
+
+export type CoverSourceId = 'station' | 'cover_art_archive';
+export type CoverSource = { id: CoverSourceId; enabled: boolean };
+
 export type Health =
   | { status: 'ok' }
   | { status: 'unreachable'; last_ok: string | null }
@@ -166,6 +177,9 @@ export const api = {
   saveVolume: (volume: number) => invoke<void>('save_volume', { volume }),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),
   getNowPlaying: () => invoke<NowPlaying>('get_now_playing'),
+  getCover: () => invoke<Cover>('get_cover'),
+  getCoverSources: () => invoke<CoverSource[]>('get_cover_sources'),
+  setCoverSources: (sources: CoverSource[]) => invoke<CoverSource[]>('set_cover_sources', { sources }),
 
   searchStations: (query: SearchQuery) => invoke<SearchPage>('search_stations', { query }),
 

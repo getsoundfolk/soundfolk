@@ -11,6 +11,7 @@ use std::sync::{Mutex, MutexGuard};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+mod covers;
 mod history;
 mod identify;
 mod sessions;
@@ -113,6 +114,14 @@ CREATE TABLE IF NOT EXISTS albums (
     mbid         TEXT PRIMARY KEY,
     title        TEXT NOT NULL,
     primary_type TEXT
+);
+
+-- Cover art found online for a track (`tracks.rs` key), or NULL when none was found: each track is
+-- looked up once (again after a while when nothing was found).
+CREATE TABLE IF NOT EXISTS covers (
+    track_key    TEXT PRIMARY KEY,
+    url          TEXT,
+    looked_up_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Manually added stations: strictly local, never sent anywhere.

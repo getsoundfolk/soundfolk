@@ -2,12 +2,13 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type HistorySummary, type LocalRecipes } from '../api';
+  import { api, errorMessage, type CoverSource, type CoverSourceId, type HistorySummary, type LocalRecipes } from '../api';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { checkCustom, MAX_CUSTOM, SERVICE_GROUPS, TRACK_SERVICES } from '../trackLinks';
   import { trackServices } from '../trackServices.svelte';
   import { ui } from '../ui.svelte';
+  import OrderedSources, { type SourceItem } from './OrderedSources.svelte';
   import styles from './SettingsPage.module.css';
 
   let clickCounting = $state(true);
@@ -59,10 +60,50 @@
     }
   }
 
+  // ── Cover art ──
+  const COVER_SOURCES: Record<CoverSourceId, Omit<SourceItem, 'id' | 'enabled'>> = {
+    station: {
+      name: 'Station',
+      badge: 'Nothing sent',
+      detail:
+        "The cover the station's website or streaming server gives with the title. Few stations do. Needs “Find the track on air on the station's website” above.",
+    },
+    cover_art_archive: {
+      name: 'Cover Art Archive',
+      badge: 'Sends artist & title',
+      detail:
+        'The artist and title of each track on air (+ IP address) are looked up on MusicBrainz, then the front cover of its album is loaded from the Cover Art Archive (Internet Archive). Once per track.',
+    },
+  };
+  const DEFAULT_COVER_SOURCES: CoverSource[] = [
+    { id: 'station', enabled: true },
+    { id: 'cover_art_archive', enabled: false },
+  ];
+  let coverSources = $state<CoverSource[]>(DEFAULT_COVER_SOURCES);
+  const coverItems = $derived(coverSources.map((s) => ({ ...COVER_SOURCES[s.id], ...s })));
+  const coverDefault = $derived(
+    coverSources.every((s, i) => s.id === DEFAULT_COVER_SOURCES[i].id && s.enabled === DEFAULT_COVER_SOURCES[i].enabled),
+  );
+
+  async function saveCoverSources(sources: CoverSource[]) {
+    const before = coverSources;
+    coverSources = sources;
+    try {
+      coverSources = await api.setCoverSources(sources);
+    } catch (e) {
+      coverSources = before;
+      player.error = errorMessage(e);
+    }
+  }
+
   onMount(async () => {
     back?.focus();
     trackServices.load();
     loadSummary();
+    api
+      .getCoverSources()
+      .then((s) => (coverSources = s))
+      .catch((e) => (player.error = errorMessage(e)));
     try {
       [clickCounting, identify, webTitles] = await Promise.all([
         api.getClickCounting(),
@@ -284,6 +325,18 @@
           onchange={(e) => changeIdentify(e.currentTarget.checked)}
         />
       </label>
+    </section>
+
+    <section class={styles.group} aria-labelledby="settings-covers">
+      <h2 class={styles.groupTitle} id="settings-covers">Cover art</h2>
+      <OrderedSources
+        title="Cover art sources"
+        intro="Asked from top to bottom: the first cover found is shown in the player and the desktop's media controls. A disabled source is never asked. Without a cover, the station's logo is shown."
+        items={coverItems}
+        isDefault={coverDefault}
+        onchange={(items) => saveCoverSources(items.map(({ id, enabled }) => ({ id: id as CoverSourceId, enabled })))}
+        onreset={() => saveCoverSources(DEFAULT_COVER_SOURCES)}
+      />
     </section>
 
     <section class={styles.group} aria-labelledby="settings-services">
