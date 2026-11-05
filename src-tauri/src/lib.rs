@@ -13,11 +13,10 @@ mod recipe_list;
 mod recipes;
 mod track_services;
 mod tracks;
+mod tray;
 
 use std::sync::{Arc, Mutex};
 
-use tauri::menu::{Menu, MenuItem};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
@@ -199,33 +198,6 @@ fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindo
     Ok(window)
 }
 
-/// Notification area icon: the app keeps playing in the background once its window is closed,
-/// so this is the way back to the window and the way to really quit.
-fn build_tray(app: &tauri::App) -> tauri::Result<()> {
-    let toggle = MenuItem::with_id(app, "toggle", "Show / hide Soundfolk", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let mut tray = TrayIconBuilder::with_id("main")
-        .tooltip("Soundfolk")
-        .menu(&Menu::with_items(app, &[&toggle, &quit])?)
-        // Left click toggles the window (Windows and macOS; on Linux every click opens the menu)
-        .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "toggle" => toggle_main_window(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
-        .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-                toggle_main_window(tray.app_handle());
-            }
-        });
-    if let Some(icon) = app.default_window_icon() {
-        tray = tray.icon(icon.clone());
-    }
-    tray.build(app)?;
-    Ok(())
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -288,6 +260,7 @@ pub fn run() {
                     track_session(&state_handle, &session_station, &session_logged, &state);
                     commands::schedule_click(&state_handle, &state);
                     state_media.show_state(&state);
+                    tray::show_state(&state_handle, &state);
                     if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
                         tracing::warn!("failed to emit player state: {e}");
                     }
@@ -322,11 +295,15 @@ pub fn run() {
                 }
             });
 
-            build_tray(app)?;
+            // Without an icon, closing the window quits: there would be no way back to it
+            if let Err(e) = tray::init(app) {
+                tracing::warn!("no notification area icon: {e}");
+                tray::set_available(false);
+            }
             Ok(())
         })
         // Closing the window really closes it: its web view (WebKit, most of the app's memory) is
-        // freed while the app keeps playing from the notification area. "Quit" in the tray menu exits.
+        // freed while the app keeps playing from the notification area (`tray.rs`). "Quit" in its menu exits.
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
                 if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
@@ -387,9 +364,12 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")
         .run(|app, event| {
-            // The last window closing does not end the app (no exit code): it goes on in the tray
+            // The last window closing does not end the app (no exit code): it goes on in the tray,
+            // when there is one to come back from
             if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
-                api.prevent_exit();
+                if tray::available() {
+                    api.prevent_exit();
+                }
             }
             if let tauri::RunEvent::Exit = event {
                 if let Err(e) = app.state::<Database>().end_session() {

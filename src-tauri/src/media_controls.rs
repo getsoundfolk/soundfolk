@@ -8,13 +8,17 @@
 //! The station is also the album, for desktops that show it, and its logo the picture.
 //!
 //! Linux only for now: Windows needs the window's HWND and macOS the main thread's run loop.
-//! Elsewhere [`SystemMedia`] does nothing.
+//! Elsewhere [`SystemMedia`] does nothing. The tray menu drives the player through [`control`] too,
+//! so that it can never behave differently from the media keys.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 use serde::Serialize;
+use tauri::{Emitter, Manager};
 
-use crate::audio::{NowPlaying, PlayerState};
-use crate::db::Favorite;
+use crate::audio::{AudioEngine, NowPlaying, PlayerState};
+use crate::commands::{start_station, AudioState};
+use crate::db::{Database, Favorite};
+use crate::error::AppResult;
 
 /// Event emitted when the media controls switch station (payload: `StationChange`), so that the
 /// window shows the station on air.
@@ -88,13 +92,8 @@ mod linux {
     use std::sync::{Mutex, MutexGuard};
 
     use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
-    use tauri::{Emitter, Manager};
 
-    use super::{display, neighbour, NowPlaying, PlayerState, StationChange, STATION_EVENT};
-    use crate::audio::AudioEngine;
-    use crate::commands::{start_station, AudioState};
-    use crate::db::Database;
-    use crate::error::AppResult;
+    use super::{control, display, Command, NowPlaying, PlayerState};
 
     pub struct SystemMedia {
         /// `None` when the controls could not be created: the player works without them.
@@ -156,72 +155,90 @@ mod linux {
         }
     }
 
-    /// Next / Previous switch between favorite stations. A live stream cannot seek: those events
-    /// are ignored.
+    /// A live stream cannot seek: those events are ignored.
     fn handle(app: &tauri::AppHandle, event: MediaControlEvent) {
-        let result = match event {
-            MediaControlEvent::Raise => {
-                crate::show_main_window(app);
-                Ok(())
-            }
-            MediaControlEvent::Quit => {
-                app.exit(0);
-                Ok(())
-            }
-            MediaControlEvent::Next => switch_favorite(app, true),
-            MediaControlEvent::Previous => switch_favorite(app, false),
-            MediaControlEvent::Play | MediaControlEvent::Pause | MediaControlEvent::Toggle | MediaControlEvent::Stop => {
-                drive(app, &event)
-            }
-            _ => Ok(()),
+        let command = match event {
+            MediaControlEvent::Raise => return crate::show_main_window(app),
+            MediaControlEvent::Quit => return app.exit(0),
+            MediaControlEvent::Play => Command::Play,
+            MediaControlEvent::Pause => Command::Pause,
+            MediaControlEvent::Toggle => Command::Toggle,
+            MediaControlEvent::Stop => Command::Stop,
+            MediaControlEvent::Next => Command::Next,
+            MediaControlEvent::Previous => Command::Previous,
+            _ => return,
         };
-        if let Err(e) = result {
-            tracing::warn!("media control {event:?} failed: {e}");
-        }
+        control(app, command);
     }
+}
 
-    fn drive(app: &tauri::AppHandle, event: &MediaControlEvent) -> AppResult<()> {
-        let Some(audio) = app.try_state::<AudioState>() else { return Ok(()) };
-        let mut engine = audio.engine();
-        match (event, engine.state()) {
-            // Pausing while connecting is not possible yet: Toggle stops instead
-            (MediaControlEvent::Stop, _)
-            | (MediaControlEvent::Toggle, PlayerState::Connecting | PlayerState::Reconnecting(_)) => engine.stop()?,
-            (MediaControlEvent::Pause | MediaControlEvent::Toggle, PlayerState::Playing) => engine.pause()?,
-            (MediaControlEvent::Play | MediaControlEvent::Toggle, PlayerState::Paused) => engine.resume()?,
-            // After a stop, plays the last station again
-            (MediaControlEvent::Play | MediaControlEvent::Toggle, PlayerState::Idle | PlayerState::Error(_)) => {
-                drop(engine);
-                if let Some(station) = audio.station() {
-                    start_station(app, station.url, Some(station.id), station.name)?;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
+/// What the desktop's media controls and the tray menu ask the player to do.
+#[derive(Debug, Clone, Copy)]
+pub enum Command {
+    Play,
+    Pause,
+    Toggle,
+    Stop,
+    /// Next / Previous switch between favorite stations.
+    Next,
+    Previous,
+}
 
-    /// Plays the next (or previous) favorite, and tells the window which station is now on air.
-    fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
-        let favorites = app.state::<Database>().list_favorites()?;
-        let current = app.try_state::<AudioState>().and_then(|audio| audio.station()).map(|s| s.id);
-        let Some(next) = neighbour(&favorites, current.as_deref(), forward).cloned() else {
-            return Ok(());
-        };
-        let outcome =
-            start_station(app, next.stream_url.clone(), Some(next.station_id.clone()), Some(next.name.clone()))?;
-        let change = StationChange {
-            id: next.station_id,
-            name: next.name,
-            url: next.stream_url,
-            genre: next.genre,
-            show_click_notice: outcome.show_click_notice,
-        };
-        if let Err(e) = app.emit(STATION_EVENT, change) {
-            tracing::warn!("failed to emit the new station: {e}");
-        }
-        Ok(())
+/// Runs `command`. The engine may block for a while: call it from a worker thread, not from the
+/// thread that delivers D-Bus or menu events.
+pub fn control(app: &tauri::AppHandle, command: Command) {
+    let result = match command {
+        Command::Next => switch_favorite(app, true),
+        Command::Previous => switch_favorite(app, false),
+        _ => drive(app, command),
+    };
+    if let Err(e) = result {
+        tracing::warn!("media control {command:?} failed: {e}");
     }
+}
+
+fn drive(app: &tauri::AppHandle, command: Command) -> AppResult<()> {
+    let Some(audio) = app.try_state::<AudioState>() else { return Ok(()) };
+    let mut engine = audio.engine();
+    match (command, engine.state()) {
+        // Pausing while connecting is not possible yet: Toggle stops instead
+        (Command::Stop, _) | (Command::Toggle, PlayerState::Connecting | PlayerState::Reconnecting(_)) => {
+            engine.stop()?
+        }
+        (Command::Pause | Command::Toggle, PlayerState::Playing) => engine.pause()?,
+        (Command::Play | Command::Toggle, PlayerState::Paused) => engine.resume()?,
+        // After a stop, plays the last station again
+        (Command::Play | Command::Toggle, PlayerState::Idle | PlayerState::Error(_)) => {
+            drop(engine);
+            if let Some(station) = audio.station() {
+                start_station(app, station.url, Some(station.id), station.name)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Plays the next (or previous) favorite, and tells the window which station is now on air.
+fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
+    let favorites = app.state::<Database>().list_favorites()?;
+    let current = app.try_state::<AudioState>().and_then(|audio| audio.station()).map(|s| s.id);
+    let Some(next) = neighbour(&favorites, current.as_deref(), forward).cloned() else {
+        return Ok(());
+    };
+    let outcome =
+        start_station(app, next.stream_url.clone(), Some(next.station_id.clone()), Some(next.name.clone()))?;
+    let change = StationChange {
+        id: next.station_id,
+        name: next.name,
+        url: next.stream_url,
+        genre: next.genre,
+        show_click_notice: outcome.show_click_notice,
+    };
+    if let Err(e) = app.emit(STATION_EVENT, change) {
+        tracing::warn!("failed to emit the new station: {e}");
+    }
+    Ok(())
 }
 
 /// The favorite before or after `current` in the list, wrapping around. From a station that is not
