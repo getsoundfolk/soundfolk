@@ -151,10 +151,16 @@ const MAIN_WINDOW: &str = "main";
 #[derive(Default)]
 struct WindowGeometry(Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>>);
 
+/// Whether the main window is open, visible and not minimized.
+fn main_window_shown(app: &tauri::AppHandle) -> bool {
+    app.get_webview_window(MAIN_WINDOW)
+        .is_some_and(|window| window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false))
+}
+
 /// Shows the main window if it is closed or minimized, closes it otherwise.
 fn toggle_main_window(app: &tauri::AppHandle) {
     match app.get_webview_window(MAIN_WINDOW) {
-        Some(window) if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false) => {
+        Some(window) if main_window_shown(app) => {
             if let Err(e) = window.close() {
                 tracing::warn!("failed to close the main window: {e}");
             }
@@ -309,6 +315,17 @@ pub fn run() {
                 if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
                     let geometry = window.app_handle().state::<WindowGeometry>();
                     *geometry.0.lock().unwrap_or_else(|p| p.into_inner()) = Some((position, size));
+                }
+            }
+            // The tray menu offers to show the window or to hide it, whichever it would do. Being
+            // minimized or restored comes as a resize (or a focus change), closing as `Destroyed`.
+            if window.label() == MAIN_WINDOW {
+                match event {
+                    WindowEvent::Destroyed => tray::show_window_state(window.app_handle(), false),
+                    WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
+                        tray::show_window_state(window.app_handle(), main_window_shown(window.app_handle()))
+                    }
+                    _ => {}
                 }
             }
         })

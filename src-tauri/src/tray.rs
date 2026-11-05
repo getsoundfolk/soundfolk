@@ -32,6 +32,9 @@ static AVAILABLE: AtomicBool = AtomicBool::new(true);
 /// Whether the player is playing, as the menu shows it (Play or Pause).
 static PLAYING: AtomicBool = AtomicBool::new(false);
 
+/// Whether the main window is shown, as the menu shows it (Hide or Show). It opens at launch.
+static WINDOW_SHOWN: AtomicBool = AtomicBool::new(true);
+
 /// Can the window be brought back from the notification area? See [`AVAILABLE`].
 pub fn available() -> bool {
     AVAILABLE.load(Ordering::Relaxed)
@@ -49,8 +52,20 @@ pub fn show_state(app: &AppHandle, state: &PlayerState) {
     }
 }
 
+/// Follows the main window, so that the menu offers to hide it while it is shown, to show it
+/// otherwise (closed or minimized).
+pub fn show_window_state(app: &AppHandle, shown: bool) {
+    if WINDOW_SHOWN.swap(shown, Ordering::Relaxed) != shown {
+        imp::set_window_shown(app, shown);
+    }
+}
+
 fn play_pause_label(playing: bool) -> &'static str {
     if playing { "Pause" } else { "Play" }
+}
+
+fn toggle_label(window_shown: bool) -> &'static str {
+    if window_shown { "Hide Soundfolk" } else { "Show Soundfolk" }
 }
 
 /// Shared by both backends: the menu ids are the contract between them.
@@ -70,13 +85,14 @@ fn handle_menu(app: &AppHandle, id: &str) {
 
 #[cfg(target_os = "linux")]
 mod imp {
+    use std::sync::atomic::Ordering;
     use std::sync::OnceLock;
 
     use ksni::menu::{MenuItem, StandardItem};
     use ksni::{Handle, Icon, OfflineReason, ToolTip, Tray, TrayMethods};
     use tauri::AppHandle;
 
-    use super::{handle_menu, play_pause_label, set_available};
+    use super::{handle_menu, play_pause_label, set_available, toggle_label, WINDOW_SHOWN};
 
     /// Set once the icon is registered; `Handle` is not `Clone`, so it lives here.
     static HANDLE: OnceLock<Handle<SoundfolkTray>> = OnceLock::new();
@@ -84,6 +100,7 @@ mod imp {
     struct SoundfolkTray {
         app: AppHandle,
         playing: bool,
+        window_shown: bool,
         icon: Vec<Icon>,
     }
 
@@ -114,6 +131,14 @@ mod imp {
             handle_menu(&self.app, "play_pause");
         }
 
+        /// A window event may have been missed (a minimize the window manager did not report):
+        /// the label is checked again as the menu opens. Some panels show the menu before the
+        /// update arrives, hence the window events too.
+        fn menu_about_to_show(&mut self) {
+            self.window_shown = crate::main_window_shown(&self.app);
+            WINDOW_SHOWN.store(self.window_shown, Ordering::Relaxed);
+        }
+
         fn watcher_online(&self) {
             set_available(true);
         }
@@ -136,7 +161,7 @@ mod imp {
                 })
             };
             vec![
-                item("Show / hide Soundfolk", "toggle"),
+                item(toggle_label(self.window_shown), "toggle"),
                 MenuItem::Separator,
                 item(play_pause_label(self.playing), "play_pause"),
                 item("Next favorite", "next"),
@@ -158,7 +183,8 @@ mod imp {
 
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
         let icon = app.default_window_icon().map(pixmap).unwrap_or_default();
-        let tray = SoundfolkTray { app: app.handle().clone(), playing: false, icon };
+        let window_shown = WINDOW_SHOWN.load(Ordering::Relaxed);
+        let tray = SoundfolkTray { app: app.handle().clone(), playing: false, window_shown, icon };
         // Registering is asynchronous: a failure costs the icon, not the app, so it is logged.
         // `assume_sni_available`: no watcher yet becomes a `watcher_offline` call rather than an
         // error, which keeps the service waiting for one.
@@ -182,6 +208,13 @@ mod imp {
             handle.update(|tray| tray.playing = playing).await;
         });
     }
+
+    pub fn set_window_shown(_app: &AppHandle, shown: bool) {
+        let Some(handle) = HANDLE.get() else { return };
+        tauri::async_runtime::spawn(async move {
+            handle.update(|tray| tray.window_shown = shown).await;
+        });
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -190,13 +223,17 @@ mod imp {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
 
-    use super::{handle_menu, play_pause_label};
+    use super::{handle_menu, play_pause_label, toggle_label, WINDOW_SHOWN};
 
-    /// The item whose label follows the player.
-    struct PlayPause(MenuItem<Wry>);
+    /// The items whose label follows the window and the player.
+    struct Labels {
+        toggle: MenuItem<Wry>,
+        play_pause: MenuItem<Wry>,
+    }
 
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
-        let toggle = MenuItem::with_id(app, "toggle", "Show / hide Soundfolk", true, None::<&str>)?;
+        let shown = WINDOW_SHOWN.load(std::sync::atomic::Ordering::Relaxed);
+        let toggle = MenuItem::with_id(app, "toggle", toggle_label(shown), true, None::<&str>)?;
         let play_pause = MenuItem::with_id(app, "play_pause", play_pause_label(false), true, None::<&str>)?;
         let next = MenuItem::with_id(app, "next", "Next favorite", true, None::<&str>)?;
         let previous = MenuItem::with_id(app, "previous", "Previous favorite", true, None::<&str>)?;
@@ -230,14 +267,22 @@ mod imp {
             tray = tray.icon(icon.clone());
         }
         tray.build(app)?;
-        app.manage(PlayPause(play_pause));
+        app.manage(Labels { toggle, play_pause });
         Ok(())
     }
 
     pub fn set_playing(app: &AppHandle, playing: bool) {
-        if let Some(item) = app.try_state::<PlayPause>() {
-            if let Err(e) = item.0.set_text(play_pause_label(playing)) {
+        if let Some(labels) = app.try_state::<Labels>() {
+            if let Err(e) = labels.play_pause.set_text(play_pause_label(playing)) {
                 tracing::debug!("tray: Play / Pause label not updated: {e}");
+            }
+        }
+    }
+
+    pub fn set_window_shown(app: &AppHandle, shown: bool) {
+        if let Some(labels) = app.try_state::<Labels>() {
+            if let Err(e) = labels.toggle.set_text(toggle_label(shown)) {
+                tracing::debug!("tray: Show / Hide label not updated: {e}");
             }
         }
     }
