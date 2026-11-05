@@ -52,6 +52,8 @@ class PlayerStore {
       this.titleStatus = await api.getTitleStatus();
       this.favorites = await api.listFavorites();
       await api.setVolume(this.volume);
+      // The window may be opened again while the app kept playing in the background.
+      this.current = await api.getCurrentStation();
     });
     return () => offs.forEach((off) => off());
   }

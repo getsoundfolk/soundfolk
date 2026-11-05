@@ -161,6 +161,7 @@ export const api = {
     invoke<{ show_click_notice: boolean }>('play_stream', { url, stationId, stationName }),
   stopStream: () => invoke<void>('stop_stream'),
   setVolume: (volume: number) => invoke<void>('set_volume', { volume }),
+  getCurrentStation: () => invoke<Playable | null>('get_current_station'),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),
   getNowPlaying: () => invoke<NowPlaying>('get_now_playing'),
 

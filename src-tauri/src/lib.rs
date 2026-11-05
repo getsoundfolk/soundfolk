@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Emitter, Manager, WindowEvent};
+use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
 use audio::{DesktopAudioEngine, NowPlaying, PlayerState, WebEvent, WebTitles};
@@ -106,27 +106,58 @@ fn track_session(app: &tauri::AppHandle, station: &Mutex<Option<OnAir>>, state: 
     }
 }
 
-/// Shows the main window if it is hidden or minimized, hides it otherwise.
+/// Label of the main window, as declared in `tauri.conf.json`.
+const MAIN_WINDOW: &str = "main";
+
+/// Size and position of the main window when it was last closed, to open it again in the same place.
+#[derive(Default)]
+struct WindowGeometry(Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>>);
+
+/// Shows the main window if it is closed or minimized, closes it otherwise.
 fn toggle_main_window(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-    let visible = window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false);
-    if !visible {
-        show_main_window(app);
-    } else if let Err(e) = window.hide() {
-        tracing::warn!("failed to hide the main window: {e}");
+    match app.get_webview_window(MAIN_WINDOW) {
+        Some(window) if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false) => {
+            if let Err(e) = window.close() {
+                tracing::warn!("failed to close the main window: {e}");
+            }
+        }
+        _ => show_main_window(app),
     }
 }
 
-/// Brings the main window to the front, even from the notification area.
+/// Brings the main window to the front, even from the notification area: once closed it no longer
+/// exists, so it is created again (from any thread: windows are built on the main thread).
 fn show_main_window(app: &tauri::AppHandle) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-    if let Err(e) = window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus()) {
+    let handle = app.clone();
+    let shown = app.run_on_main_thread(move || {
+        let window = match handle.get_webview_window(MAIN_WINDOW) {
+            Some(window) => window,
+            None => match open_main_window(&handle) {
+                Ok(window) => window,
+                Err(e) => return tracing::warn!("failed to open the main window: {e}"),
+            },
+        };
+        if let Err(e) = window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus()) {
+            tracing::warn!("failed to show the main window: {e}");
+        }
+    });
+    if let Err(e) = shown {
         tracing::warn!("failed to show the main window: {e}");
     }
+}
+
+/// Creates the main window as `tauri.conf.json` declares it, where it was when it was closed.
+fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
+    let windows = &app.config().app.windows;
+    let config = windows.iter().find(|w| w.label == MAIN_WINDOW).cloned().ok_or(tauri::Error::WindowNotFound)?;
+    let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
+    let geometry = *app.state::<WindowGeometry>().0.lock().unwrap_or_else(|p| p.into_inner());
+    if let Some((position, size)) = geometry {
+        if let Err(e) = window.set_size(size).and_then(|()| window.set_position(position)) {
+            tracing::debug!("previous window geometry not restored: {e}");
+        }
+    }
+    Ok(window)
 }
 
 /// Notification area icon: the app keeps playing in the background once its window is closed,
@@ -177,6 +208,7 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             app.manage(Database::open(data_dir.join("soundfolk.db"))?);
+            app.manage(WindowGeometry::default());
 
             let on_air = Arc::new(Mutex::new(None::<OnAir>));
             let last_logged = Mutex::new(None::<(String, String)>);
@@ -243,12 +275,13 @@ pub fn run() {
             build_tray(app)?;
             Ok(())
         })
-        // Closing the window sends it to the notification area; "Quit" in the tray menu exits
+        // Closing the window really closes it: its web view (WebKit, most of the app's memory) is
+        // freed while the app keeps playing from the notification area. "Quit" in the tray menu exits.
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                if let Err(e) = window.hide() {
-                    tracing::warn!("failed to hide the main window: {e}");
+            if let WindowEvent::CloseRequested { .. } = event {
+                if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
+                    let geometry = window.app_handle().state::<WindowGeometry>();
+                    *geometry.0.lock().unwrap_or_else(|p| p.into_inner()) = Some((position, size));
                 }
             }
         })
@@ -260,6 +293,7 @@ pub fn run() {
             commands::set_volume,
             commands::get_player_state,
             commands::get_now_playing,
+            commands::get_current_station,
             commands::add_favorite,
             commands::remove_favorite,
             commands::list_favorites,
@@ -298,6 +332,10 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")
         .run(|app, event| {
+            // The last window closing does not end the app (no exit code): it goes on in the tray
+            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
+                api.prevent_exit();
+            }
             if let tauri::RunEvent::Exit = event {
                 if let Err(e) = app.state::<Database>().end_session() {
                     tracing::warn!("listening session not closed: {e}");

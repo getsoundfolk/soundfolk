@@ -200,6 +200,17 @@ pub async fn get_player_state(audio: State<'_, AudioState>) -> AppResult<PlayerS
     Ok(audio.engine().state())
 }
 
+/// Last station played, for a window opened again while the app kept playing in the background.
+#[tauri::command]
+pub async fn get_current_station(audio: State<'_, AudioState>) -> AppResult<Option<ResolvedStation>> {
+    Ok(audio.station().map(|s| ResolvedStation {
+        name: s.name.unwrap_or_else(|| s.url.clone()),
+        id: s.id,
+        url: s.url,
+        genre: None,
+    }))
+}
+
 #[tauri::command]
 pub async fn get_now_playing(audio: State<'_, AudioState>) -> AppResult<NowPlaying> {
     Ok(audio.engine().now_playing())
