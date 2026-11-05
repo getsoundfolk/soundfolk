@@ -20,10 +20,10 @@
       ('message' in player.state ? player.state.message : LABELS[player.state.status]),
   );
   // Current title if the stream announces one, otherwise the selected station.
+  // The station is named as in the list: the stream's own `icy-name` is often
+  // a mount point ("fipworld-hifi.aac") or a placeholder.
   const headline = $derived(player.nowPlaying.title ?? player.current?.name ?? 'No station');
-  const subline = $derived(
-    player.nowPlaying.title ? (player.nowPlaying.station ?? player.current?.name) : null,
-  );
+  const subline = $derived(player.nowPlaying.title ? player.current?.name : null);
   // Announced by the station's page: the next track, and when it starts.
   const upNext = $derived.by(() => {
     const next = player.nowPlaying.next;

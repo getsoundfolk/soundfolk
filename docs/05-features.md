@@ -56,7 +56,7 @@ onwards.
   * listening time by hour of the day and by day of the week;
   * station profiles: repetition (plays per distinct track), diversity (distinct artists per 100 tracks) and the share
     of titles without an artist (ads, jingles, missing metadata).
-* **Personal stations:** your own streams, kept alongside catalog stations (marked "personal").
+* **Personal stations:** your own streams, named by you, kept alongside catalog stations (marked "personal").
 
 ---
 

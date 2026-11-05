@@ -15,7 +15,7 @@
     pending = true;
     error = null;
     try {
-      const station = await api.addPersonalStation(url.trim(), name.trim() || undefined);
+      const station = await api.addPersonalStation(url.trim(), name.trim());
       url = '';
       name = '';
       onadded(station);
@@ -42,12 +42,13 @@
   <input
     class={styles.input}
     type="text"
-    placeholder="Name (optional)"
+    required
+    placeholder="Name"
     aria-label="Station name"
     bind:value={name}
     disabled={pending}
   />
-  <button class={styles.button} type="submit" disabled={pending || url.trim() === ''}>
+  <button class={styles.button} type="submit" disabled={pending || url.trim() === '' || name.trim() === ''}>
     {pending ? 'Testing stream…' : 'Add'}
   </button>
   <p class={styles.hint}>The stream is tested before it is saved. The station stays on this device.</p>

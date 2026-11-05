@@ -519,8 +519,12 @@ pub async fn resolve_station(
 pub async fn add_personal_station(
     db: State<'_, Database>,
     url: String,
-    name: Option<String>,
+    name: String,
 ) -> AppResult<PersonalStation> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("A station needs a name.".to_owned().into());
+    }
     let url: audio::Url = url
         .trim()
         .parse()
@@ -532,19 +536,11 @@ pub async fn add_personal_station(
     let stream = audio::resolve_stream_url(url).await?;
     let handle = tokio::runtime::Handle::current();
     let probed = stream.clone();
-    let info = tokio::task::spawn_blocking(move || audio::probe_stream(&probed, &handle))
+    tokio::task::spawn_blocking(move || audio::probe_stream(&probed, &handle))
         .await
         .map_err(|e| format!("Stream test interrupted: {e}"))??;
 
-    let name = name
-        .as_deref()
-        .map(str::trim)
-        .filter(|n| !n.is_empty())
-        .map(str::to_owned)
-        .or(info.station)
-        .or_else(|| stream.host_str().map(str::to_owned))
-        .unwrap_or_else(|| "Personal station".to_owned());
-    Ok(db.add_personal_station(&name, stream.as_str(), None)?)
+    Ok(db.add_personal_station(name, stream.as_str(), None)?)
 }
 
 #[tauri::command]

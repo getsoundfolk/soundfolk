@@ -170,7 +170,7 @@ export const api = {
   addFavorite: (favorite: Favorite) => invoke<void>('add_favorite', { favorite }),
   removeFavorite: (stationId: string) => invoke<boolean>('remove_favorite', { stationId }),
 
-  addPersonalStation: (url: string, name?: string) =>
+  addPersonalStation: (url: string, name: string) =>
     invoke<PersonalStation>('add_personal_station', { url, name }),
   listPersonalStations: () => invoke<PersonalStation[]>('list_personal_stations'),
   removePersonalStation: (stationId: string) =>
