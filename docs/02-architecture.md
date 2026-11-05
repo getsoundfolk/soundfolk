@@ -58,3 +58,19 @@ Soundfolk strictly decouples the user interface, the performance-critical logic 
   notice at the first play and a setting to turn it off. Nothing is sent before the notice has been shown.
 * Personal stations never leave the device.
 * Catalog searches are sent to the Radio-Browser API.
+
+## 5. Files on disk
+The app identifier is `io.github.getsoundfolk.soundfolk` (Flathub-style, after the `getsoundfolk` GitHub organisation;
+never to be changed once released). Folders are named `soundfolk` rather than after it, through
+`app.appDirectoriesOverride` in `tauri.conf.json`, so the `app_*_dir` path APIs, Tauri itself and plugins all use them:
+
+| | Settings and recipes (`$CONFIG`) | Database and web view data (`$DATA`, `$LOCALDATA`) | Cache |
+|---|---|---|---|
+| Linux | `~/.config/soundfolk` | `~/.local/share/soundfolk` | `~/.cache/soundfolk` |
+| macOS | `~/Library/Application Support/soundfolk` | same | `~/Library/Caches/soundfolk` |
+| Windows | `%APPDATA%\soundfolk` | `%APPDATA%\soundfolk`, `%LOCALAPPDATA%\soundfolk` | `%LOCALAPPDATA%\soundfolk` |
+
+* `soundfolk.db` (SQLite, WAL) is in the data folder; local recipes are in `<settings>/recipes`, next to
+  `recipe.schema.json`.
+* On macOS the web view keeps its data where WebKit decides (per bundle identifier), not in these folders.
+* Under Flatpak these folders are inside the sandbox (`~/.var/app/io.github.getsoundfolk.soundfolk/…`).
