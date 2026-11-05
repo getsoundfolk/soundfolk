@@ -44,8 +44,9 @@ Soundfolk strictly decouples the user interface, the performance-critical logic 
 
 ## 3. Catalog
 * The rest of the app only talks to the `CatalogSource` trait (`search`, `count_click`). Today's implementation is the
-  public Radio-Browser API: the mirror is discovered through `/json/servers`, requests carry an explicit
-  `User-Agent`, and the UI delays searches by 300 ms to spare the API.
+  public Radio-Browser API: the mirrors are the addresses of `all.api.radio-browser.info` (a DNS lookup, as the API
+  documentation asks), requests carry an explicit `User-Agent`, and the UI delays searches by 300 ms to spare the API.
+  A click is sent to one mirror, never retried elsewhere: each mirror counts a listener once a day on its own.
 * A station is never silently hidden: stations whose last check failed (which can be a false negative) are shown with
   a warning and ranked after healthy ones. HLS stations, which the engine cannot play yet, are left out of the results; since
   that shortens pages, a search fetches up to three catalog pages to fill one and returns the offset of the next page.

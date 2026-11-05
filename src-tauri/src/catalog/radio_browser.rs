@@ -3,9 +3,17 @@
 //!
 //! Good-neighbor rules applied: explicit `User-Agent`, bounded timeouts, a single mirror
 //! queried at a time, and all search calls paginated with an explicit limit.
+//!
+//! Mirrors are found as the API documentation asks: a DNS lookup of `all.api.radio-browser.info`,
+//! whose addresses are the mirrors (no mirror is asked for the list, none is named in the code).
+//! The certificate covers that name on every mirror, so each one is reached under it, pinned to
+//! its address. The list is shuffled, the mirror that answered is kept, and the next one is tried
+//! when a request fails. It is looked up again when every mirror failed, when DNS gave nothing
+//! (a known mirror stands in meanwhile), and once an hour, as mirrors come and go.
 
-use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 use stream_download::http::reqwest::{Client, Url};
@@ -16,71 +24,129 @@ use super::{
     rank, CatalogError, CatalogFuture, CatalogSource, Health, SearchPage, SearchQuery, Station,
 };
 
-/// Only guaranteed mirror; the full list is discovered via `/json/servers`.
-const FALLBACK_SERVER: &str = "https://de1.api.radio-browser.info";
+/// Name whose addresses are all the mirrors.
+const ALL_MIRRORS: &str = "all.api.radio-browser.info";
+/// Stands in when DNS gives nothing.
+const FALLBACK_SERVER: &str = "https://de1.api.radio-browser.info/";
+const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"));
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_ATTEMPTS: usize = 3;
+/// Mirrors are looked up again this often, as they come and go.
+const REFRESH_AFTER: Duration = Duration::from_secs(60 * 60);
+/// After DNS gave nothing, it is asked again this soon.
+const RETRY_DNS_AFTER: Duration = Duration::from_secs(60);
 /// Catalog pages fetched at most per search: unsupported (HLS) stations are dropped, so a page can
 /// come back short; we fetch a few more to fill it without hammering the API.
 const MAX_PAGES_PER_SEARCH: usize = 3;
 
 pub struct RadioBrowser {
-    client: Client,
-    servers: OnceCell<Vec<Url>>,
-    /// Last mirror that responded, tried first.
-    preferred: Mutex<Option<Url>>,
+    /// Mirrors found by the last lookup (`None`: to look up).
+    mirrors: Mutex<Option<Mirrors>>,
+    /// One lookup at a time.
+    lookup: tokio::sync::Mutex<()>,
+    /// Address of the last mirror that responded, tried first.
+    preferred: Mutex<Option<String>>,
     /// Whether the catalog still treats `%` in a name search as "any characters".
     wildcards: OnceCell<bool>,
 }
 
+/// One mirror: its base URL and a client that reaches it.
+struct Mirror {
+    /// Its address (the fallback's host name), to remember it and in logs.
+    key: String,
+    base: Url,
+    client: Client,
+}
+
+#[derive(Clone)]
+struct Mirrors {
+    list: Arc<Vec<Mirror>>,
+    /// DNS gave nothing: the fallback stands in.
+    fallback: bool,
+    at: Instant,
+}
+
+impl Mirrors {
+    fn stale(&self) -> bool {
+        self.at.elapsed() > if self.fallback { RETRY_DNS_AFTER } else { REFRESH_AFTER }
+    }
+}
+
+fn client(pinned: Option<SocketAddr>) -> Result<Client, CatalogError> {
+    let mut builder = Client::builder().user_agent(USER_AGENT).timeout(REQUEST_TIMEOUT);
+    if let Some(addr) = pinned {
+        builder = builder.resolve(ALL_MIRRORS, addr);
+    }
+    builder.build().map_err(|e| CatalogError::Network(e.to_string()))
+}
+
+/// Mirrors from the addresses DNS gave, in a shuffled order; the fallback when there are none.
+fn mirrors_from(addrs: impl IntoIterator<Item = SocketAddr>) -> Result<Mirrors, CatalogError> {
+    let mut addrs: Vec<SocketAddr> = addrs.into_iter().collect();
+    addrs.sort();
+    addrs.dedup();
+    if addrs.is_empty() {
+        let fallback = Mirror {
+            key: FALLBACK_SERVER.to_owned(),
+            base: Url::parse(FALLBACK_SERVER).expect("valid constant URL"),
+            client: client(None)?,
+        };
+        return Ok(Mirrors { list: Arc::new(vec![fallback]), fallback: true, at: Instant::now() });
+    }
+    // Spreads load across mirrors without a random-number dependency.
+    let shift = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() as usize) % addrs.len();
+    addrs.rotate_left(shift);
+    let base = Url::parse(&format!("https://{ALL_MIRRORS}/")).expect("valid constant URL");
+    let list = addrs
+        .into_iter()
+        .map(|addr| Ok(Mirror { key: addr.ip().to_string(), base: base.clone(), client: client(Some(addr))? }))
+        .collect::<Result<Vec<_>, CatalogError>>()?;
+    Ok(Mirrors { list: Arc::new(list), fallback: false, at: Instant::now() })
+}
+
+/// `count` mirrors to try, the one that last responded first.
+fn candidates<'a>(list: &'a [Mirror], preferred: Option<&str>, count: usize) -> Vec<&'a Mirror> {
+    let mut ordered: Vec<&Mirror> = list.iter().collect();
+    if let Some(i) = ordered.iter().position(|m| Some(m.key.as_str()) == preferred) {
+        let first = ordered.remove(i);
+        ordered.insert(0, first);
+    }
+    ordered.truncate(count);
+    ordered
+}
+
 impl RadioBrowser {
     pub fn new() -> Result<Self, CatalogError> {
-        let client = Client::builder()
-            .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|e| CatalogError::Network(e.to_string()))?;
         Ok(Self {
-            client,
-            servers: OnceCell::new(),
+            mirrors: Mutex::new(None),
+            lookup: tokio::sync::Mutex::new(()),
             preferred: Mutex::new(None),
             wildcards: OnceCell::new(),
         })
     }
 
-    /// List of mirrors, discovered only once (falls back to the default mirror).
-    async fn servers(&self) -> &[Url] {
-        self.servers
-            .get_or_init(|| async {
-                let fallback = vec![Url::parse(FALLBACK_SERVER).expect("valid constant URL")];
-                let Ok(url) = Url::parse(&format!("{FALLBACK_SERVER}/json/servers")) else {
-                    return fallback;
-                };
-                let found: Result<Vec<ServerEntry>, _> = async {
-                    let bytes = self.client.get(url).send().await?.error_for_status()?.bytes().await?;
-                    serde_json::from_slice(&bytes).map_err(|e| e.to_string().into())
-                }
-                .await
-                .map_err(|e: Box<dyn std::error::Error + Send + Sync>| e);
-
-                let mut hosts: Vec<Url> = found
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter_map(|s| Url::parse(&format!("https://{}", s.name)).ok())
-                    .collect();
-                hosts.dedup();
-                if hosts.is_empty() {
-                    return fallback;
-                }
-                // Spreads load across mirrors without a random-number dependency.
-                let shift = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_or(0, |d| d.subsec_nanos() as usize)
-                    % hosts.len();
-                hosts.rotate_left(shift);
-                hosts
-            })
-            .await
+    /// The mirrors, looked up again when needed (see the module).
+    async fn mirrors(&self) -> Result<Arc<Vec<Mirror>>, CatalogError> {
+        let fresh = |slot: &Option<Mirrors>| slot.as_ref().filter(|m| !m.stale()).map(|m| m.list.clone());
+        if let Some(list) = fresh(&self.mirrors.lock().unwrap_or_else(|p| p.into_inner())) {
+            return Ok(list);
+        }
+        let _one_at_a_time = self.lookup.lock().await;
+        // Looked up by another request meanwhile.
+        if let Some(list) = fresh(&self.mirrors.lock().unwrap_or_else(|p| p.into_inner())) {
+            return Ok(list);
+        }
+        let found = match tokio::net::lookup_host((ALL_MIRRORS, 443)).await {
+            Ok(addrs) => mirrors_from(addrs)?,
+            Err(e) => {
+                tracing::warn!("cannot look up the Radio-Browser mirrors: {e}");
+                mirrors_from([])?
+            }
+        };
+        tracing::debug!(mirrors = ?found.list.iter().map(|m| m.key.as_str()).collect::<Vec<_>>(), "Radio-Browser mirrors");
+        let list = found.list.clone();
+        *self.mirrors.lock().unwrap_or_else(|p| p.into_inner()) = Some(found);
+        Ok(list)
     }
 
     /// Checks once that `%` still means "any characters" in a name search. It does today (the
@@ -107,28 +173,37 @@ impl RadioBrowser {
 
     /// GET on an API path, trying the mirrors one after the other.
     async fn get(&self, path: &str, params: &[(&str, String)]) -> Result<Vec<u8>, CatalogError> {
-        let mut candidates: Vec<Url> = self.servers().await.to_vec();
-        if let Some(first) = self.preferred.lock().unwrap_or_else(|p| p.into_inner()).clone() {
-            candidates.retain(|u| *u != first);
-            candidates.insert(0, first);
-        }
+        self.request(path, params, MAX_ATTEMPTS).await
+    }
 
+    /// GET on an API path, on one mirror only, the one that last responded.
+    async fn get_once(&self, path: &str, params: &[(&str, String)]) -> Result<Vec<u8>, CatalogError> {
+        self.request(path, params, 1).await
+    }
+
+    async fn request(&self, path: &str, params: &[(&str, String)], attempts: usize) -> Result<Vec<u8>, CatalogError> {
+        let list = self.mirrors().await?;
+        let preferred = self.preferred.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let mut last_error = CatalogError::Network("no server available".into());
-        for base in candidates.into_iter().take(MAX_ATTEMPTS) {
-            let mut url = base.join(path).map_err(|e| CatalogError::Invalid(e.to_string()))?;
+        for mirror in candidates(&list, preferred.as_deref(), attempts) {
+            let mut url = mirror.base.join(path).map_err(|e| CatalogError::Invalid(e.to_string()))?;
             url.query_pairs_mut().extend_pairs(params.iter().map(|(k, v)| (*k, v.as_str())));
 
-            match self.client.get(url).send().await.and_then(|r| r.error_for_status()) {
+            match mirror.client.get(url).send().await.and_then(|r| r.error_for_status()) {
                 Ok(response) => match response.bytes().await {
                     Ok(bytes) => {
-                        *self.preferred.lock().unwrap_or_else(|p| p.into_inner()) = Some(base);
+                        *self.preferred.lock().unwrap_or_else(|p| p.into_inner()) = Some(mirror.key.clone());
                         return Ok(bytes.to_vec());
                     }
                     Err(e) => last_error = CatalogError::Network(e.to_string()),
                 },
                 Err(e) => last_error = CatalogError::Network(e.to_string()),
             }
-            tracing::warn!(server = %base, "Radio-Browser mirror failed: {last_error}");
+            tracing::warn!(server = %mirror.key, "Radio-Browser mirror failed: {last_error}");
+        }
+        // Every mirror tried failed: the list may be out of date.
+        if attempts > 1 || list.len() == 1 {
+            *self.mirrors.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
         Err(last_error)
     }
@@ -194,14 +269,11 @@ impl CatalogSource for RadioBrowser {
             if !is_uuid(station_id) {
                 return Err(CatalogError::BadRequest(format!("Invalid ID: {station_id}")));
             }
-            self.get(&format!("json/url/{station_id}"), &[]).await.map(|_| ())
+            // One mirror, no retry: each mirror counts a listener once a day on its own, so a
+            // retry elsewhere (after a timeout the first one may have counted) would count twice.
+            self.get_once(&format!("json/url/{station_id}"), &[]).await.map(|_| ())
         })
     }
-}
-
-#[derive(Deserialize)]
-struct ServerEntry {
-    name: String,
 }
 
 /// Station as returned by the API (fields often `null` or missing).
@@ -316,6 +388,60 @@ fn is_uuid(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn addr(text: &str) -> SocketAddr {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn mirrors_are_reached_under_the_common_name_pinned_to_their_address() {
+        let found = mirrors_from([addr("91.98.4.78:443"), addr("10.0.0.2:443"), addr("91.98.4.78:443")]).unwrap();
+        assert!(!found.fallback);
+        let mut keys: Vec<_> = found.list.iter().map(|m| m.key.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, ["10.0.0.2", "91.98.4.78"]); // duplicates dropped
+        assert!(found.list.iter().all(|m| m.base.as_str() == "https://all.api.radio-browser.info/"));
+    }
+
+    #[test]
+    fn without_dns_a_known_mirror_stands_in_and_dns_is_asked_again_soon() {
+        let mut found = mirrors_from([]).unwrap();
+        assert!(found.fallback);
+        assert_eq!(found.list[0].base.as_str(), FALLBACK_SERVER);
+        assert!(!found.stale());
+        found.at = Instant::now() - RETRY_DNS_AFTER - Duration::from_secs(1);
+        assert!(found.stale());
+
+        let mut dns = mirrors_from([addr("10.0.0.2:443")]).unwrap();
+        dns.at = Instant::now() - RETRY_DNS_AFTER - Duration::from_secs(1);
+        assert!(!dns.stale(), "a DNS list lasts longer");
+        dns.at = Instant::now() - REFRESH_AFTER - Duration::from_secs(1);
+        assert!(dns.stale());
+    }
+
+    #[test]
+    fn the_mirror_that_answered_is_tried_first() {
+        let found = mirrors_from([addr("10.0.0.1:443"), addr("10.0.0.2:443"), addr("10.0.0.3:443")]).unwrap();
+        let keys = |preferred: Option<&str>, count| -> Vec<String> {
+            candidates(&found.list, preferred, count).iter().map(|m| m.key.clone()).collect()
+        };
+        assert_eq!(keys(Some("10.0.0.2"), 3)[0], "10.0.0.2");
+        assert_eq!(keys(Some("10.0.0.2"), 1), ["10.0.0.2"]); // a click goes to that one only
+        assert_eq!(keys(Some("10.9.9.9"), 3).len(), 3); // gone from the list: any order
+        assert_eq!(keys(None, 2).len(), 2);
+    }
+
+    /// Against the real API: the mirrors come from DNS, and they answer under the common name.
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_mirrors_come_from_dns() {
+        let rb = RadioBrowser::new().unwrap();
+        let list = rb.mirrors().await.unwrap();
+        assert!(!list.is_empty());
+        assert!(list.iter().all(|m| m.base.host_str() == Some(ALL_MIRRORS)), "fallback used");
+        let body = rb.get("json/stats", &[]).await.unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("stations"));
+    }
 
     const FIXTURE: &str = r#"[
       {"stationuuid":"11111111-1111-1111-1111-111111111111","name":"\tDead Radio","url":"http://a.example/x","url_resolved":"http://a.example/x","tags":"jazz, ,soul","countrycode":"FR","bitrate":128,"votes":3,"hls":0,"lastcheckok":0,"lastcheckoktime_iso8601":"2026-10-01T10:00:00Z"},
