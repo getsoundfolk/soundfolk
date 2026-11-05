@@ -98,8 +98,8 @@ Everything starts from the station, not from a list of recipes (no visible maint
 * **Test** reloads the recipes, reads the page now and shows what was extracted: track, start, next track, show, the page's UTC offset,
   or the step that failed.
 * **Share this recipe** (local recipes) reads the page now, keeps the excerpt the recipe reads as a fixture
-  (`soundfolk_nowplaying::fixture`: the elements read and their ancestors, checked to read exactly like the whole
-  page), writes the `[[test]]` at the page's HTTP `Date`, and opens the *Share a recipe* issue form of
+  (`soundfolk_nowplaying::fixture`: the track on air, the next one and the show, with their ancestors, checked to
+  read exactly like the whole page; `recipe-check test` refuses fixtures much larger than that), writes the `[[test]]` at the page's HTTP `Date`, and opens the *Share a recipe* issue form of
   `soundfolk-recipes` filled in; a bot there turns it into a pull request. A fixture too long for the link goes to
   the clipboard. Both files are also written to `<recipes folder>/to-share/`, laid out as in the repository.
 * **Ask for a recipe** (no source found) opens the repository's *Request a station* form, filled in with the

@@ -95,7 +95,11 @@ fn test(paths: &[String]) -> Result<(), String> {
         for t in &recipe.tests {
             let page_path = path.parent().unwrap_or(Path::new(".")).join(&t.page);
             let failures = match std::fs::read_to_string(&page_path) {
-                Ok(page) => check::run_test(&recipe, t, &page),
+                Ok(page) => {
+                    let mut failures = check::run_test(&recipe, t, &page);
+                    failures.extend(soundfolk_nowplaying::fixture::oversized(&recipe, &page));
+                    failures
+                }
                 Err(e) => vec![format!("{}: {e}", page_path.display())],
             };
             if failures.is_empty() {

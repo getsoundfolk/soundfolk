@@ -9,7 +9,10 @@ fn main() {
 /// Embeds every `recipes/stations/*.toml` in the binary (`bundled_recipes.rs` in `OUT_DIR`):
 /// the recipes shipped with the app, used offline and before any remote list is loaded.
 fn bundle_recipes() {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("recipes/stations");
+    // Read when the script runs, not baked in when it is compiled: a build script compiled from
+    // another checkout must not bundle that checkout's recipes (or none).
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo");
+    let dir = Path::new(&manifest_dir).join("recipes/stations");
     println!("cargo:rerun-if-changed={}", dir.display());
     let mut files: Vec<_> = std::fs::read_dir(&dir)
         .map(|entries| entries.filter_map(|e| e.ok().map(|e| e.path())).collect())

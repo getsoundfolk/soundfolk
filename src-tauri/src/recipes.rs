@@ -453,7 +453,8 @@ mod tests {
             assert!(!recipe.tests.is_empty(), "{name}: no [[test]]");
             for test in &recipe.tests {
                 let page = std::fs::read_to_string(dir.join(&test.page)).unwrap();
-                let failures = soundfolk_nowplaying::check::run_test(&recipe, test, &page);
+                let mut failures = soundfolk_nowplaying::check::run_test(&recipe, test, &page);
+                failures.extend(soundfolk_nowplaying::fixture::oversized(&recipe, &page));
                 assert!(failures.is_empty(), "{name} ({}): {failures:?}", test.page);
             }
         }

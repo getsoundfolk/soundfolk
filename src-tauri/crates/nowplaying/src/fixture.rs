@@ -3,8 +3,10 @@
 //! excerpt of the page the recipe reads) and the recipe file with a `[[test]]` that replays it.
 //! Used by `recipe-check fixture` and by the app's *Share this recipe*.
 //!
-//! The excerpt keeps only the elements the recipe reads (the item, the upcoming tracks, the show)
-//! and the chain of their ancestors with their attributes, so that the selectors still match. It
+//! The excerpt keeps what the `[[test]]` checks: the track on air, the **first** upcoming track and
+//! the show, with the chain of their ancestors and their attributes, so that the selectors still
+//! match. Nothing else: the app reads the live page, the fixture only serves the tests. Tests run
+//! [`oversized`] so that every fixture of the repository follows this rule. It
 //! must read exactly as the whole page did: otherwise a wider excerpt is tried (whole parents),
 //! and failing that, an error says to save the page by hand.
 
@@ -21,8 +23,10 @@ use crate::{extract, Snapshot, Timestamp};
 
 /// Largest fixture the repository accepts.
 pub const MAX_BYTES: usize = 64 * 1024;
-/// Upcoming tracks kept in an excerpt.
-const NEXT_KEPT: usize = 3;
+/// Upcoming tracks kept in an excerpt: the one `next_title` checks.
+const NEXT_KEPT: usize = 1;
+/// Slack over the excerpt before a fixture counts as oversized (formatting, header comment).
+const OVERSIZE_SLACK: usize = 1024;
 
 /// What to add to the repository.
 #[derive(Debug, Clone, PartialEq)]
@@ -122,6 +126,21 @@ pub fn excerpt(recipe: &Recipe, url: &str, page: &str, at: Timestamp) -> Result<
     Err(match too_large {
         Some(n) => format!("the excerpt is {} KiB, over the {} KiB limit", n / 1024, MAX_BYTES / 1024),
         None => "the page could not be cut down to what the recipe reads: save the useful part by hand".into(),
+    })
+}
+
+/// Why a saved fixture holds much more than what the recipe reads (`None`: it doesn't). It is
+/// compared with its own excerpt: more than twice its size plus 1 KiB is too much.
+pub fn oversized(recipe: &Recipe, page: &str) -> Option<String> {
+    let excerpt = excerpt(recipe, "", page, Timestamp::UNIX_EPOCH).ok()?;
+    let limit = excerpt.len() * 2 + OVERSIZE_SLACK;
+    (page.len() > limit).then(|| {
+        format!(
+            "the fixture is {} bytes, its excerpt {}: keep only the track on air, the next one and the show \
+             (recipe-check fixture <recipe.toml> --page <fixture> --at <its `at`>)",
+            page.len(),
+            excerpt.len()
+        )
     })
 }
 
@@ -299,7 +318,7 @@ mod tests {
     use super::*;
 
     const FREQUENCE7: &str = include_str!("../../../recipes/stations/frequence7.toml");
-    const PAGE: &str = include_str!("../../../recipes/fixtures/frequence7.html");
+    const PAGE: &str = include_str!("../testdata/frequence7-player.html");
     const AT: &str = "2026-11-04T21:39:08Z";
 
     fn wrapped(body: &str) -> String {
@@ -319,10 +338,10 @@ mod tests {
         assert_eq!(shared.fixture_file, "frequence7.html");
         let fixture = &shared.fixture;
         assert!(fixture.starts_with("<!-- Excerpt of https://www.frequence7.net/player/ saved on 2026-11-04T21:39:08Z"), "{fixture}");
-        for gone in ["<script", "Comments", "<nav", "event_-1 ", "event_4"] {
+        for gone in ["<script", "Comments", "<nav", "event_-1 ", "event_2", "event_3"] {
             assert!(!fixture.contains(gone), "{gone} kept:\n{fixture}");
         }
-        for kept in ["<section id=\"playlist\">", "event_0", "event_3", "BLACK RAINBOWS"] {
+        for kept in ["<section id=\"playlist\">", "event_0", "event_1", "BLACK RAINBOWS", "Nino"] {
             assert!(fixture.contains(kept), "{kept} missing:\n{fixture}");
         }
         assert!(fixture.len() < PAGE.len() / 3, "{} bytes", fixture.len());
@@ -376,7 +395,7 @@ mod tests {
             value,
             serde_json::json!({"data": {
                 "items": [null, {"artist": "B", "title": "Now"}],
-                "upcoming": [{"artist":"C","title":"N1"},{"artist":"D","title":"N2"},{"artist":"E","title":"N3"}]
+                "upcoming": [{"artist":"C","title":"N1"}]
             }})
         );
     }
@@ -397,6 +416,16 @@ mod tests {
         .unwrap();
         let fixture = excerpt(&recipe, "u", "header\nNOW: A - B\nfooter\n", AT.parse().unwrap()).unwrap();
         assert_eq!(fixture, "NOW: A - B\n");
+    }
+
+    #[test]
+    fn whole_pages_are_oversized_and_excerpts_are_not() {
+        let recipe = Recipe::from_toml(FREQUENCE7).unwrap();
+        let page = wrapped(PAGE);
+        let error = oversized(&recipe, &page).unwrap();
+        assert!(error.contains("recipe-check fixture"), "{error}");
+        let fixture = excerpt(&recipe, "https://www.frequence7.net/player/", &page, AT.parse().unwrap()).unwrap();
+        assert_eq!(oversized(&recipe, &fixture), None);
     }
 
     #[test]
