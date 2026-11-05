@@ -27,6 +27,14 @@ pub struct HistoryEntry {
     pub search_query: String,
 }
 
+/// Size of the history, for the settings.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct HistorySummary {
+    pub count: i64,
+    /// Oldest entry (`YYYY-MM-DD HH:MM:SS`, UTC), if any.
+    pub since: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct LikedTrack {
     pub track_key: String,
@@ -135,6 +143,12 @@ impl Database {
             })
         })?;
         rows.collect()
+    }
+
+    pub fn history_summary(&self) -> rusqlite::Result<HistorySummary> {
+        self.conn().query_row("SELECT COUNT(*), MIN(played_at) FROM listening_history", [], |row| {
+            Ok(HistorySummary { count: row.get(0)?, since: row.get(1)? })
+        })
     }
 
     /// Deletes the whole listening history (likes are kept); returns the number of rows removed.
@@ -295,7 +309,9 @@ mod tests {
         assert_eq!(history[0].search_query, "Moby Porcelain");
         assert_eq!(history[0].station_name.as_deref(), Some("Radio A"));
         assert_eq!(db.recent_history(1, None).unwrap().len(), 1);
+        assert_eq!(db.history_summary().unwrap().count, 2);
         assert_eq!(db.clear_history().unwrap(), 2);
+        assert_eq!(db.history_summary().unwrap(), HistorySummary { count: 0, since: None });
         assert!(db.recent_history(10, None).unwrap().is_empty());
     }
 

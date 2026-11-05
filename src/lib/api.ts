@@ -98,6 +98,18 @@ export interface LikedTrack {
   search_query: string;
 }
 
+export interface HistorySummary {
+  count: number;
+  /** Oldest entry, SQLite UTC (`YYYY-MM-DD HH:MM:SS`), or null when empty. */
+  since: string | null;
+}
+
+export interface ExportedFile {
+  path: string;
+  file_name: string;
+  count: number;
+}
+
 export interface Count {
   label: string;
   detail: string | null;
@@ -166,7 +178,11 @@ export const api = {
 
   getListeningHistory: (limit?: number, query?: string) =>
     invoke<HistoryEntry[]>('get_listening_history', { limit, query }),
+  getHistorySummary: () => invoke<HistorySummary>('get_history_summary'),
   clearListeningHistory: () => invoke<number>('clear_listening_history'),
+  /** Writes the history or the liked tracks to the Downloads folder and shows the file. */
+  exportHistory: (list: 'history' | 'likes', format: 'csv' | 'json', query?: string) =>
+    invoke<ExportedFile>('export_history', { list, format, query }),
 
   likeTrack: (historyId: number) => invoke<boolean>('like_track', { historyId }),
   unlikeTrack: (trackKey: string) => invoke<boolean>('unlike_track', { trackKey }),

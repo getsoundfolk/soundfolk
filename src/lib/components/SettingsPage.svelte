@@ -2,7 +2,8 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type LocalRecipes } from '../api';
+  import { api, errorMessage, type HistorySummary, type LocalRecipes } from '../api';
+  import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { checkCustom, MAX_CUSTOM, SERVICE_GROUPS, TRACK_SERVICES } from '../trackLinks';
   import { trackServices } from '../trackServices.svelte';
@@ -61,6 +62,7 @@
   onMount(async () => {
     back?.focus();
     trackServices.load();
+    loadSummary();
     try {
       [clickCounting, identify, webTitles] = await Promise.all([
         api.getClickCounting(),
@@ -113,6 +115,67 @@
     }
   }
 
+  // ── Your data ──
+  let summary = $state<HistorySummary | null>(null);
+  let exporting = $state(false);
+  let confirmingClear = $state(false);
+  let clearing = $state(false);
+  let dataStatus = $state<string | null>(null);
+  let cancelClear: HTMLButtonElement | undefined = $state();
+
+  const tracks = (n: number) => `${n.toLocaleString()} ${n === 1 ? 'track' : 'tracks'}`;
+  const since = $derived(
+    summary?.since
+      ? new Date(`${summary.since.replace(' ', 'T')}Z`).toLocaleDateString(undefined, { dateStyle: 'long' })
+      : null,
+  );
+
+  async function loadSummary() {
+    try {
+      summary = await api.getHistorySummary();
+    } catch (e) {
+      player.error = errorMessage(e);
+    }
+  }
+
+  async function exportHistory(format: 'csv' | 'json') {
+    if (exporting) return;
+    exporting = true;
+    dataStatus = null;
+    try {
+      const file = await api.exportHistory('history', format);
+      dataStatus = `${tracks(file.count)} saved to Downloads: ${file.file_name}`;
+    } catch (e) {
+      player.error = errorMessage(e);
+    } finally {
+      exporting = false;
+    }
+  }
+
+  function askClear() {
+    confirmingClear = true;
+    dataStatus = null;
+    // The safe answer has the focus: Enter does not delete.
+    queueMicrotask(() => cancelClear?.focus());
+  }
+
+  async function clearHistory() {
+    if (clearing) return;
+    clearing = true;
+    try {
+      const removed = await api.clearListeningHistory();
+      history.latest = null;
+      history.version++;
+      dataStatus = `${tracks(removed)} deleted.`;
+      confirmingClear = false;
+      await loadSummary();
+    } catch (e) {
+      player.error = errorMessage(e);
+    } finally {
+      clearing = false;
+    }
+  }
+
   async function changeIdentify(enabled: boolean) {
     identify = enabled;
     try {
@@ -124,7 +187,14 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && ui.closeSettings()} />
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key !== 'Escape') return;
+    // Escape first cancels a pending deletion, then leaves the page.
+    if (confirmingClear) confirmingClear = false;
+    else ui.closeSettings();
+  }}
+/>
 
 <section class={styles.root} aria-labelledby="settings-title">
   <header class={styles.header}>
@@ -320,6 +390,59 @@
           <button class={styles.link} type="button" onclick={trackServices.reset}>Restore the default list</button>
         {/if}
       </p>
+    </section>
+
+    <section class={styles.group} aria-labelledby="settings-data">
+      <h2 class={styles.groupTitle} id="settings-data">Your data</h2>
+      <p class={styles.groupIntro}>
+        Your listening history is kept on this device only. It feeds the History tab and the stats.
+      </p>
+
+      <div class={styles.dataRow}>
+        <span class={styles.text}>
+          <span class={styles.name}>Export my history</span>
+          <span class={styles.detail}>
+            Every track heard, with its station and time, as a file in your Downloads folder. Liked tracks alone can
+            be exported from History › Liked.
+          </span>
+        </span>
+        <span class={styles.dataActions}>
+          <button class={styles.link} type="button" disabled={exporting || !summary?.count} onclick={() => exportHistory('csv')}>CSV</button>
+          <button class={styles.link} type="button" disabled={exporting || !summary?.count} onclick={() => exportHistory('json')}>JSON</button>
+        </span>
+      </div>
+
+      <div class={styles.dataRow} data-danger={confirmingClear}>
+        <span class={styles.text}>
+          <span class={styles.name}>Clear my history</span>
+          <span class={styles.detail}>
+            {#if !summary}
+              …
+            {:else if summary.count === 0}
+              The history is empty.
+            {:else}
+              {tracks(summary.count)}{#if since} since {since}{/if}. Liked tracks are kept.
+            {/if}
+          </span>
+          {#if confirmingClear && summary?.count}
+            <span class={styles.warning} role="alert">
+              Delete {tracks(summary.count)} for good? The stats on tracks heard, stations and artists start over.
+              This cannot be undone: export first if you may want them back.
+            </span>
+            <span class={styles.formActions}>
+              <button class={styles.link} type="button" bind:this={cancelClear} onclick={() => (confirmingClear = false)}>Cancel</button>
+              <button class={styles.danger} type="button" disabled={clearing} onclick={clearHistory}>
+                Delete {tracks(summary.count)}
+              </button>
+            </span>
+          {/if}
+        </span>
+        {#if !confirmingClear}
+          <button class="{styles.link} {styles.dataActions}" type="button" disabled={!summary?.count} onclick={askClear}>Clear…</button>
+        {/if}
+      </div>
+
+      {#if dataStatus}<p class={styles.hint} role="status">{dataStatus}</p>{/if}
     </section>
 
     <section class={styles.group} aria-labelledby="settings-about">

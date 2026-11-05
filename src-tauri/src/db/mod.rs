@@ -16,7 +16,7 @@ mod identify;
 mod sessions;
 mod stats;
 
-pub use history::{HistoryEntry, LikedTrack};
+pub use history::{HistoryEntry, HistorySummary, LikedTrack};
 pub use identify::TrackToIdentify;
 pub use stats::Stats;
 

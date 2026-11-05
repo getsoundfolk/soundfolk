@@ -4,6 +4,7 @@ mod catalog;
 mod commands;
 mod db;
 mod error;
+mod export;
 mod media_controls;
 mod musicbrainz;
 mod recipes;
@@ -257,7 +258,9 @@ pub fn run() {
             commands::remove_favorite,
             commands::list_favorites,
             commands::get_listening_history,
+            commands::get_history_summary,
             commands::clear_listening_history,
+            commands::export_history,
             commands::like_track,
             commands::unlike_track,
             commands::list_likes,

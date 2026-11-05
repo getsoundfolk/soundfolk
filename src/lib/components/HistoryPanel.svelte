@@ -45,9 +45,7 @@
    */
   let menu = $state<{ id: string; style: string } | null>(null);
   let toast = $state<string | null>(null);
-  let confirmClear = $state(false);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
-  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
   // Id of the latest request: an older response is ignored.
   let requestId = 0;
 
@@ -128,10 +126,10 @@
   const time = (r: Row) => r.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   const meta = (r: Row) => [r.artist, r.station_name ?? 'Unknown station', time(r)].filter(Boolean).join(' · ');
 
-  function notify(message: string) {
+  function notify(message: string, ms = 1800) {
     toast = message;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => (toast = null), 1800);
+    toastTimer = setTimeout(() => (toast = null), ms);
   }
 
   /** Runs a menu action: closes the menu, reports a failure. */
@@ -175,20 +173,21 @@
     return () => document.removeEventListener('scroll', close, { capture: true });
   });
 
-  // Two clicks to clear: the history cannot be recovered.
-  async function clear() {
-    if (!confirmClear) {
-      confirmClear = true;
-      clearTimeout(confirmTimer);
-      confirmTimer = setTimeout(() => (confirmClear = false), 3000);
-      return;
+  let exporting = $state(false);
+
+  /** Saves the whole list of this view (with its filter, not only the rows shown) to a file. */
+  async function exportAs(format: 'csv' | 'json') {
+    if (exporting || view === 'stats') return;
+    exporting = true;
+    try {
+      const list = view === 'all' ? 'history' : 'likes';
+      const file = await api.exportHistory(list, format, text.trim() || undefined);
+      notify(`${file.count} ${file.count === 1 ? 'track' : 'tracks'} saved to Downloads: ${file.file_name}`, 4000);
+    } catch (e) {
+      player.error = errorMessage(e);
+    } finally {
+      exporting = false;
     }
-    confirmClear = false;
-    await act(async () => {
-      await api.clearListeningHistory();
-      rows = [];
-      history.latest = null;
-    });
   }
 </script>
 
@@ -321,10 +320,18 @@
     </section>
   {/each}
 
-  {#if view === 'all' && rows.length > 0 && !text.trim()}
-    <button class={styles.clear} type="button" data-confirm={confirmClear} onclick={clear}>
-      {confirmClear ? 'Click again to clear (likes are kept)' : 'Clear history'}
-    </button>
+  {#if rows.length > 0}
+    <div class={styles.footer}>
+      {#each ['csv', 'json'] as const as format (format)}
+        <button
+          class={styles.export}
+          type="button"
+          disabled={exporting}
+          title={text.trim() ? `Save the tracks matching “${text.trim()}” to Downloads` : 'Save to the Downloads folder'}
+          onclick={() => exportAs(format)}>Export {format.toUpperCase()}</button
+        >
+      {/each}
+    </div>
   {/if}
 {/if}
 

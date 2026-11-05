@@ -430,3 +430,61 @@
   flex: none;
   font-size: 0.8rem;
 }
+
+/* Your data: rows with actions, not switches. */
+.dataRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #2c2c36;
+  border-radius: 0.7rem;
+  background: #20202a;
+}
+
+.dataRow[data-danger='true'] {
+  border-color: #6b3a3a;
+}
+
+.dataActions {
+  flex: none;
+  display: flex;
+  gap: 0.9rem;
+  font-size: 0.8rem;
+}
+
+.link:disabled {
+  color: #5c5c6a;
+  cursor: default;
+  text-decoration: none;
+}
+
+.warning {
+  margin-top: 0.35rem;
+  color: #f3b3b8;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.danger {
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #d9534f;
+  color: #fff;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.danger:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.danger:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}

@@ -159,7 +159,7 @@
 
 .more:focus-visible,
 .item:focus-visible,
-.clear:focus-visible {
+.export:focus-visible {
   outline: 2px solid #f0a028;
   outline-offset: 2px;
 }
@@ -217,9 +217,15 @@
   text-align: center;
 }
 
-.clear {
-  align-self: center;
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
   margin-top: 0.25rem;
+}
+
+.export {
   padding: 0.4rem 0.9rem;
   border: 1px solid #34343f;
   border-radius: 0.5rem;
@@ -230,14 +236,14 @@
   cursor: pointer;
 }
 
-.clear:hover {
+.export:hover:not(:disabled) {
   background: #20202a;
   color: #ececf1;
 }
 
-.clear[data-confirm='true'] {
-  border-color: #ff8a80;
-  color: #ff8a80;
+.export:disabled {
+  cursor: progress;
+  opacity: 0.6;
 }
 
 .toast {

@@ -16,7 +16,8 @@ use crate::audio::{
 };
 use crate::recipes::{self, Origin};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
-use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType, Stats};
+use crate::db::{Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType, Stats};
+use crate::export;
 use crate::error::AppResult;
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 use crate::track_services::{self, CustomService};
@@ -530,8 +531,69 @@ pub async fn get_listening_history(
 }
 
 #[tauri::command]
+pub async fn get_history_summary(db: State<'_, Database>) -> AppResult<HistorySummary> {
+    Ok(db.history_summary()?)
+}
+
+#[tauri::command]
 pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
     Ok(db.clear_history()?)
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportedFile {
+    pub path: String,
+    /// File name alone, for a short notice.
+    pub file_name: String,
+    pub count: usize,
+}
+
+/// Writes the whole history or all liked tracks (narrowed by `query`, as in the History tab)
+/// to a new file in the Downloads folder, then shows it in the file manager.
+#[tauri::command]
+pub async fn export_history(
+    app: AppHandle,
+    db: State<'_, Database>,
+    list: export::List,
+    format: export::Format,
+    query: Option<String>,
+) -> AppResult<ExportedFile> {
+    let (content, count) = match list {
+        export::List::History => {
+            let entries = db.recent_history(u32::MAX, query.as_deref())?;
+            (export::history(&entries, format), entries.len())
+        }
+        export::List::Likes => {
+            let tracks = db.list_likes(u32::MAX, query.as_deref())?;
+            (export::likes(&tracks, format), tracks.len())
+        }
+    };
+    let dir = app
+        .path()
+        .download_dir()
+        .or_else(|_| app.path().home_dir())
+        .map_err(|e| format!("no folder to save the export in: {e}"))?;
+    std::fs::create_dir_all(&dir)?;
+    let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
+    let base = format!("{}-{date}", list.file_stem());
+    let path = (1..)
+        .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
+        .map(|name| dir.join(format!("{name}.{}", format.extension())))
+        .find(|path| !path.exists())
+        .expect("an unused name");
+    std::fs::write(&path, content)?;
+    {
+        use tauri_plugin_opener::OpenerExt;
+        // The file is saved either way; a file manager that cannot be opened is not an error.
+        if let Err(e) = app.opener().reveal_item_in_dir(&path) {
+            tracing::warn!("could not show {} in the file manager: {e}", path.display());
+        }
+    }
+    Ok(ExportedFile {
+        file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        path: path.display().to_string(),
+        count,
+    })
 }
 
 // ── Likes ────────────────────────────────────────────────────────────────────
