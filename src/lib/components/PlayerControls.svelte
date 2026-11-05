@@ -44,15 +44,28 @@
     return /^https?:\/\//i.test(url) ? url : null;
   });
 
-  // Volume: the filled part of the track, the speaker's waves and a wheel step of 5 %.
+  // Volume: the filled part of the track and the speaker's waves.
   const level = $derived(player.muted ? 0 : player.volume);
   const percent = $derived(Math.round(player.volume * 100));
+
+  // The wheel is the fine control: 1 % per mouse notch, where a click on the track jumps.
+  // A touchpad sends many small pixel deltas: they add up, one step per notch's worth.
+  const NOTCH_PX = 100;
+  let wheelPx = 0;
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   function onWheel(e: WheelEvent) {
-    const delta = e.deltaY || -e.deltaX;
-    if (!delta) return;
+    const raw = e.deltaY || -e.deltaX;
+    if (!raw) return;
     e.preventDefault();
-    player.setVolume(Math.round((player.volume + (delta < 0 ? 0.05 : -0.05)) * 100) / 100);
+    const px = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? raw * 33 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? raw * NOTCH_PX * 3 : raw;
+    // A direction change drops what was left over from the other way.
+    if (Math.sign(px) !== Math.sign(wheelPx)) wheelPx = 0;
+    wheelPx += px;
+    // At least one step per event: a mouse notch must never do nothing.
+    const steps = Math.trunc(wheelPx / NOTCH_PX) || (Math.abs(px) >= NOTCH_PX / 2 ? Math.sign(px) : 0);
+    if (!steps) return;
+    wheelPx = Math.abs(wheelPx) >= NOTCH_PX ? wheelPx - steps * NOTCH_PX : 0;
+    player.setVolume(Math.round(player.volume * 100 - steps) / 100);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => player.saveVolume(), 400);
   }
