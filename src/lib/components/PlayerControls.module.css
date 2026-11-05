@@ -114,16 +114,18 @@
   gap: 0.9rem;
 }
 
+/* Round Play / Pause button: the icon alone, its name in aria-label. */
 .button {
   flex: none;
-  min-width: 6rem;
-  padding: 0.55rem 1.1rem;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
   border: 0;
-  border-radius: 0.5rem;
+  border-radius: 50%;
   background: #f0a028;
   color: #1a1204;
-  font: inherit;
-  font-weight: 600;
   cursor: pointer;
 }
 

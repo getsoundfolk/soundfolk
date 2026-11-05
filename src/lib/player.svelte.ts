@@ -34,8 +34,8 @@ class PlayerStore {
   /** Favorite that failed and is no longer in the catalog: the player offers to remove it. */
   goneFavorite = $state<string | null>(null);
 
-  /** Audio is (or is about to be) playing: the main button becomes Stop. */
-  active = $derived(this.state.status !== 'idle' && this.state.status !== 'error');
+  /** Audio is (or is about to be) playing: the main button shows Pause. */
+  active = $derived(['connecting', 'reconnecting', 'playing'].includes(this.state.status));
 
   isFavorite = (id: string) => this.favorites.some((f) => f.station_id === id);
 
@@ -86,9 +86,20 @@ class PlayerStore {
     await this.run(() => api.stopStream());
   }
 
+  /** The main button, as the system media keys: pause and resume the stream. Connecting
+   *  cannot be paused yet, so it stops; after a stop or an error, the station plays again. */
   async toggle() {
-    if (this.active) await this.stop();
-    else if (this.current) await this.play(this.current);
+    switch (this.state.status) {
+      case 'playing':
+        return this.run(() => api.pauseStream());
+      case 'paused':
+        return this.run(() => api.resumeStream());
+      case 'connecting':
+      case 'reconnecting':
+        return this.stop();
+      default:
+        if (this.current) await this.play(this.current);
+    }
   }
 
   /** Moving the slider also brings the sound back after a mute. */
