@@ -139,7 +139,8 @@
   background: #3ddc84;
 }
 
-.status[data-status='connecting'] .dot {
+.status[data-status='connecting'] .dot,
+.status[data-status='reconnecting'] .dot {
   background: #f0a028;
   animation: pulse 1s ease-in-out infinite;
 }
@@ -163,7 +164,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status[data-status='connecting'] .dot {
+  .status[data-status='connecting'] .dot,
+  .status[data-status='reconnecting'] .dot {
     animation: none;
   }
 }

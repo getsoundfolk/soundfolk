@@ -59,6 +59,10 @@ jiff = { version = "0.2", default-features = false, features = ["std"] }
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
 tauri-plugin-single-instance = "2"
 
+# Wake from sleep, for the stream to reconnect at once (already pulled in by Tauri)
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Power", "Win32_UI_WindowsAndMessaging"] }
+
 # System media controls (MPRIS): pure Rust D-Bus (zbus), no libdbus needed
 [target.'cfg(target_os = "linux")'.dependencies]
 souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] }

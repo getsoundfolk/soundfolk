@@ -8,6 +8,7 @@
   const LABELS = {
     idle: 'Stopped',
     connecting: 'Connecting…',
+    reconnecting: 'Reconnecting…',
     playing: 'Playing',
     paused: 'Paused',
     error: 'Error',
@@ -16,7 +17,7 @@
   const status = $derived(player.error ? 'error' : player.state.status);
   const message = $derived(
     player.error ??
-      (player.state.status === 'error' ? player.state.message : LABELS[player.state.status]),
+      ('message' in player.state ? player.state.message : LABELS[player.state.status]),
   );
   // Current title if the stream announces one, otherwise the selected station.
   const headline = $derived(player.nowPlaying.title ?? player.current?.name ?? 'No station');

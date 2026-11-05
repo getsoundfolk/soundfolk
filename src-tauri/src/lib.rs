@@ -94,7 +94,11 @@ fn track_session(app: &tauri::AppHandle, station: &Mutex<Option<OnAir>>, state: 
             Some(s) => db.start_session(&s.id, s.name.as_deref()),
             None => Ok(()),
         },
-        PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_) => db.end_session(),
+        // While reconnecting nothing is heard: the session ends when the sound stopped (a sleep
+        // is not listening time), and a new one starts when it comes back.
+        PlayerState::Idle | PlayerState::Paused | PlayerState::Reconnecting(_) | PlayerState::Error(_) => {
+            db.end_session()
+        }
         PlayerState::Connecting => Ok(()),
     };
     if let Err(e) = result {

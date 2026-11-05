@@ -4,8 +4,13 @@
 //! The format is the device's default: the decoder must adapt to it
 //! (see `decoder::Converter`), never the other way around. The real-time callback only
 //! pops from an SPSC ring buffer, applies the volume and converts to the native sample type.
+//!
+//! The output can die under the player (sound card gone, sound server restarted, wake from
+//! sleep): [`Health`] tells the engine, which then opens a new one.
 
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, SampleFormat, SizedSample, Stream, StreamConfig};
@@ -19,6 +24,9 @@ const BUFFER_SECONDS: usize = 2;
 const START_BUFFER_MS: usize = 120;
 /// Pre-buffer after an underrun: we already had to wait, so build up some headroom.
 const REBUFFER_MS: usize = 1000;
+/// The callback normally runs every few milliseconds, paused or not: this long without it (awake
+/// time) means the output is dead.
+const SILENT_CALLBACK: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputFormat {
@@ -29,7 +37,31 @@ pub struct OutputFormat {
 /// Keeps the cpal `Stream` alive; dropping it silences the sound.
 pub struct Output {
     pub format: OutputFormat,
+    pub health: Arc<Health>,
     _stream: Stream,
+}
+
+/// Whether the output still plays, written from the audio callbacks.
+pub struct Health {
+    failed: AtomicBool,
+    base: Instant,
+    last_callback_ms: AtomicU64,
+}
+
+impl Health {
+    fn new() -> Self {
+        Self { failed: AtomicBool::new(false), base: Instant::now(), last_callback_ms: AtomicU64::new(0) }
+    }
+
+    fn alive(&self) {
+        self.last_callback_ms.store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
+    }
+
+    /// The device is gone, or the callback stopped running.
+    pub fn is_lost(&self) -> bool {
+        let last = Duration::from_millis(self.last_callback_ms.load(Ordering::Relaxed));
+        self.failed.load(Ordering::Relaxed) || self.base.elapsed().saturating_sub(last) > SILENT_CALLBACK
+    }
 }
 
 pub fn open(controls: Arc<Controls>) -> Result<(Output, Producer<f32>), String> {
@@ -56,11 +88,13 @@ pub fn open(controls: Arc<Controls>) -> Result<(Output, Producer<f32>), String> 
     let sample_format = supported.sample_format();
     let config: StreamConfig = supported.into();
 
+    let health = Arc::new(Health::new());
+    let h = health.clone();
     let stream = match sample_format {
-        SampleFormat::F32 => build::<f32>(&device, &config, consumer, controls, thresholds),
-        SampleFormat::I16 => build::<i16>(&device, &config, consumer, controls, thresholds),
-        SampleFormat::U16 => build::<u16>(&device, &config, consumer, controls, thresholds),
-        SampleFormat::I32 => build::<i32>(&device, &config, consumer, controls, thresholds),
+        SampleFormat::F32 => build::<f32>(&device, &config, consumer, controls, thresholds, h),
+        SampleFormat::I16 => build::<i16>(&device, &config, consumer, controls, thresholds, h),
+        SampleFormat::U16 => build::<u16>(&device, &config, consumer, controls, thresholds, h),
+        SampleFormat::I32 => build::<i32>(&device, &config, consumer, controls, thresholds, h),
         other => return Err(format!("Unsupported sample format: {other}")),
     }?;
     stream.play().map_err(|e| format!("Cannot start the audio output: {e}"))?;
@@ -72,7 +106,7 @@ pub fn open(controls: Arc<Controls>) -> Result<(Output, Producer<f32>), String> 
         ms = started.elapsed().as_millis() as u64,
         "audio output opened"
     );
-    Ok((Output { format, _stream: stream }, producer))
+    Ok((Output { format, health, _stream: stream }, producer))
 }
 
 #[derive(Clone, Copy)]
@@ -87,6 +121,7 @@ fn build<T>(
     mut consumer: Consumer<f32>,
     controls: Arc<Controls>,
     thresholds: Thresholds,
+    health: Arc<Health>,
 ) -> Result<Stream, String>
 where
     T: SizedSample + FromSample<f32>,
@@ -94,11 +129,13 @@ where
     // True while the pre-buffer is filling (at startup, then after each underrun).
     let mut buffering = true;
     let mut needed = thresholds.start;
+    let errors = health.clone();
 
     device
         .build_output_stream(
             *config,
             move |data: &mut [T], _| {
+                health.alive();
                 if buffering && consumer.slots() >= needed {
                     buffering = false;
                 }
@@ -123,7 +160,12 @@ where
                     *out = T::from_sample(sample);
                 }
             },
-            |err| tracing::warn!("audio output stream error: {err}"),
+            move |err: cpal::Error| {
+                tracing::warn!("audio output stream error: {err}");
+                if matches!(err.kind(), cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated) {
+                    errors.failed.store(true, Ordering::Relaxed);
+                }
+            },
             None,
         )
         .map_err(|e| format!("Cannot open the audio output: {e}"))

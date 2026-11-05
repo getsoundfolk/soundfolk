@@ -129,7 +129,9 @@ mod linux {
 
         pub fn show_state(&self, state: &PlayerState) {
             let playback = match state {
-                PlayerState::Connecting | PlayerState::Playing => MediaPlayback::Playing { progress: None },
+                PlayerState::Connecting | PlayerState::Reconnecting(_) | PlayerState::Playing => {
+                    MediaPlayback::Playing { progress: None }
+                }
                 PlayerState::Paused => MediaPlayback::Paused { progress: None },
                 PlayerState::Idle | PlayerState::Error(_) => MediaPlayback::Stopped,
             };
@@ -181,7 +183,8 @@ mod linux {
         let mut engine = audio.engine();
         match (event, engine.state()) {
             // Pausing while connecting is not possible yet: Toggle stops instead
-            (MediaControlEvent::Stop, _) | (MediaControlEvent::Toggle, PlayerState::Connecting) => engine.stop()?,
+            (MediaControlEvent::Stop, _)
+            | (MediaControlEvent::Toggle, PlayerState::Connecting | PlayerState::Reconnecting(_)) => engine.stop()?,
             (MediaControlEvent::Pause | MediaControlEvent::Toggle, PlayerState::Playing) => engine.pause()?,
             (MediaControlEvent::Play | MediaControlEvent::Toggle, PlayerState::Paused) => engine.resume()?,
             // After a stop, plays the last station again

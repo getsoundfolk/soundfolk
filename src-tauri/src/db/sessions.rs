@@ -5,6 +5,10 @@ use rusqlite::params;
 
 use super::Database;
 
+/// When a session ends: now, but no later than shortly after its last heartbeat (sent every
+/// minute while playing). After a sleep, the time asleep is not listening time.
+const ENDED_AT: &str = "MIN(CURRENT_TIMESTAMP, datetime(last_seen_at, '+90 seconds'))";
+
 impl Database {
     /// A station started playing. A session already open on the same station continues (a
     /// reconnection is not a new listen); one open on another station is closed first.
@@ -12,8 +16,10 @@ impl Database {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute(
-            "UPDATE listening_sessions SET ended_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP
-             WHERE ended_at IS NULL AND station_id <> ?1",
+            &format!(
+                "UPDATE listening_sessions SET ended_at = {ENDED_AT}, last_seen_at = {ENDED_AT}
+                 WHERE ended_at IS NULL AND station_id <> ?1"
+            ),
             params![station_id],
         )?;
         tx.execute(
@@ -28,8 +34,9 @@ impl Database {
     /// Playback stopped (stop, error, app exit).
     pub fn end_session(&self) -> rusqlite::Result<()> {
         self.conn().execute(
-            "UPDATE listening_sessions SET ended_at = CURRENT_TIMESTAMP, last_seen_at = CURRENT_TIMESTAMP
-             WHERE ended_at IS NULL",
+            &format!(
+                "UPDATE listening_sessions SET ended_at = {ENDED_AT}, last_seen_at = {ENDED_AT} WHERE ended_at IS NULL"
+            ),
             [],
         )?;
         Ok(())
@@ -77,6 +84,18 @@ mod tests {
         db.end_session().unwrap();
         db.end_session().unwrap(); // nothing open: no-op
         assert_eq!(sessions(&db), [("a".into(), true), ("b".into(), true)]);
+    }
+
+    #[test]
+    fn a_session_ended_after_a_sleep_ends_near_its_last_heartbeat() {
+        let db = Database::open_in_memory().unwrap();
+        db.start_session("a", None).unwrap();
+        db.conn()
+            .execute_batch("UPDATE listening_sessions SET last_seen_at = '2026-01-01 10:30:00'")
+            .unwrap();
+        db.end_session().unwrap();
+        let ended: String = db.conn().query_row("SELECT ended_at FROM listening_sessions", [], |r| r.get(0)).unwrap();
+        assert_eq!(ended, "2026-01-01 10:31:30");
     }
 
     #[test]

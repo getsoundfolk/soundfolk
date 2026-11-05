@@ -6,14 +6,21 @@
 //! 3. [`Converter`] adapts channels and sample rate to the output device.
 //! 4. Samples are pushed into the ring buffer read by the cpal callback.
 //!
-//! If the connection drops *after* the first sound, the stream is reopened automatically.
-//! A failure on the very first connection is reported immediately (dead URL, unknown format...).
+//! If the connection drops *after* the first sound, the stream is reopened automatically, for
+//! as long as it takes when the network is down (sleep, Wi-Fi lost): the attempt starts as soon as
+//! it is back (see [`super::network`]). A connection still open across a network change or a
+//! sleep is dropped as soon as it stops receiving, instead of waiting for the read timeout.
+//! After a failure, the user is told whose fault it is (see [`super::failure`]): no network, no
+//! Internet access (both waited for as long as it takes), or the station itself (its server
+//! stopped, the stream was removed…: retried, then given up). A station failing on the very first
+//! connection is reported immediately.
 
 use std::io;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rtrb::Producer;
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
@@ -30,8 +37,11 @@ use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::{MediaSource, MediaSourceStream, ReadOnlySource};
 use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag};
+use tokio::sync::watch;
 
+use super::failure::{self, Failure};
 use super::icy::{IcyReader, TitleCallback};
+use super::network::NetState;
 use super::output::OutputFormat;
 use super::{Cancel, Reporter};
 
@@ -44,9 +54,23 @@ const PREFETCH_BYTES: u64 = 16 * 1024;
 /// Size of the stream's circular buffer (~1 min at 128 kbit/s).
 const BUFFER_BYTES: usize = 1024 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// A live stream that delivers nothing for this long is considered dropped.
-const READ_TIMEOUT: Duration = Duration::from_secs(15);
-const MAX_RECONNECTS: u32 = 5;
+/// A live stream that delivers nothing for this long is considered dropped (it delivers several
+/// times per second; the buffers cover this gap). Catches what the network watch cannot see,
+/// like a gateway that dies with the link still up.
+const READ_TIMEOUT: Duration = Duration::from_secs(8);
+/// After a network change or a wake from sleep, a connection that receives nothing for this long
+/// is dead (a live stream delivers several times per second). One that keeps receiving is kept:
+/// switching Ethernet → Wi-Fi with both up does not cut the sound.
+const STALL_AFTER_CHANGE: Duration = Duration::from_secs(3);
+/// Longest wait between two attempts while the network is up.
+const MAX_BACKOFF: Duration = Duration::from_secs(30);
+/// The station is given up after failing this long **with the network up** (time offline or
+/// asleep does not count).
+const GIVE_UP_AFTER: Duration = Duration::from_secs(5 * 60);
+
+const RECONNECTING: &str = "Reconnecting…";
+const NO_NETWORK: &str = "No network — waiting…";
+const NO_INTERNET: &str = "No Internet access — waiting…";
 
 pub struct Job {
     pub url: Url,
@@ -55,6 +79,7 @@ pub struct Job {
     pub reporter: Reporter,
     pub cancel: Arc<Cancel>,
     pub runtime: tokio::runtime::Handle,
+    pub net: watch::Receiver<NetState>,
 }
 
 pub fn spawn(job: Job) -> io::Result<()> {
@@ -65,8 +90,25 @@ pub fn spawn(job: Job) -> io::Result<()> {
 /// Why a playback attempt ended.
 enum End {
     Cancelled,
-    /// Stream dropped or unreadable; the message is meant for the user.
-    Failed(String),
+    /// Stream dropped or unreadable.
+    Failed(Failure),
+    /// Dropped on purpose: the network changed or the computer slept, and data stopped coming.
+    Interrupted(Interrupt),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Interrupt {
+    Network,
+    Wake,
+}
+
+impl std::fmt::Display for Interrupt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Network => "the network changed",
+            Self::Wake => "the computer woke from sleep",
+        })
+    }
 }
 
 fn run(mut job: Job) {
@@ -76,39 +118,113 @@ fn run(mut job: Job) {
     };
 
     let mut ever_played = false;
-    let mut reconnects = 0;
+    let mut attempts = 0;
+    // Since when the station itself fails (time without network or Internet does not count).
+    let mut failing_since: Option<Instant> = None;
 
     loop {
         let mut played = false;
         let end = play_once(&mut job, &client, &mut played);
         ever_played |= played;
+        if played {
+            attempts = 0;
+            failing_since = None;
+        }
 
-        let message = match end {
+        let failure = match end {
             End::Cancelled => return,
-            End::Failed(message) => message,
+            End::Failed(failure) => Some(failure),
+            End::Interrupted(why) => {
+                tracing::info!(url = %job.url, "connection dropped: {why}");
+                None
+            }
         };
         if job.cancel.is_cancelled() {
             return;
         }
-        tracing::warn!(url = %job.url, "playback interrupted: {message}");
+        let interrupted = failure.is_none();
+        let message = match failure {
+            None => RECONNECTING.to_owned(),
+            // Retrying would fail the same way.
+            Some(Failure::Internal(message)) => return job.reporter.failed(message),
+            Some(failure) => {
+                tracing::warn!(url = %job.url, ?failure, "playback failed");
+                // Right after the sound stopped, the check is shown; later the last reason stays.
+                match blame(&job, ever_played && attempts == 0, failure) {
+                    Blame::Connection(message) => {
+                        failing_since = None;
+                        message.to_owned()
+                    }
+                    Blame::Station(failure) => {
+                        let reason = failure.reason();
+                        // Never played: dead URL, not audio… the user must be told right away.
+                        if !ever_played {
+                            return job.reporter.failed(format!("The station is not broadcasting: {reason}"));
+                        }
+                        if failing_since.get_or_insert_with(Instant::now).elapsed() > GIVE_UP_AFTER {
+                            return job.reporter.failed(format!("The station stopped broadcasting: {reason}"));
+                        }
+                        format!("The station is not broadcasting ({reason}) — retrying…")
+                    }
+                }
+            }
+        };
 
-        // Never got any sound: no point retrying, the user must be told right away.
-        if !ever_played {
-            return job.reporter.failed(message);
-        }
-        if played {
-            reconnects = 0;
-        }
-        reconnects += 1;
-        if reconnects > MAX_RECONNECTS {
-            return job.reporter.failed(format!("Stream lost: {message}"));
-        }
-
-        job.reporter.connecting();
-        // Exponential backoff (1 s, 2 s, 4 s... capped at 8 s), interruptible.
-        let backoff = Duration::from_secs((1u64 << (reconnects - 1)).min(8));
-        if !sleep_unless_cancelled(&job.cancel, backoff) {
+        attempts += 1;
+        // A connection dropped on purpose is reopened at once; then exponential backoff
+        // (1 s, 2 s, 4 s… capped), cut short when the network comes back or changes.
+        let delay = match (interrupted, attempts) {
+            (true, 1) => Duration::ZERO,
+            _ => Duration::from_secs(1u64 << (attempts - 1).min(5)).min(MAX_BACKOFF),
+        };
+        if !wait_before_retry(&job, delay, &message) {
             return;
+        }
+    }
+}
+
+/// Whose fault a failure is.
+enum Blame {
+    /// No network, or no Internet access: waited for as long as it takes.
+    Connection(&'static str),
+    /// Internet works: the station is at fault.
+    Station(Failure),
+}
+
+fn blame(job: &Job, sound_just_stopped: bool, failure: Failure) -> Blame {
+    if !job.net.borrow().online {
+        return Blame::Connection(NO_NETWORK);
+    }
+    if sound_just_stopped {
+        // The check takes a moment: the player must not look like it still plays.
+        job.reporter.reconnecting(RECONNECTING);
+    }
+    if failure::internet_reachable(&job.runtime) {
+        Blame::Station(failure)
+    } else {
+        Blame::Connection(NO_INTERNET)
+    }
+}
+
+/// Waits `delay` showing `message`, or for the network if it is down; returns at once when the
+/// network comes back or changes. `false` if the playback was stopped meanwhile.
+fn wait_before_retry(job: &Job, delay: Duration, message: &str) -> bool {
+    let mut net = job.net.clone();
+    net.mark_unchanged();
+    let start = Instant::now();
+    loop {
+        if job.cancel.is_cancelled() {
+            return false;
+        }
+        let state = *net.borrow_and_update();
+        job.reporter.reconnecting(if state.online { message } else { NO_NETWORK });
+        if state.online && start.elapsed() >= delay {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(100));
+        if net.has_changed().unwrap_or(false) && net.borrow().online {
+            tracing::info!("network back or changed: reconnecting now");
+            return !job.cancel.is_cancelled();
         }
     }
 }
@@ -137,9 +253,11 @@ pub fn probe(url: &Url, runtime: &tokio::runtime::Handle) -> Result<StreamInfo, 
         &cancel,
         Arc::new(|_| {}),
         std::time::Instant::now(),
+        None,
     ) {
         Ok(opened) => opened,
-        Err(End::Failed(message)) => return Err(message),
+        Err(End::Failed(failure)) => return Err(format!("Cannot play this stream: {}", failure.reason())),
+        Err(End::Interrupted(why)) => return Err(format!("Test interrupted: {why}")),
         Err(End::Cancelled) => return Err("Test cancelled".into()),
     };
 
@@ -182,6 +300,79 @@ struct OpenedStream {
     server: Option<String>,
     /// The stream can announce titles itself (ICY, or tags in an Ogg container).
     inband: bool,
+    /// Drops the connection if it stalls after a network change (stopped with the stream).
+    _watchdog: Option<Watchdog>,
+}
+
+/// Why the watchdog dropped the connection, read once the decoder sees the stream end.
+type Fired = Arc<Mutex<Option<Interrupt>>>;
+
+/// What the watchdog needs: the network state, and where to say why it fired.
+struct NetGuard {
+    net: watch::Receiver<NetState>,
+    fired: Fired,
+}
+
+/// When the connection last received data.
+struct Activity {
+    base: Instant,
+    last_ms: AtomicU64,
+}
+
+impl Activity {
+    fn new() -> Self {
+        Self { base: Instant::now(), last_ms: AtomicU64::new(0) }
+    }
+
+    fn touch(&self) {
+        self.last_ms.store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
+    }
+
+    fn idle(&self) -> Duration {
+        self.base.elapsed().saturating_sub(Duration::from_millis(self.last_ms.load(Ordering::Relaxed)))
+    }
+}
+
+/// Task that drops the connection when it stops receiving after a network change or a sleep.
+/// Ends with the stream (`Drop`).
+struct Watchdog(tokio::task::JoinHandle<()>);
+
+impl Drop for Watchdog {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+impl Watchdog {
+    fn spawn(
+        runtime: &tokio::runtime::Handle,
+        guard: &NetGuard,
+        opened_at: NetState,
+        activity: Arc<Activity>,
+        stop: impl FnOnce() + Send + 'static,
+    ) -> Self {
+        let net = guard.net.clone();
+        let fired = guard.fired.clone();
+        Self(runtime.spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                let now = *net.borrow();
+                let why = if now.wake != opened_at.wake {
+                    Interrupt::Wake
+                } else if now.network != opened_at.network {
+                    Interrupt::Network
+                } else {
+                    continue;
+                };
+                if activity.idle() >= STALL_AFTER_CHANGE {
+                    tracing::info!("{why}, and the stream stopped receiving: reconnecting");
+                    *fired.lock().unwrap_or_else(|p| p.into_inner()) = Some(why);
+                    stop();
+                    return;
+                }
+            }
+        }))
+    }
 }
 
 fn build_client() -> Result<Client, String> {
@@ -208,12 +399,17 @@ fn open_stream(
     cancel: &Cancel,
     on_title: TitleCallback,
     started: std::time::Instant,
+    guard: Option<NetGuard>,
 ) -> Result<OpenedStream, End> {
+    let activity = Arc::new(Activity::new());
+    let opened_at = guard.as_ref().map(|g| *g.net.borrow());
+
     // ── 1. Connection + network buffer ──────────────────────────────────────
-    let opened = runtime.block_on(async {
+    let progress = activity.clone();
+    let connect = async {
         let http = HttpStream::new(client.clone(), url.clone())
             .await
-            .map_err(|e| format!("Cannot connect: {e}"))?;
+            .map_err(|e| Failure::connect(&e))?;
         tracing::debug!(ms = started.elapsed().as_millis() as u64, "HTTP headers received");
         let mime = http
             .content_type()
@@ -234,20 +430,38 @@ fn open_stream(
             NonZeroUsize::new(BUFFER_BYTES).expect("BUFFER_BYTES > 0"),
         );
         let reader =
-            StreamDownload::from_stream(http, storage, Settings::default().prefetch_bytes(PREFETCH_BYTES))
-                .await
-                .map_err(|e| format!("Cannot read stream: {e}"))?;
+            StreamDownload::from_stream(
+                http,
+                storage,
+                Settings::default().prefetch_bytes(PREFETCH_BYTES).on_progress(move |_, _, _| progress.touch()),
+            )
+            .await
+            .map_err(|e| Failure::Stopped(format!("cannot read the stream: {e}")))?;
         tracing::debug!(ms = started.elapsed().as_millis() as u64, "prefetch complete");
-        Ok::<_, String>((reader, mime, metaint, station, server))
+        Ok::<_, Failure>((reader, mime, metaint, station, server))
+    };
+    // A connection attempt on a network that just went away can hang until its timeout: a
+    // change of network starts a new attempt at once.
+    let opened = runtime.block_on(async {
+        let Some(guard) = &guard else { return connect.await.map_err(End::Failed) };
+        let mut net = guard.net.clone();
+        net.mark_unchanged();
+        tokio::select! {
+            opened = connect => opened.map_err(End::Failed),
+            _ = net.changed() => Err(End::Interrupted(Interrupt::Network)),
+        }
     });
-    let (reader, mime, metaint, station, server) = opened.map_err(End::Failed)?;
+    let (reader, mime, metaint, station, server) = opened?;
 
     // Cancelling = stopping the download, which unblocks a read waiting for data.
     let token = reader.cancellation_token();
+    let stop = token.clone();
     cancel.on_cancel(move || token.cancel());
     if cancel.is_cancelled() {
         return Err(End::Cancelled);
     }
+    activity.touch();
+    let watchdog = guard.as_ref().zip(opened_at).map(|(g, at)| Watchdog::spawn(runtime, g, at, activity, move || stop.cancel()));
 
     // ── 2. Format detection ──────────────────────────────────────────────────
     let mut hint = Hint::new();
@@ -272,27 +486,40 @@ fn open_stream(
             tracing::debug!("detection interrupted: {e}");
             return Err(End::Cancelled);
         }
-        Err(e) => return Err(End::Failed(format!("Unrecognized audio format: {e}"))),
+        // The stream broke while being read: not a format problem.
+        Err(SymphoniaError::IoError(e)) => return Err(End::Failed(Failure::Stopped(e.to_string()))),
+        Err(e) => return Err(End::Failed(Failure::NotAudio(format!("unrecognized format: {e}")))),
     };
 
     tracing::debug!(ms = started.elapsed().as_millis() as u64, "format detected");
     let Some(track) = format.default_track(TrackType::Audio) else {
-        return Err(End::Failed("No audio track in the stream".into()));
+        return Err(End::Failed(Failure::NotAudio("no audio track".into())));
     };
     let Some(params) = track.codec_params.as_ref().and_then(|p| p.audio()) else {
-        return Err(End::Failed("Audio parameters missing".into()));
+        return Err(End::Failed(Failure::NotAudio("audio parameters missing".into())));
     };
     let track_id = track.id;
     let decoder = symphonia::default::get_codecs()
         .make_audio_decoder(params, &AudioDecoderOptions::default())
-        .map_err(|e| End::Failed(format!("Unsupported codec: {e}")))?;
+        .map_err(|e| End::Failed(Failure::NotAudio(format!("unsupported codec: {e}"))))?;
 
     // Ogg streams change title by starting a new chain with new Vorbis comments.
     let inband = metaint.is_some() || format.format_info().short_name == "ogg";
-    Ok(OpenedStream { format, decoder, track_id, mime, station, server, inband })
+    Ok(OpenedStream { format, decoder, track_id, mime, station, server, inband, _watchdog: watchdog })
 }
 
 fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
+    let fired = Fired::default();
+    let end = decode(job, client, played, &fired);
+    // The stream ended because the watchdog dropped it: say why, so it is reopened at once.
+    let why = fired.lock().unwrap_or_else(|p| p.into_inner()).take();
+    match (end, why) {
+        (End::Failed(_), Some(why)) => End::Interrupted(why),
+        (end, _) => end,
+    }
+}
+
+fn decode(job: &mut Job, client: &Client, played: &mut bool, fired: &Fired) -> End {
     let started = std::time::Instant::now();
 
     let on_title: TitleCallback = {
@@ -302,8 +529,9 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
             reporter.title(title);
         })
     };
-    let OpenedStream { mut format, mut decoder, mut track_id, mime, station, server, inband } =
-        match open_stream(client, &job.url, &job.runtime, &job.cancel, on_title, started) {
+    let guard = NetGuard { net: job.net.clone(), fired: fired.clone() };
+    let OpenedStream { mut format, mut decoder, mut track_id, mime, station, server, inband, _watchdog } =
+        match open_stream(client, &job.url, &job.runtime, &job.cancel, on_title, started, Some(guard)) {
             Ok(opened) => opened,
             Err(end) => return end,
         };
@@ -324,7 +552,7 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
 
         let packet = match format.next_packet() {
             Ok(Some(packet)) => packet,
-            Ok(None) => return End::Failed("The stream ended".into()),
+            Ok(None) => return End::Failed(Failure::Stopped("ended by the server".into())),
             Err(_) if job.cancel.is_cancelled() => return End::Cancelled,
             // New Ogg chain (Icecast does this at every title change): new tags, maybe a new
             // track and codec setup. Continue on the same connection with a fresh decoder.
@@ -336,10 +564,10 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
                         decoder = new;
                         continue;
                     }
-                    Err(message) => return End::Failed(message),
+                    Err(message) => return End::Failed(Failure::NotAudio(message)),
                 }
             }
-            Err(e) => return End::Failed(format!("Playback interrupted: {e}")),
+            Err(e) => return End::Failed(Failure::Stopped(e.to_string())),
         };
         if packet.track_id != track_id {
             continue;
@@ -349,7 +577,7 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
             Ok(decoded) => decoded,
             // Corrupt or lost packet: common over the network, skip silently.
             Err(SymphoniaError::DecodeError(_) | SymphoniaError::IoError(_)) => continue,
-            Err(e) => return End::Failed(format!("Cannot decode audio: {e}")),
+            Err(e) => return End::Failed(Failure::NotAudio(format!("cannot decode: {e}"))),
         };
         if decoded.frames() == 0 {
             continue;
@@ -370,7 +598,7 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
                     );
                     converter = Some(new);
                 }
-                Err(message) => return End::Failed(message),
+                Err(message) => return End::Failed(Failure::Internal(message)),
             }
         }
         let converter = converter.as_mut().expect("initialized above");
@@ -443,19 +671,6 @@ fn push_blocking(producer: &mut Producer<f32>, mut samples: &[f32], cancel: &Can
         samples = rest;
     }
     true
-}
-
-fn sleep_unless_cancelled(cancel: &Cancel, total: Duration) -> bool {
-    let step = Duration::from_millis(100);
-    let mut waited = Duration::ZERO;
-    while waited < total {
-        if cancel.is_cancelled() {
-            return false;
-        }
-        thread::sleep(step);
-        waited += step;
-    }
-    !cancel.is_cancelled()
 }
 
 /// Block size of the FFT resampler (~21 ms at 48 kHz): latency / CPU cost trade-off.

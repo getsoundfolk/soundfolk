@@ -12,16 +12,21 @@
 //!
 //! `cpal::Stream` is not `Send` on every platform: a dedicated thread (`audio-engine`) owns it,
 //! and [`DesktopAudioEngine`] is only its remote control (`Send + Sync`).
+//!
+//! Resilience: a dropped stream is reopened by the decoder (see [`network`] for sleep and network
+//! changes); a dead sound output (device gone, sound server restarted) is reopened by this thread.
 
 mod decoder;
+mod failure;
 mod icy;
+mod network;
 mod output;
 mod playlist;
 mod web_source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Instant;
-use std::sync::mpsc::{self, Sender};
+use std::time::{Duration, Instant};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 
@@ -51,6 +56,8 @@ pub trait AudioEngine {
 pub enum PlayerState {
     Idle,
     Connecting,
+    /// The stream dropped after playing: reopening it, or waiting for the network.
+    Reconnecting(String),
     Playing,
     Paused,
     Error(String),
@@ -269,8 +276,8 @@ impl Reporter {
         (self.status.listener)(new);
     }
 
-    pub(crate) fn connecting(&self) {
-        self.publish(PlayerState::Connecting);
+    pub(crate) fn reconnecting(&self, message: &str) {
+        self.publish(PlayerState::Reconnecting(message.to_owned()));
     }
 
     pub(crate) fn audible(&self) {
@@ -359,8 +366,22 @@ enum Command {
 /// A playback in progress. `Drop` silences the sound (the cpal `Stream` is destroyed) and cancels the network.
 struct Session {
     cancel: Arc<Cancel>,
-    _output: output::Output,
+    output: output::Output,
 }
+
+/// What plays, to start it again on a new sound output.
+struct Playback {
+    url: Url,
+    station: StationRef,
+    /// The output was lost and could not be reopened yet: since when.
+    output_lost: Option<Instant>,
+}
+
+/// How often the sound output is checked.
+const OUTPUT_CHECK: Duration = Duration::from_secs(1);
+/// How long to try reopening a lost sound output (a device can take a moment to come back after
+/// a wake from sleep) before reporting the error.
+const OUTPUT_RETRY: Duration = Duration::from_secs(15);
 
 impl Drop for Session {
     fn drop(&mut self) {
@@ -465,11 +486,21 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
     };
 
     let mut session: Option<Session> = None;
+    let mut playback: Option<Playback> = None;
 
-    // The loop ends when the last `Sender` (the engine) is dropped.
-    for command in rx {
+    loop {
+        let command = match rx.recv_timeout(OUTPUT_CHECK) {
+            Ok(command) => command,
+            Err(RecvTimeoutError::Timeout) => {
+                reopen_lost_output(&mut session, &mut playback, &controls, &status, &web, runtime.handle());
+                continue;
+            }
+            // The engine was dropped.
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
         // In every case, the previous session is stopped first.
         session = None;
+        playback = None;
 
         match command {
             Command::Stop => {
@@ -481,9 +512,10 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
                 controls.paused.store(false, Ordering::Relaxed);
                 status.clear_now_playing();
                 status.set(PlayerState::Connecting);
-                match start_session(url, station, &controls, &status, &web, runtime.handle()) {
+                match start_session(url.clone(), station.clone(), &controls, &status, &web, runtime.handle()) {
                     Ok(new) => {
                         session = Some(new);
+                        playback = Some(Playback { url, station, output_lost: None });
                         let _ = reply.send(Ok(()));
                     }
                     Err(message) => {
@@ -495,6 +527,43 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
         }
     }
     drop(session);
+}
+
+/// The sound output died (device unplugged, sound server restarted, wake from sleep): plays the
+/// station again on a new one, keeping the pause and the title.
+fn reopen_lost_output(
+    session: &mut Option<Session>,
+    playback: &mut Option<Playback>,
+    controls: &Arc<Controls>,
+    status: &Arc<Status>,
+    web: &Arc<WebTitles>,
+    runtime: &tokio::runtime::Handle,
+) {
+    let Some(play) = playback else { return };
+    if session.as_ref().is_some_and(|s| !s.output.health.is_lost()) {
+        return;
+    }
+    // The stream was given up: nothing to play again.
+    if matches!(*status.lock(), PlayerState::Error(_)) {
+        return;
+    }
+    if session.take().is_some() {
+        tracing::warn!("sound output lost: reopening it");
+        play.output_lost = Some(Instant::now());
+        status.set(PlayerState::Reconnecting("Reconnecting the sound output…".into()));
+    }
+    match start_session(play.url.clone(), play.station.clone(), controls, status, web, runtime) {
+        Ok(new) => {
+            *session = Some(new);
+            play.output_lost = None;
+        }
+        Err(message) if play.output_lost.is_some_and(|since| since.elapsed() > OUTPUT_RETRY) => {
+            tracing::warn!("sound output not reopened: {message}");
+            *playback = None;
+            status.set(PlayerState::Error(message));
+        }
+        Err(message) => tracing::debug!("sound output not reopened yet: {message}"),
+    }
 }
 
 fn start_session(
@@ -524,10 +593,12 @@ fn start_session(
         reporter,
         cancel: cancel.clone(),
         runtime: runtime.clone(),
+        // The network is watched while the decoder holds this (until the playback stops).
+        net: network::subscribe(),
     })
     .map_err(|e| format!("Failed to start the decoder: {e}"))?;
 
-    Ok(Session { cancel, _output: output })
+    Ok(Session { cancel, output })
 }
 
 #[cfg(test)]
@@ -573,10 +644,11 @@ mod tests {
             stream: Arc::new(StreamMeta::default()),
         };
 
-        reporter.connecting();
+        reporter.reconnecting("Reconnecting…");
+        reporter.reconnecting("Reconnecting…"); // repeated while waiting: published once
         cancel.cancel();
         reporter.audible();
-        assert_eq!(*seen.lock().unwrap(), vec![PlayerState::Connecting]);
+        assert_eq!(*seen.lock().unwrap(), vec![PlayerState::Reconnecting("Reconnecting…".into())]);
     }
 
     #[test]
@@ -586,6 +658,10 @@ mod tests {
         assert_eq!(
             json(&PlayerState::Error("boom".into())),
             r#"{"status":"error","message":"boom"}"#
+        );
+        assert_eq!(
+            json(&PlayerState::Reconnecting("Waiting for the network…".into())),
+            r#"{"status":"reconnecting","message":"Waiting for the network…"}"#
         );
     }
 
@@ -737,6 +813,98 @@ mod tests {
         println!("titles: {titles:#?}\nstates: {:?}", states.lock().unwrap());
         assert!(titles.iter().any(|(_, source)| *source == TitleSource::StreamTags), "{titles:?}");
         assert!(!states.lock().unwrap().iter().any(|s| matches!(s, PlayerState::Error(_))));
+    }
+
+    /// A local server sends 1 s of a WAV stream then hangs up, every time: the engine
+    /// reconnects each time on its own (no 5-attempt limit any more) and plays again.
+    #[test]
+    #[ignore = "sound card"]
+    fn live_reconnects_every_time_the_server_hangs_up() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/live.wav", listener.local_addr().unwrap());
+        let served = Arc::new(AtomicU32::new(0));
+        let count = served.clone();
+        thread::spawn(move || {
+            for mut client in listener.incoming().flatten() {
+                count.fetch_add(1, Ordering::SeqCst);
+                let mut request = [0u8; 1024];
+                let _ = client.read(&mut request);
+                let rate = 16_000u32;
+                let mut wav = Vec::new();
+                wav.extend_from_slice(b"RIFF\xff\xff\xff\x7fWAVEfmt ");
+                wav.extend_from_slice(&16u32.to_le_bytes());
+                wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+                wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+                wav.extend_from_slice(&rate.to_le_bytes());
+                wav.extend_from_slice(&(rate * 2).to_le_bytes());
+                wav.extend_from_slice(&2u16.to_le_bytes());
+                wav.extend_from_slice(&16u16.to_le_bytes());
+                wav.extend_from_slice(b"data\x00\x00\xf0\x7f");
+                wav.resize(wav.len() + rate as usize * 2, 0); // 1 s of silence
+                let _ = client.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nConnection: close\r\n\r\n");
+                let _ = client.write_all(&wav);
+                // Hangs up: the stream ends.
+            }
+        });
+
+        let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
+        let sink = states.clone();
+        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
+        let mut engine = DesktopAudioEngine::new(Arc::new(move |s| sink.lock().unwrap().push(s)), Arc::new(|_| {}), web);
+        engine.set_volume(0.0).unwrap();
+        engine.play(&url, StationRef { id: None }).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
+        while std::time::Instant::now() < deadline && served.load(Ordering::SeqCst) < 8 {
+            thread::sleep(std::time::Duration::from_millis(200));
+        }
+        thread::sleep(std::time::Duration::from_millis(1500));
+        let seen = states.lock().unwrap().clone();
+        engine.stop().unwrap();
+        println!("connections: {}\nstates: {seen:?}", served.load(Ordering::SeqCst));
+        assert!(served.load(Ordering::SeqCst) >= 8, "more than the old 5-attempt limit");
+        assert!(!seen.iter().any(|s| matches!(s, PlayerState::Error(_))), "{seen:?}");
+        let replays = seen.windows(2).filter(|w| matches!(w[0], PlayerState::Reconnecting(_)) && w[1] == PlayerState::Playing).count();
+        assert!(replays >= 6, "{seen:?}");
+    }
+
+    /// A local station plays for 1 s, then its server stops for good: the player says whose
+    /// fault it is. With Internet: the station's. Run it in a network namespace with a default
+    /// route that leads nowhere (`SOUNDFOLK_EXPECT=no-internet`), or with no route at all
+    /// (`SOUNDFOLK_EXPECT=no-network`): the connection's.
+    #[test]
+    #[ignore = "sound card"]
+    fn live_tells_whether_the_station_or_internet_is_down() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/live.wav", listener.local_addr().unwrap());
+        thread::spawn(move || {
+            // One listener only, then the "server" is gone: later connections are refused.
+            let (mut client, _) = listener.accept().unwrap();
+            let _ = client.read(&mut [0u8; 1024]);
+            let mut wav = b"RIFF\xff\xff\xff\x7fWAVEfmt \x10\0\0\0\x01\0\x01\0\x80\x3e\0\0\0\x7d\0\0\x02\0\x10\0data\0\0\xf0\x7f".to_vec();
+            wav.resize(wav.len() + 32_000, 0);
+            let _ = client.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\n\r\n");
+            let _ = client.write_all(&wav);
+        });
+
+        let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
+        let sink = states.clone();
+        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
+        let mut engine = DesktopAudioEngine::new(Arc::new(move |s| sink.lock().unwrap().push(s)), Arc::new(|_| {}), web);
+        engine.set_volume(0.0).unwrap();
+        engine.play(&url, StationRef { id: None }).unwrap();
+        thread::sleep(std::time::Duration::from_secs(15));
+        let seen = states.lock().unwrap().clone();
+        engine.stop().unwrap();
+        println!("states: {seen:#?}");
+        let expected = match std::env::var("SOUNDFOLK_EXPECT").as_deref() {
+            Ok("no-internet") => "No Internet access — waiting…".to_owned(),
+            Ok("no-network") => "No network — waiting…".to_owned(),
+            _ => "The station is not broadcasting (its server refuses connections) — retrying…".to_owned(),
+        };
+        assert!(seen.contains(&PlayerState::Playing), "{seen:?}");
+        assert!(seen.contains(&PlayerState::Reconnecting(expected.clone())), "expected {expected:?} in {seen:?}");
     }
 
     /// Against the real network: `cargo test -- --ignored live_`.

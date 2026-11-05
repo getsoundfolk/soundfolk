@@ -44,8 +44,34 @@ HTTP ─▶ stream-download ─▶ ICY filter ─▶ symphonia ─▶ convert �
 ### Behavior
 * **Start-up:** playback starts after a 120 ms buffer. After an underrun the engine waits for 1 s of audio before
   resuming, so a network hiccup does not turn into a stutter.
-* **Resilience:** if the stream drops *after* the first sound, it is reopened automatically (up to 5 attempts with
-  exponential backoff). A failure on the very first connection is reported immediately (dead URL, unknown format…).
+* **Resilience:** if the stream drops *after* the first sound, it is reopened automatically (state `reconnecting`),
+  with exponential backoff capped at 30 s. A failure on the very first connection is reported immediately (dead URL,
+  unknown format…), unless the network is down.
+* **Sleep and network changes:** a watcher (`audio/network.rs`, one check per second **only while a station plays**,
+  parked otherwise) follows the local address of the default IPv4 / IPv6 routes — it changes on Wi-Fi ↔ Ethernet ↔ 4G
+  switches, VPNs, new DHCP leases, and disappears when the network is lost — and detects a wake from sleep: the wall
+  clock jumps ahead of the monotonic one on Linux and macOS; on Windows, where the monotonic clock keeps counting
+  during sleep, through the system's resume notification (`PowerRegisterSuspendResumeNotification`). A drop shorter
+  than a second with the same address coming back goes unseen; the read timeout catches it. Then:
+  * a connection that receives nothing for 3 s after a change or a wake is dropped and reopened at once, instead of
+    waiting for the 8 s read timeout; one that keeps receiving is kept (Ethernet → Wi-Fi with both up does not cut
+    the sound);
+  * after a failure, the player says **whose fault it is** (`audio/failure.rs`):
+    * *No network — waiting…*: no route at all;
+    * *No Internet access — waiting…*: a route, but the Radio-Browser API (already used for the catalog, so no new
+      third party) does not answer over HTTPS either — box down, captive portal, mobile data off;
+    * *The station is not broadcasting (reason) — retrying…*: Internet works, so the station is at fault, with the
+      reason in plain words: its server refuses connections (stopped), does not answer, its address no longer
+      exists, the stream no longer exists (HTTP 404), its server has a problem (HTTP 5xx), the stream stopped, it
+      does not send playable audio.
+
+    Without network or Internet the engine waits as long as it takes and reconnects as soon as either comes back.
+    A station at fault is retried, then given up after 5 minutes (*The station stopped broadcasting: reason*); on
+    the very first connection it is reported at once (*The station is not broadcasting: reason*);
+  * a sound output that dies (device gone, sound server restarted, callback silent for 5 s) is reopened, keeping the
+    pause and the title.
+  * the listening session ends when the sound stopped, no later than 90 s after its last heartbeat: time asleep is not
+    listening time.
 * **Cancellation:** stopping also cancels the network download, so a blocked read is released and `stop` / station
   changes take effect immediately.
 * **ICY metadata:** the engine asks for `Icy-MetaData: 1`, strips the metadata blocks before decoding and publishes the

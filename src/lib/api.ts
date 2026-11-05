@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 export type PlayerState =
   | { status: 'idle' | 'connecting' | 'playing' | 'paused' }
-  | { status: 'error'; message: string };
+  | { status: 'error' | 'reconnecting'; message: string };
 
 export type TrackInfo = {
   artist: string | null;
