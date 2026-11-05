@@ -17,6 +17,7 @@ jobs:
       # Pinned to a commit SHA (v7.0.1) rather than a mutable tag.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          persist-credentials: false
           fetch-depth: 0 # the check needs the commits between the base and the head
 
       - name: Check Signed-off-by on every commit

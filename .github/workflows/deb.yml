@@ -36,6 +36,7 @@ jobs:
       # Pinned to commit SHAs rather than mutable tags.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ github.ref_type == 'tag' && github.ref || 'main' }}
 
       - name: Decide the version
@@ -76,15 +77,12 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         with:
           node-version: 22
-          cache: npm
+          # No npm or Rust cache in a release build: a cache can be written by other runs
+          # (cache poisoning), and what ships must come from the lockfiles alone.
+          package-manager-cache: false
 
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         if: steps.version.outputs.skip != 'true'
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        if: steps.version.outputs.skip != 'true'
-        with:
-          workspaces: src-tauri
 
       - name: Build
         if: steps.version.outputs.skip != 'true'
