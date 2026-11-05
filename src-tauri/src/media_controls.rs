@@ -5,7 +5,7 @@
 //!
 //! In a radio app the station comes first (next / previous change it), so the desktop's first
 //! line, the MPRIS title, is the station and its second line, the MPRIS artist, is the track.
-//! The station is also the album, for desktops that show it, and the track's cover art the picture.
+//! The station is also the album, for desktops that show it, and its logo the picture.
 //!
 //! Linux only for now: Windows needs the window's HWND and macOS the main thread's run loop.
 //! Elsewhere [`SystemMedia`] does nothing.
@@ -140,7 +140,7 @@ mod linux {
             }
         }
 
-        /// `cover`: address of the track's cover art, as resolved by `covers.rs`.
+        /// `cover`: address of the picture (the station's logo, or the app icon), from `covers.rs`.
         pub fn show_now_playing(&self, now_playing: &NowPlaying, station: Option<&str>, cover: Option<&str>) {
             let shown = display(now_playing, station);
             let metadata = MediaMetadata {

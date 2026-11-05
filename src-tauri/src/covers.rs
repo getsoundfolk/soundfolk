@@ -7,8 +7,12 @@
 //!   on the Cover Art Archive. Off by default: the artist and title leave the device.
 //!
 //! Sources are asked from top to bottom and the first cover found wins; a disabled source is never
-//! asked. Without any, the station's logo (its Radio-Browser favicon) is shown. While an online lookup runs, the next source's cover is shown. A result (even "none") is
-//! cached in the database, so a track that comes back on air is not looked up again.
+//! asked. Without any, the station's logo (its Radio-Browser favicon) is shown. While an online
+//! lookup runs, the next source's cover is shown. A result (even "none") is cached in the database,
+//! so a track that comes back on air is not looked up again.
+//!
+//! The desktop's media controls (MPRIS) show the station, not the track: next / previous change the
+//! station there. Their picture is the station's logo, or the Soundfolk icon when it has none.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -144,18 +148,41 @@ struct State {
     station_id: Option<String>,
     /// Logos of the stations played since launch (`None`: the station has none).
     logos: HashMap<String, Option<String>>,
+    /// Picture last given to the media controls.
+    media_picture: Option<String>,
 }
 
 pub struct Covers {
     app: tauri::AppHandle,
     mb: Option<Arc<MusicBrainz>>,
     media: Arc<SystemMedia>,
+    /// `file://` address of the Soundfolk icon, for the media controls of a station without a logo.
+    app_icon: Option<String>,
     state: Mutex<State>,
+}
+
+/// The app icon, shipped in the binary: the media controls need it as a file.
+const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
+
+/// Writes the app icon to the cache folder (once) and returns its `file://` address.
+fn app_icon_file(app: &tauri::AppHandle) -> Option<String> {
+    let dir = app.path().app_cache_dir().ok()?;
+    let path = dir.join("soundfolk.png");
+    let current = std::fs::read(&path).is_ok_and(|bytes| bytes == APP_ICON);
+    if !current {
+        let written = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, APP_ICON));
+        if let Err(e) = written {
+            tracing::debug!("app icon not written for the media controls: {e}");
+            return None;
+        }
+    }
+    stream_download::http::reqwest::Url::from_file_path(&path).ok().map(String::from)
 }
 
 impl Covers {
     pub fn new(app: tauri::AppHandle, mb: Option<Arc<MusicBrainz>>, media: Arc<SystemMedia>) -> Arc<Self> {
-        Arc::new(Self { app, mb, media, state: Mutex::new(State::default()) })
+        let app_icon = app_icon_file(&app);
+        Arc::new(Self { app, mb, media, app_icon, state: Mutex::new(State::default()) })
     }
 
     fn state(&self) -> MutexGuard<'_, State> {
@@ -167,7 +194,7 @@ impl Covers {
         self.state().shown.clone()
     }
 
-    /// The title on air changed: shows it on the desktop with its cover, looked up if need be.
+    /// The title on air changed: shows it on the desktop, and finds its cover, looked up if need be.
     pub fn update(self: &Arc<Self>, now_playing: NowPlaying, station: Option<String>) {
         {
             let mut state = self.state();
@@ -244,9 +271,10 @@ impl Covers {
 
         let cover = match url {
             Some(url) => Cover { title: now_playing.title.clone(), url: Some(url), logo: false },
-            None => Cover { title: now_playing.title.clone(), logo: logo.is_some(), url: logo },
+            None => Cover { title: now_playing.title.clone(), logo: logo.is_some(), url: logo.clone() },
         };
-        let changed = {
+        let picture = logo.or_else(|| self.app_icon.clone());
+        let (changed, picture_changed) = {
             let mut state = self.state();
             // The title moved on while this one was being resolved: the newer call shows it.
             if state.now_playing != now_playing {
@@ -254,10 +282,12 @@ impl Covers {
             }
             let changed = state.shown != cover;
             state.shown = cover.clone();
-            changed
+            let picture_changed = state.media_picture != picture;
+            state.media_picture = picture.clone();
+            (changed, picture_changed)
         };
-        if changed || title_changed {
-            self.media.show_now_playing(&now_playing, station.as_deref(), cover.url.as_deref());
+        if title_changed || picture_changed {
+            self.media.show_now_playing(&now_playing, station.as_deref(), picture.as_deref());
         }
         if changed {
             if let Err(e) = self.app.emit(COVER_EVENT, cover) {

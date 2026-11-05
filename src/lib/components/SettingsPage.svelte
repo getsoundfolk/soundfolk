@@ -331,7 +331,7 @@
       <h2 class={styles.groupTitle} id="settings-covers">Cover art</h2>
       <OrderedSources
         title="Cover art sources"
-        intro="Asked from top to bottom: the first cover found is shown in the player and the desktop's media controls. A disabled source is never asked. Without a cover, the station's logo is shown."
+        intro="Asked from top to bottom: the first cover found is shown in the player. A disabled source is never asked. Without a cover, the station's logo is shown. The desktop's media controls always show the station's logo."
         items={coverItems}
         isDefault={coverDefault}
         onchange={(items) => saveCoverSources(items.map(({ id, enabled }) => ({ id: id as CoverSourceId, enabled })))}
