@@ -23,6 +23,8 @@
   let shared = $state<SharedRecipe | null>(null);
   let opened = $state<string | null>(null);
   let error = $state<string | null>(null);
+  /** Gain Constant volume applies to the station, in dB (null when off or not playing). */
+  let level = $state<number | null>(null);
 
   const station = $derived(player.current);
   const status = $derived(player.titleStatus);
@@ -39,6 +41,19 @@
     } else if (!ui.stationOpen && dialog.open) {
       dialog.close();
     }
+  });
+
+  // The gain moves while the station plays: read again every few seconds while the sheet is open.
+  $effect(() => {
+    if (!ui.stationOpen) return;
+    const read = () =>
+      api
+        .getLevelAdjustment()
+        .then((db) => (level = db))
+        .catch(() => (level = null));
+    read();
+    const timer = setInterval(read, 2000);
+    return () => clearInterval(timer);
   });
 
   // A saved recipe is reloaded by the app: an earlier test result no longer applies.
@@ -159,6 +174,12 @@
         <dt>Stream</dt>
         <dd class={styles.mono}>{station.url}</dd>
       </div>
+      {#if level !== null}
+        <div>
+          <dt>Volume</dt>
+          <dd>{level === 0 ? 'Level not adjusted' : `Level adjusted: ${level > 0 ? '+' : '−'}${Math.abs(level)} dB`}</dd>
+        </div>
+      {/if}
     </dl>
 
     <section class={styles.section} aria-labelledby="station-sheet-track">

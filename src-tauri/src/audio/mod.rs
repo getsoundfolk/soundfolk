@@ -20,6 +20,7 @@ mod connectivity;
 mod decoder;
 mod failure;
 mod icy;
+mod loudness;
 mod network;
 mod output;
 mod playlist;
@@ -28,13 +29,14 @@ mod web_source;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
 
 use serde::Serialize;
 pub use stream_download::http::reqwest::Url;
 
 pub use decoder::probe as probe_stream;
+pub use loudness::{LevelMemory, StoredLevel};
 pub use playlist::resolve_stream_url;
 pub use web_source::{RecipeTest, TitleStatus, WebEvent, WebTitles};
 
@@ -149,11 +151,28 @@ pub(crate) struct Controls {
     /// Gain applied to the samples (already through [`gain`]), not the slider position.
     volume: AtomicU32,
     paused: AtomicBool,
+    /// *Constant volume* (see [`loudness`]), read by the decoder thread.
+    normalize: AtomicBool,
+    /// Station gain applied now, dB (`f32` bits), NaN when nothing plays.
+    station_gain: AtomicU32,
 }
 
 impl Controls {
     fn new() -> Self {
-        Self { volume: AtomicU32::new(1.0f32.to_bits()), paused: AtomicBool::new(false) }
+        Self {
+            volume: AtomicU32::new(1.0f32.to_bits()),
+            paused: AtomicBool::new(false),
+            normalize: AtomicBool::new(true),
+            station_gain: AtomicU32::new(f32::NAN.to_bits()),
+        }
+    }
+
+    pub(crate) fn normalize(&self) -> bool {
+        self.normalize.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn set_station_gain(&self, db: f32) {
+        self.station_gain.store(db.to_bits(), Ordering::Relaxed);
     }
 
     pub(crate) fn volume(&self) -> f32 {
@@ -436,7 +455,11 @@ pub struct DesktopAudioEngine {
     commands: Sender<Command>,
     controls: Arc<Controls>,
     status: Arc<Status>,
+    levels: Levels,
 }
+
+/// Where station levels are remembered, set once by the application.
+type Levels = Arc<OnceLock<Arc<dyn LevelMemory>>>;
 
 impl DesktopAudioEngine {
     /// `web`: where to look for the title of streams that do not announce it.
@@ -449,14 +472,36 @@ impl DesktopAudioEngine {
             now_playing_listener,
         });
         let (commands, rx) = mpsc::channel();
+        let levels = Levels::default();
 
-        let (c, s) = (controls.clone(), status.clone());
+        let (c, s, l) = (controls.clone(), status.clone(), levels.clone());
         thread::Builder::new()
             .name("audio-engine".into())
-            .spawn(move || engine_loop(rx, c, s, web))
+            .spawn(move || engine_loop(rx, c, s, web, l))
             .expect("failed to start the audio-engine thread");
 
-        Self { commands, controls, status }
+        Self { commands, controls, status, levels }
+    }
+
+    /// Where station levels are remembered, for *Constant volume*. Without it, every station
+    /// starts as unknown.
+    pub fn set_level_memory(&self, memory: Arc<dyn LevelMemory>) {
+        if self.levels.set(memory).is_err() {
+            tracing::warn!("station level memory already set");
+        }
+    }
+
+    /// *Constant volume*: one gain per station so all play near the same loudness. Switching it
+    /// takes effect on the sound within a second.
+    pub fn set_normalize(&self, enabled: bool) {
+        self.controls.normalize.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Gain *Constant volume* applies to the station now, dB; `None` when it is off or nothing
+    /// plays.
+    pub fn level_adjustment(&self) -> Option<f32> {
+        let db = f32::from_bits(self.controls.station_gain.load(Ordering::Relaxed));
+        (self.controls.normalize() && db.is_finite()).then_some(db)
     }
 
     pub fn state(&self) -> PlayerState {
@@ -520,7 +565,13 @@ impl AudioEngine for DesktopAudioEngine {
     }
 }
 
-fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc<Status>, web: Arc<WebTitles>) {
+fn engine_loop(
+    rx: mpsc::Receiver<Command>,
+    controls: Arc<Controls>,
+    status: Arc<Status>,
+    web: Arc<WebTitles>,
+    levels: Levels,
+) {
     // Dedicated runtime: it drives the HTTP download while the decoder thread
     // blocks on synchronous reads from the `stream-download` buffer.
     let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -543,7 +594,7 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
         let command = match rx.recv_timeout(OUTPUT_CHECK) {
             Ok(command) => command,
             Err(RecvTimeoutError::Timeout) => {
-                reopen_lost_output(&mut session, &mut playback, &controls, &status, &web, runtime.handle());
+                reopen_lost_output(&mut session, &mut playback, &controls, &status, &web, &levels, runtime.handle());
                 continue;
             }
             // The engine was dropped.
@@ -552,6 +603,7 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
         // In every case, the previous session is stopped first.
         session = None;
         playback = None;
+        controls.set_station_gain(f32::NAN);
 
         match command {
             Command::Stop => {
@@ -563,7 +615,7 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
                 controls.paused.store(false, Ordering::Relaxed);
                 status.clear_now_playing();
                 status.set(PlayerState::Connecting);
-                match start_session(url.clone(), station.clone(), &controls, &status, &web, runtime.handle()) {
+                match start_session(url.clone(), station.clone(), &controls, &status, &web, &levels, runtime.handle()) {
                     Ok(new) => {
                         session = Some(new);
                         playback = Some(Playback { url, station, output_lost: None });
@@ -588,6 +640,7 @@ fn reopen_lost_output(
     controls: &Arc<Controls>,
     status: &Arc<Status>,
     web: &Arc<WebTitles>,
+    levels: &Levels,
     runtime: &tokio::runtime::Handle,
 ) {
     let Some(play) = playback else { return };
@@ -603,7 +656,7 @@ fn reopen_lost_output(
         play.output_lost = Some(Instant::now());
         status.set(PlayerState::Reconnecting("Reconnecting the sound output…".into()));
     }
-    match start_session(play.url.clone(), play.station.clone(), controls, status, web, runtime) {
+    match start_session(play.url.clone(), play.station.clone(), controls, status, web, levels, runtime) {
         Ok(new) => {
             *session = Some(new);
             play.output_lost = None;
@@ -623,9 +676,20 @@ fn start_session(
     controls: &Arc<Controls>,
     status: &Arc<Status>,
     web: &Arc<WebTitles>,
+    levels: &Levels,
     runtime: &tokio::runtime::Handle,
 ) -> Result<Session, String> {
     let (output, producer) = output::open(controls.clone())?;
+    // Catalog stations are remembered by their UUID (the level survives a change of address),
+    // the others by their address.
+    let level = loudness::StationLevel::new(
+        levels.get().cloned(),
+        station.id.clone().unwrap_or_else(|| url.to_string()),
+        output.format.sample_rate,
+        output.format.channels,
+        controls.normalize(),
+    );
+    controls.set_station_gain(level.leveler.gain_db() as f32);
     let cancel = Arc::new(Cancel::default());
     let reporter = Reporter {
         status: status.clone(),
@@ -641,6 +705,7 @@ fn start_session(
         url,
         format: output.format,
         producer,
+        level,
         reporter,
         cancel: cancel.clone(),
         runtime: runtime.clone(),
@@ -1042,5 +1107,55 @@ mod tests {
             let result = tokio::task::spawn_blocking(move || probe_stream(&url, &h)).await.unwrap();
             assert!(result.is_err(), "{result:?}");
         }
+    }
+
+    /// Plays real stations muted and prints the loudness *Constant volume* learns for each
+    /// (`docs/10-loudness.md` §6): `cargo test -- --ignored live_loudness --nocapture`. Other
+    /// streams: `SOUNDFOLK_STREAMS="url url…"`, `SOUNDFOLK_SECONDS` each (default 20).
+    #[test]
+    #[ignore = "network and sound card"]
+    fn live_loudness() {
+        #[derive(Default)]
+        struct Memory(Mutex<Vec<(String, StoredLevel)>>);
+        impl LevelMemory for Memory {
+            fn recall(&self, _: &str) -> Option<StoredLevel> {
+                None
+            }
+            fn guess(&self) -> Option<f64> {
+                None
+            }
+            fn remember(&self, station: &str, level: &StoredLevel) {
+                self.0.lock().unwrap().push((station.to_owned(), *level));
+            }
+        }
+
+        let streams = std::env::var("SOUNDFOLK_STREAMS").unwrap_or_else(|_| {
+            "https://icecast.radiofrance.fr/fip-midfi.mp3 http://stream.radioparadise.com/mp3-128 \
+             http://stream.metacast.eu/radio1rock.ogg https://live.aurafm.org/Frequence7"
+                .into()
+        });
+        let seconds = std::env::var("SOUNDFOLK_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(20);
+        let memory = Arc::new(Memory::default());
+        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
+        let mut engine = DesktopAudioEngine::new(Arc::new(|_| {}), Arc::new(|_| {}), web);
+        engine.set_level_memory(memory.clone());
+        engine.set_volume(0.0).unwrap();
+        for url in streams.split_whitespace() {
+            engine.play(url, StationRef { id: None }).unwrap();
+            let mut gains = Vec::new();
+            for _ in 0..seconds {
+                thread::sleep(Duration::from_secs(1));
+                gains.push(engine.level_adjustment().map_or("-".into(), |g| format!("{g:+.1}")));
+            }
+            engine.stop().unwrap();
+            thread::sleep(Duration::from_millis(500));
+            println!("{url}\n  gain each second: {}", gains.join(" "));
+        }
+        let learned = memory.0.lock().unwrap();
+        for (url, level) in learned.iter() {
+            println!("{:>6.1} LUFS  peak {:>5.1} dBFS  {url}", level.loudness_lufs, level.peak_dbfs);
+            assert!((-60.0..0.0).contains(&level.loudness_lufs), "{level:?}");
+        }
+        assert!(!learned.is_empty(), "no station learned");
     }
 }

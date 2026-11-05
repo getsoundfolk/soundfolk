@@ -3,8 +3,8 @@
 Spec for keeping the same perceived level from one station to the next, so the listener never has to touch the volume
 after switching.
 
-**Today:** nothing. The slider sets a gain (`audio::gain`, the cube of its position, see
-[04-audio-engine.md](04-audio-engine.md)), applied as is to whatever the station sends. TODO "Worth doing" lists it.
+**Today:** built on desktop (`audio/loudness.rs`, `db/loudness.rs`, `volume.rs`), on by default. Target, guess and
+time constants are still the reasoned values below, not tuned on measurements (§6).
 
 ---
 
@@ -63,7 +63,8 @@ Measurement and station gain run on the **decoder thread**, after conversion and
 * the slider stays in the callback, so moving it remains immediate despite the 2 s buffer.
 
 The engine's `Controls` get one more flag, `normalize: AtomicBool`, read by the decoder thread for each packet; turning
-the switch off ramps the station gain back to 0 dB within ~1 s (no jump).
+the switch off (or on) moves the station gain at 15 dB/s, so it gets there within ~1 s (no jump). The meter keeps
+measuring while the switch is off, so turning it on applies a known level at once.
 
 ### 3.2 Measuring
 
@@ -101,8 +102,8 @@ headroom rule of §3.4.
   The cost: with normalization on, everything sounds a few dB quieter than the same slider position off, and than
   Spotify at the same system volume. −14 would narrow that gap and leave less room to boost quiet stations; the
   measurement of §6 decides.
-* **Known station:** its last estimate is read from the database (§4) when `play` starts; the gain applies from the
-  first sample, then follows the live measure.
+* **Known station:** its last estimate is read from the database (§4) when the playback starts (the engine asks its
+  `LevelMemory`, set by the app); the gain applies from the first sample, then follows the live measure.
 * **Unknown station:** starts at the **median loudness of the stations already learned** (§4), once there are at
   least 20 of them; before that, at **−11 LUFS** (−5 dB), a guess for webradios to check against measurements (§6).
   The median, not a low percentile: a guess too low makes the listener raise the slider, then the station comes up
@@ -150,8 +151,9 @@ CREATE TABLE IF NOT EXISTS station_loudness (
 
 * Written when the station stops or changes, and every 60 s while it plays, only after 10 s of gated audio (a station
   heard for 2 s teaches nothing).
-* On a later listen, the stored value is the starting point; the more seconds behind it (`measured_s`), the slower the
-  live measure moves it during the first minute.
+* On a later listen, the stored value is the starting point; the more seconds behind it (`measured_s`, full weight at
+  10 min), the slower the live measure lowers it during the first minute (up to 3× the time constant). Only lowering:
+  a station that got louder is followed at the usual speed (principle 3).
 * A station whose stream changes (new URL, other bitrate) keeps its row when keyed by UUID: the level is the station's
   mastering, rarely the codec's.
 * **No expiry.** The row is a running estimate, updated at every listen, so a station that changes its processing is
@@ -167,9 +169,9 @@ CREATE TABLE IF NOT EXISTS station_loudness (
 * **⚙ Settings → Playback: "Constant volume"** — *Keeps the same level from one station to the next.* One switch,
   **on by default**: it is what nearly every listener wants, and its failure mode (a station a bit quieter than its
   own mastering) is mild.
-* Nothing in the player. The station sheet may show, in its technical details next to the codec and bitrate (a
-  secondary, folded section, not the sheet's first screen), *Level adjusted: −7 dB*, for the curious and for bug
-  reports.
+* Nothing in the player. The station sheet shows, in its details under the stream address, *Volume: Level
+  adjusted: −7 dB* (read every 2 s while the sheet is open, only while the station plays and the switch is on), for the
+  curious and for bug reports. The sheet has no folded section yet; if it gets one, the line moves there.
 * No per-station override in the first version (§6).
 
 ---
@@ -177,8 +179,9 @@ CREATE TABLE IF NOT EXISTS station_loudness (
 ## 6. Open questions
 
 * **Target and starting guess:** −16 LUFS and −11 LUFS are reasoned, not measured. Before tuning, log the estimate
-  of ~200 popular stations (a `cargo test -- --ignored` that plays each for 30 s) to see the real distribution. If
-  most sit between −14 and −11 LUFS, −14 may be the better target (§3.3).
+  of ~200 popular stations to see the real distribution: `cargo test -- --ignored live_loudness --nocapture` with
+  `SOUNDFOLK_STREAMS` and `SOUNDFOLK_SECONDS=30`. If most sit between −14 and −11 LUFS, −14 may be the better target
+  (§3.3). First four (2026-11-05, 20 s each): FIP −15.9, Radio Paradise −9.1, Radio 1 Rock −12.6, Fréquence 7 −12.4.
 * **Time constants:** 1 s learning, 2 s / 20 s by ear, on stations mixing music and talk (news, morning shows), where
   pumping would show first, and while zapping, where a slow first correction would show first.
 * **Very dynamic stations** (classical, jazz, ambient): one slow gain leaves their dynamics alone, which is wanted.
@@ -208,23 +211,25 @@ The stored levels (§4) are shared, so a station learned on desktop starts right
 ## 8. Changes
 
 **Backend** (`audio/`, `db/`)
-- [ ] `ebur128` dependency; `audio/loudness.rs`: gated meter, asymmetric estimate, gain with clamps, headroom rule
+- [x] `ebur128` dependency; `audio/loudness.rs`: gated meter, asymmetric estimate, gain with clamps, headroom rule
   and ramps (§3.2–3.5), with no engine dependency so it is unit-testable.
-- [ ] Decoder thread: meter + gain between `convert` and the ring buffer; `normalize` flag in `Controls`.
-- [ ] `play` takes the station's stored loudness (or none); the engine reports its estimate on stop and every 60 s
-  through a listener, as for player state.
-- [ ] `station_loudness` table, read and write, cleared with the history.
-- [ ] Setting `normalize_volume` (default on), command to set it, applied at start-up.
-- [ ] Starting guess: median of `station_loudness` once it has 20 rows, else −11 LUFS; reset of `measured_s` when the
+- [x] Decoder thread: meter + gain between `convert` and the ring buffer; `normalize` flag in `Controls`.
+- [x] The engine asks a `LevelMemory` (the database, set by the app) for the station's stored loudness and the
+  guess when a playback starts, and gives it the level on stop and every 60 s.
+- [x] `station_loudness` table, read and write, cleared with the history.
+- [x] Setting `constant_volume` (default on), command to set it, applied at start-up.
+- [x] Starting guess: median of `station_loudness` once it has 20 rows, else −11 LUFS; reset of `measured_s` when the
   live estimate stays 6 dB away for 30 s.
-- [ ] Tests: a sine at −8 / −16 / −26 LUFS converges to the target ±1 dB within the stated times (±1 dB within 2 s
+- [x] Tests: a sine at −8 / −16 / −26 LUFS converges to the target ±1 dB within the stated times (±1 dB within 2 s
   while learning); silence and a quiet segment do not raise the gain; a peaking quiet signal is not boosted past
-  −1 dBFS; a quiet 5 s intro before a loud signal never takes the gain above +3 dB; a stored level gives the right gain on the first sample; switching off ramps back to 0 dB.
-- [ ] `cargo test -- --ignored live_loudness`: the distribution of §6 on real stations.
+  −1 dBFS; a quiet 5 s intro before a loud signal never takes the gain above +3 dB; a stored level gives the right
+  gain on the first sample; switching off ramps back to 0 dB; a station that changed drops its history.
+- [x] `cargo test -- --ignored live_loudness`: levels learned on real stations.
+- [ ] Run it on ~200 stations and tune target, guess and time constants (§6).
 
 **Frontend**
-- [ ] "Constant volume" switch in ⚙ → Playback, translated.
-- [ ] "Level adjusted" line in the station sheet's technical details.
+- [x] "Constant volume" switch in ⚙ → Playback (English only, like the rest of the UI for now).
+- [x] "Level adjusted" line in the station sheet's details.
 
 **Docs**
-- [ ] [04-audio-engine.md](04-audio-engine.md): the meter in the pipeline diagram once built.
+- [x] [04-audio-engine.md](04-audio-engine.md): the meter in the pipeline diagram.

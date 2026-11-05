@@ -42,6 +42,7 @@ use tokio::sync::watch;
 
 use super::failure::{self, Failure};
 use super::icy::{IcyReader, TitleCallback};
+use super::loudness::StationLevel;
 use super::network::NetState;
 use super::output::OutputFormat;
 use super::{Cancel, Reporter};
@@ -78,6 +79,9 @@ pub struct Job {
     pub url: Url,
     pub format: OutputFormat,
     pub producer: Producer<f32>,
+    /// *Constant volume*: measures the station and applies its gain. Kept across reconnections
+    /// (same station); its level is saved when the playback ends.
+    pub level: StationLevel,
     pub reporter: Reporter,
     pub cancel: Arc<Cancel>,
     pub runtime: tokio::runtime::Handle,
@@ -618,6 +622,9 @@ fn decode(job: &mut Job, client: &Client, played: &mut bool, fired: &Fired) -> E
         decoded.copy_to_slice_interleaved(&mut interleaved);
         converted.clear();
         converter.process(&interleaved, &mut converted);
+        let controls = &job.reporter.controls;
+        job.level.process(&mut converted, controls.normalize());
+        controls.set_station_gain(job.level.leveler.gain_db() as f32);
 
         if !push_blocking(&mut job.producer, &converted, &job.cancel) {
             return End::Cancelled;

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 mod covers;
 mod history;
 mod identify;
+mod loudness;
 mod sessions;
 mod stats;
 
@@ -122,6 +123,16 @@ CREATE TABLE IF NOT EXISTS covers (
     track_key    TEXT PRIMARY KEY,
     url          TEXT,
     looked_up_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Loudness of each station heard, learned by Constant volume (docs/10-loudness.md): the
+-- Radio-Browser UUID, else the stream URL. Cleared with the history.
+CREATE TABLE IF NOT EXISTS station_loudness (
+    station_key   TEXT PRIMARY KEY,
+    loudness_lufs REAL NOT NULL,
+    peak_dbfs     REAL NOT NULL,
+    measured_s    REAL NOT NULL,
+    updated_at    INTEGER NOT NULL
 );
 
 -- Manually added stations: strictly local, never sent anywhere.

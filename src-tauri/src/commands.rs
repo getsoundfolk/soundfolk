@@ -661,6 +661,8 @@ pub async fn get_history_summary(db: State<'_, Database>) -> AppResult<HistorySu
 
 #[tauri::command]
 pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
+    // Station levels (Constant volume) say which stations were heard too.
+    db.clear_station_levels()?;
     Ok(db.clear_history()?)
 }
 

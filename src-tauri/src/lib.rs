@@ -15,6 +15,7 @@ mod recipes;
 mod track_services;
 mod tracks;
 mod tray;
+mod volume;
 
 use std::sync::{Arc, Mutex};
 
@@ -309,6 +310,8 @@ pub fn run() {
                 web_titles,
             );
             app.manage(favorite_repair::FavoriteRepair::default());
+            engine.set_normalize(volume::constant_volume(&app.state::<Database>()));
+            engine.set_level_memory(Arc::new(volume::DatabaseLevels(app.handle().clone())));
             app.manage(AudioState::new(engine, on_air));
             app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
 
@@ -409,6 +412,9 @@ pub fn run() {
             commands::set_autostart,
             notifications::get_track_notifications,
             notifications::set_track_notifications,
+            volume::get_constant_volume,
+            volume::set_constant_volume,
+            volume::get_level_adjustment,
             commands::get_title_status,
             commands::reload_recipes,
             commands::test_recipe,

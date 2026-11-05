@@ -223,6 +223,11 @@ export const api = {
   /** A notification for each new track while the window is in the background. */
   getTrackNotifications: () => invoke<boolean>('get_track_notifications'),
   setTrackNotifications: (enabled: boolean) => invoke<void>('set_track_notifications', { enabled }),
+  /** Constant volume: one gain per station so all play near the same loudness. */
+  getConstantVolume: () => invoke<boolean>('get_constant_volume'),
+  setConstantVolume: (enabled: boolean) => invoke<void>('set_constant_volume', { enabled }),
+  /** Gain Constant volume applies to the station playing, in dB; null when off or idle. */
+  getLevelAdjustment: () => invoke<number | null>('get_level_adjustment'),
   getWebTitles: () => invoke<boolean>('get_web_titles'),
   setWebTitles: (enabled: boolean) => invoke<void>('set_web_titles', { enabled }),
   getTitleStatus: () => invoke<TitleStatus>('get_title_status'),
