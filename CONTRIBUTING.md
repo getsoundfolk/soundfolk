@@ -48,6 +48,15 @@ git rebase --signoff main
 git push --force-with-lease
 ```
 
+### Local check
+
+A `commit-msg` hook ([`.githooks/commit-msg`](.githooks/commit-msg)) applies the same rule when you commit, before
+anything reaches GitHub. Enable it once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## AI-generated content
 
 You remain responsible for what you submit: review it, understand it, and do not submit code whose origin you

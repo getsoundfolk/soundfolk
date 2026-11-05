@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+#
+# Refuses a commit without a `Signed-off-by` line for its author, the rule the DCO check
+# (.github/scripts/check-dco.sh) applies to pull requests. Catching it here matters most for
+# direct pushes to main, which that check never sees and which cannot be rewritten afterwards.
+#
+# Enable it once per clone: git config core.hooksPath .githooks
+set -euo pipefail
+
+msg_file="$1"
+git_dir="$(git rev-parse --git-dir)"
+
+# Merge commits are not authored contributions (the DCO check ignores them too).
+[ -f "$git_dir/MERGE_HEAD" ] && exit 0
+
+# Author email, as it will be recorded: `Name <email> timestamp tz`.
+author_email="$(git var GIT_AUTHOR_IDENT | sed -E 's/.*<([^>]*)>.*/\1/')"
+
+# Ignore comment lines, as git does when it strips the message.
+signoffs="$(grep -v '^#' "$msg_file" | grep -iE '^Signed-off-by: .+ <[^>]+>[[:space:]]*$' || true)"
+
+if [ -z "$signoffs" ]; then
+  echo "commit-msg: no 'Signed-off-by' line. Commit with 'git commit -s' (see CONTRIBUTING.md)." >&2
+  exit 1
+fi
+if ! printf '%s\n' "$signoffs" | grep -qiF "<$author_email>"; then
+  echo "commit-msg: the 'Signed-off-by' email does not match the author email <$author_email>." >&2
+  exit 1
+fi
