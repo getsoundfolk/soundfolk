@@ -47,7 +47,7 @@ rtrb = "0.4"
 # compressed. The audio client turns it off (`no_gzip`).
 reqwest = { version = "0.13", default-features = false, features = ["gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
-rubato = "4.0.0"
+rubato = "5.0.1"
 
 # Track titles: accent folding for comparison keys
 unicode-normalization = "0.1"
