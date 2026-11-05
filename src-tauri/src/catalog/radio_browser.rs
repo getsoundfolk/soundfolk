@@ -11,6 +11,7 @@ use serde::Deserialize;
 use stream_download::http::reqwest::{Client, Url};
 use tokio::sync::OnceCell;
 
+use super::name_query::NameQuery;
 use super::{
     rank, CatalogError, CatalogFuture, CatalogSource, Health, SearchPage, SearchQuery, Station,
 };
@@ -28,6 +29,8 @@ pub struct RadioBrowser {
     servers: OnceCell<Vec<Url>>,
     /// Last mirror that responded, tried first.
     preferred: Mutex<Option<Url>>,
+    /// Whether the catalog still treats `%` in a name search as "any characters".
+    wildcards: OnceCell<bool>,
 }
 
 impl RadioBrowser {
@@ -37,7 +40,12 @@ impl RadioBrowser {
             .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| CatalogError::Network(e.to_string()))?;
-        Ok(Self { client, servers: OnceCell::new(), preferred: Mutex::new(None) })
+        Ok(Self {
+            client,
+            servers: OnceCell::new(),
+            preferred: Mutex::new(None),
+            wildcards: OnceCell::new(),
+        })
     }
 
     /// List of mirrors, discovered only once (falls back to the default mirror).
@@ -73,6 +81,28 @@ impl RadioBrowser {
                 hosts
             })
             .await
+    }
+
+    /// Checks once that `%` still means "any characters" in a name search. It does today (the
+    /// catalog passes the text to SQL `LIKE`), but the documentation does not promise it.
+    /// Thousands of names hold "radio" then an "a"; none holds the text `radio%a` itself.
+    async fn wildcards(&self) -> Result<bool, CatalogError> {
+        self.wildcards
+            .get_or_try_init(|| async {
+                let params = [
+                    ("name", "radio%a".to_string()),
+                    ("limit", "1".to_string()),
+                    ("hidebroken", "false".to_string()),
+                ];
+                let body = self.get("json/stations/search", &params).await?;
+                let (_, found) = parse_stations(&body)?;
+                if found == 0 {
+                    tracing::warn!("the catalog no longer reads % as a wildcard: slower name search");
+                }
+                Ok(found > 0)
+            })
+            .await
+            .copied()
     }
 
     /// GET on an API path, trying the mirrors one after the other.
@@ -113,12 +143,24 @@ impl CatalogSource for RadioBrowser {
             let mut stations = Vec::new();
             let mut exhausted = false;
 
+            // What to send as `name`, and how to filter what comes back (see `NameQuery`).
+            let name_query = q.text.as_deref().and_then(NameQuery::new);
+            let (name, filter) = match &name_query {
+                None => (None, None),
+                Some(n) if n.is_single() => (Some(n.longest_fragment().to_owned()), None),
+                Some(n) if self.wildcards().await? => (Some(n.wildcard_term()), Some((n, true))),
+                Some(n) => (Some(n.longest_fragment().to_owned()), Some((n, false))),
+            };
+            let wanted = |s: &Station| {
+                s.is_supported() && filter.is_none_or(|(n, trust)| n.matches(&s.name, trust))
+            };
+
             for _ in 0..MAX_PAGES_PER_SEARCH {
-                let params = search_params(&q, limit, offset);
+                let params = search_params(&q, name.as_deref(), limit, offset);
                 let body = self.get("json/stations/search", &params).await?;
                 let (page, raw_len) = parse_stations(&body)?;
                 offset += raw_len as u32;
-                stations.extend(page.into_iter().filter(Station::is_supported));
+                stations.extend(page.into_iter().filter(wanted));
 
                 if raw_len < limit as usize {
                     exhausted = true;
@@ -185,7 +227,8 @@ struct RawStation {
 }
 
 /// Query parameters of one catalog request.
-fn search_params(q: &SearchQuery, limit: u32, offset: u32) -> Vec<(&'static str, String)> {
+/// `name` replaces `q.text`, which [`NameQuery`] rewrites.
+fn search_params(q: &SearchQuery, name: Option<&str>, limit: u32, offset: u32) -> Vec<(&'static str, String)> {
     let mut params = vec![
         // Descending popularity: dead stations (0 clicks) naturally end up at the bottom.
         ("order", "clickcount".to_string()),
@@ -195,8 +238,8 @@ fn search_params(q: &SearchQuery, limit: u32, offset: u32) -> Vec<(&'static str,
         ("limit", limit.to_string()),
         ("offset", offset.to_string()),
     ];
-    if let Some(text) = &q.text {
-        params.push(("name", text.clone()));
+    if let Some(name) = name {
+        params.push(("name", name.to_owned()));
     }
     if let Some(code) = &q.country_code {
         params.push(("countrycode", code.clone()));
@@ -327,6 +370,14 @@ mod tests {
         assert_eq!(q.tag.as_deref(), Some("soul"));
         assert_eq!(q.limit, Some(super::super::MAX_LIMIT));
 
+        let pasted = |text: &str| {
+            SearchQuery { text: Some(text.into()), ..Default::default() }.sanitized().unwrap().text
+        };
+        assert_eq!(pasted("Wonder 80’s “Flashback”").as_deref(), Some("Wonder 80's \"Flashback\""));
+        assert_eq!(pasted("Radio–Canada — Ici…").as_deref(), Some("Radio-Canada - Ici..."));
+        assert_eq!(pasted("\u{feff} Radio\t\u{a0} Fr\u{ad}ance\u{200b}\n").as_deref(), Some("Radio France"));
+        assert_eq!(pasted(" \u{200b} "), None);
+
         let empty = SearchQuery { text: Some("   ".into()), ..Default::default() }.sanitized().unwrap();
         assert_eq!(empty.text, None);
         assert!(SearchQuery { country_code: Some("FRA".into()), ..Default::default() }
@@ -339,6 +390,29 @@ mod tests {
         assert!(is_uuid("ab30ca84-c228-4f57-8cac-816c69ef651d"));
         assert!(!is_uuid("../../etc/passwd"));
         assert!(!is_uuid("ab30ca84-c228-4f57-8cac-816c69ef651"));
+    }
+
+    /// Against the real API: `cargo test -- --ignored live_search`.
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_search_finds_every_spelling() {
+        let rb = RadioBrowser::new().unwrap();
+        assert!(rb.wildcards().await.unwrap());
+        // The catalog stores "Wonder 80's Flashback".
+        assert!(names(&rb, "Wonder 80’s Flashback").await.contains(&"Wonder 80's Flashback".to_owned()));
+        // Both apostrophes and the spaced form, nothing else in between.
+        let rock = names(&rb, "Rock'n'Roll").await;
+        assert!(rock.iter().any(|n| n.contains('’')), "{rock:?}");
+        assert!(rock.iter().any(|n| n.contains("Rock 'n' Roll")), "{rock:?}");
+        assert!(!rock.iter().any(|n| n.contains("Rock and Roll")), "{rock:?}");
+        // "Radio-Canada" and "Radio–Canada".
+        let canada = names(&rb, "Radio-Canada").await;
+        assert!(canada.iter().any(|n| n.contains("Radio-Canada")), "{canada:?}");
+    }
+
+    async fn names(rb: &RadioBrowser, text: &str) -> Vec<String> {
+        let query = SearchQuery { text: Some(text.into()), limit: Some(100), ..Default::default() };
+        rb.search(&query).await.unwrap().stations.into_iter().map(|s| s.name).collect()
     }
 
     /// Against the real API: `cargo test -- --ignored live_search`.
@@ -367,7 +441,7 @@ mod tests {
             tag: Some("soul".into()),
             ..Default::default()
         };
-        let params = search_params(&q, 30, 60);
+        let params = search_params(&q, Some("jazz"), 30, 60);
         let get = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str());
         assert_eq!(get("limit"), Some("30"));
         assert_eq!(get("offset"), Some("60"));

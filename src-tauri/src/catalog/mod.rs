@@ -6,6 +6,7 @@
 //! A station is never silently hidden: an unreachable station is ranked after the others
 //! and flagged, not removed.
 
+pub mod name_query;
 pub mod radio_browser;
 
 use std::future::Future;
@@ -111,6 +112,8 @@ impl SearchQuery {
         let clean = |v: &Option<String>| {
             v.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)
         };
+        let clean_text =
+            |v: &Option<String>| v.as_deref().map(catalog_text).filter(|s| !s.is_empty());
         let country_code = clean(&self.country_code).map(|c| c.to_ascii_uppercase());
         if let Some(code) = &country_code {
             if code.len() != 2 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
@@ -118,13 +121,44 @@ impl SearchQuery {
             }
         }
         Ok(Self {
-            text: clean(&self.text),
+            text: clean_text(&self.text),
             country_code,
-            tag: clean(&self.tag).map(|t| t.to_lowercase()),
+            tag: clean_text(&self.tag).map(|t| t.to_lowercase()),
             limit: Some(self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT)),
             offset: Some(self.offset.unwrap_or(0)),
         })
     }
+}
+
+/// Rewrites pasted text into the characters the catalog stores. The catalog already ignores case,
+/// accents, full-width forms and no-break spaces, but compares the rest character by character:
+/// a typographic `’` or `–`, a doubled space or an invisible character copied from a web page
+/// finds nothing ("Wonder 80’s Flashback" did). Most catalog names use the ASCII forms.
+/// Also trims the text.
+fn catalog_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '\u{2032}' | '\u{00B4}' | '`' => {
+                out.push('\'')
+            }
+            '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' | '\u{2033}' | '\u{00AB}'
+            | '\u{00BB}' => out.push('"'),
+            // Hyphen, non-breaking hyphen, figure dash, en and em dashes, minus sign.
+            '\u{2010}'..='\u{2015}' | '\u{2212}' => out.push('-'),
+            '\u{2026}' => out.push_str("..."),
+            // Zero-width characters, soft hyphen and byte order mark.
+            '\u{200B}'..='\u{200D}' | '\u{2060}' | '\u{00AD}' | '\u{FEFF}' => {}
+            c if c.is_whitespace() => {
+                if !out.is_empty() && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+            }
+            c => out.push(c),
+        }
+    }
+    out.truncate(out.trim_end().len());
+    out
 }
 
 /// Ranks stations by health status, keeping the catalog's popularity order
