@@ -23,6 +23,15 @@
   const subline = $derived(
     player.nowPlaying.title ? (player.nowPlaying.station ?? player.current?.name) : null,
   );
+  // Announced by the station's page: the next track, and when it starts.
+  const upNext = $derived.by(() => {
+    const next = player.nowPlaying.next;
+    if (!next) return null;
+    const text = next.artist ? `${next.artist} – ${next.title}` : next.title;
+    const at = next.started_at ? new Date(next.started_at) : null;
+    const time = at && !Number.isNaN(at.getTime()) ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+    return { text, time };
+  });
 
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
@@ -39,6 +48,11 @@
     <div class={styles.info}>
       <p class={styles.headline} title={headline}>{headline}</p>
       {#if subline}<p class={styles.subline}>{subline}</p>{/if}
+      {#if upNext}
+        <p class={styles.next} title={upNext.text}>
+          Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
+        </p>
+      {/if}
     </div>
     {#if history.onAir}
       {@const track = history.onAir}

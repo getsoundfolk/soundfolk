@@ -6,6 +6,7 @@ mod db;
 mod error;
 mod media_controls;
 mod musicbrainz;
+mod recipes;
 mod tracks;
 
 use std::sync::{Arc, Mutex};
@@ -15,7 +16,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{Emitter, Manager, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
-use audio::{DesktopAudioEngine, NowPlaying, PlayerState};
+use audio::{DesktopAudioEngine, NowPlaying, PlayerState, WebTitles};
 use catalog::radio_browser::RadioBrowser;
 use commands::{AudioState, CatalogState, OnAir};
 use db::Database;
@@ -53,10 +54,29 @@ fn journalize_title(
     if last.as_ref() == Some(&entry) {
         return;
     }
-    match app.state::<Database>().log_track(&entry.0, station.name.as_deref(), &entry.1) {
+    let db = app.state::<Database>();
+    let logged = match &now_playing.track {
+        // Artist and title given apart by the source: stored as given, with the real start.
+        Some(track) => {
+            let parsed = tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() };
+            let played_at = track.started_at.as_deref().and_then(history_time);
+            db.log_structured_track(&entry.0, station.name.as_deref(), &entry.1, &parsed, played_at.as_deref())
+        }
+        None => db.log_track(&entry.0, station.name.as_deref(), &entry.1),
+    };
+    match logged {
         Ok(()) => *last = Some(entry),
         Err(e) => tracing::warn!("listening history not saved: {e}"),
     }
+}
+
+/// An RFC 3339 start as stored in the history (`YYYY-MM-DD HH:MM:SS`, UTC), if plausible: not
+/// in the future, and less than a day old.
+fn history_time(started_at: &str) -> Option<String> {
+    let started: jiff::Timestamp = started_at.parse().ok()?;
+    let age = jiff::Timestamp::now().duration_since(started);
+    (age >= jiff::SignedDuration::ZERO && age < jiff::SignedDuration::from_hours(24))
+        .then(|| started.strftime("%Y-%m-%d %H:%M:%S").to_string())
 }
 
 /// Opens a listening session when a station starts playing and closes it when playback stops.
@@ -149,6 +169,12 @@ pub fn run() {
             let station = on_air.clone();
             let session_station = on_air.clone();
             let media = Arc::new(SystemMedia::new(app.handle().clone()));
+            let local_recipes = app.path().app_config_dir().ok().map(|dir| dir.join("recipes"));
+            let web_titles = Arc::new(WebTitles::new(
+                Box::new(move || recipes::load(local_recipes.as_deref())),
+                app.state::<Database>().get_bool(commands::SETTING_WEB_TITLES, true)?,
+            ));
+            app.manage(commands::WebTitlesState(web_titles.clone()));
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
@@ -167,6 +193,7 @@ pub fn run() {
                         tracing::warn!("failed to emit now-playing title: {e}");
                     }
                 }),
+                web_titles,
             );
             app.manage(AudioState::new(engine, on_air));
             app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
@@ -221,6 +248,8 @@ pub fn run() {
             commands::resolve_station,
             commands::get_click_counting,
             commands::set_click_counting,
+            commands::get_web_titles,
+            commands::set_web_titles,
             commands::add_personal_station,
             commands::list_personal_stations,
             commands::remove_personal_station,

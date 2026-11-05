@@ -17,8 +17,10 @@ mod decoder;
 mod icy;
 mod output;
 mod playlist;
+mod web_source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::time::Instant;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
@@ -28,10 +30,12 @@ pub use stream_download::http::reqwest::Url;
 
 pub use decoder::probe as probe_stream;
 pub use playlist::resolve_stream_url;
+pub use web_source::WebTitles;
 
 /// Common facade for all platforms (see `docs/04-audio-engine.md`).
 pub trait AudioEngine {
-    fn play(&mut self, url: &str) -> Result<(), String>;
+    /// `station` helps find the title of streams that do not announce it.
+    fn play(&mut self, url: &str, station: StationRef) -> Result<(), String>;
     /// Pause of a live stream: the sound is muted but the stream keeps being consumed,
     /// so `resume` picks up **live**, not where playback was paused.
     fn pause(&mut self) -> Result<(), String>;
@@ -52,11 +56,71 @@ pub enum PlayerState {
     Error(String),
 }
 
-/// What is on air: station name (`icy-name`) and current title (`StreamTitle`).
+/// What is on air: station name (`icy-name`) and current title.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct NowPlaying {
     pub station: Option<String>,
+    /// The title as shown: `Artist - Title` (ICY `StreamTitle`, or rebuilt from `track`).
     pub title: Option<String>,
+    /// Artist and title kept apart, when the source gives them that way.
+    pub track: Option<TrackInfo>,
+    /// The track announced next, when the source says.
+    pub next: Option<TrackInfo>,
+    /// The show on air, when the source says.
+    pub show: Option<String>,
+    pub source: Option<TitleSource>,
+}
+
+/// Where the title comes from (see `docs/07-now-playing.md`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TitleSource {
+    /// ICY `StreamTitle` in the stream.
+    Icy,
+    /// Tags carried by the stream itself (Ogg / Opus / FLAC Vorbis comments).
+    StreamTags,
+    /// The station's web page, read with a recipe.
+    Recipe,
+    /// The streaming server's status page (Icecast, Shoutcast).
+    Server,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TrackInfo {
+    pub artist: Option<String>,
+    pub title: String,
+    /// RFC 3339.
+    pub started_at: Option<String>,
+    pub duration_secs: Option<u32>,
+    pub cover: Option<String>,
+}
+
+impl TrackInfo {
+    fn display(&self) -> String {
+        match &self.artist {
+            Some(artist) => format!("{artist} - {}", self.title),
+            None => self.title.clone(),
+        }
+    }
+}
+
+impl From<&soundfolk_nowplaying::Track> for TrackInfo {
+    fn from(track: &soundfolk_nowplaying::Track) -> Self {
+        Self {
+            artist: track.artist.clone(),
+            title: track.title.clone(),
+            started_at: track.started_at.map(|t| t.to_string()),
+            duration_secs: track.duration.and_then(|d| u32::try_from(d.as_secs()).ok()),
+            cover: track.cover.clone(),
+        }
+    }
+}
+
+/// The station being played, to find a web source for its title.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StationRef {
+    /// Radio-Browser UUID, when the station comes from the catalog.
+    pub id: Option<String>,
 }
 
 pub type StateListener = Arc<dyn Fn(PlayerState) + Send + Sync>;
@@ -158,6 +222,41 @@ pub(crate) struct Reporter {
     status: Arc<Status>,
     controls: Arc<Controls>,
     cancel: Arc<Cancel>,
+    stream: Arc<StreamMeta>,
+}
+
+/// What the decoder learned about the stream, for the web title task.
+pub(crate) struct StreamMeta {
+    pub(crate) created: Instant,
+    /// The stream announced a title itself (ICY or tags): web sources stand down.
+    inband_title: AtomicBool,
+    /// Set once the stream is open.
+    opened: Mutex<Option<OpenedInfo>>,
+}
+
+impl Default for StreamMeta {
+    fn default() -> Self {
+        Self { created: Instant::now(), inband_title: AtomicBool::new(false), opened: Mutex::new(None) }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct OpenedInfo {
+    pub at: Instant,
+    /// The stream carries metadata (ICY `icy-metaint`, or an Ogg container).
+    pub inband: bool,
+    /// HTTP `Server` header.
+    pub server: Option<String>,
+}
+
+impl StreamMeta {
+    pub(crate) fn has_inband_title(&self) -> bool {
+        self.inband_title.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn opened(&self) -> Option<OpenedInfo> {
+        self.opened.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
 }
 
 impl Reporter {
@@ -187,8 +286,55 @@ impl Reporter {
         self.update_now_playing(|np| np.station = name);
     }
 
+    /// ICY `StreamTitle`.
     pub(crate) fn title(&self, title: String) {
-        self.update_now_playing(|np| np.title = Some(title));
+        self.stream.inband_title.store(true, Ordering::SeqCst);
+        self.update_now_playing(|np| {
+            *np = NowPlaying { station: np.station.take(), title: Some(title), source: Some(TitleSource::Icy), ..Default::default() };
+        });
+    }
+
+    /// Artist and title from the stream's own tags (Vorbis comments).
+    pub(crate) fn stream_tags(&self, artist: Option<String>, title: String) {
+        self.stream.inband_title.store(true, Ordering::SeqCst);
+        let track = TrackInfo { artist, title, started_at: None, duration_secs: None, cover: None };
+        self.update_now_playing(|np| {
+            *np = NowPlaying {
+                station: np.station.take(),
+                title: Some(track.display()),
+                track: Some(track),
+                source: Some(TitleSource::StreamTags),
+                ..Default::default()
+            };
+        });
+    }
+
+    /// What a web source says is on air. Ignored once the stream announced a title itself.
+    pub(crate) fn web_title(&self, on_air: &soundfolk_nowplaying::tracker::OnAir, source: TitleSource) {
+        if self.stream.has_inband_title() {
+            return;
+        }
+        let track = TrackInfo::from(&on_air.current);
+        self.update_now_playing(|np| {
+            *np = NowPlaying {
+                station: np.station.take(),
+                title: Some(track.display()),
+                track: Some(track),
+                next: on_air.next.as_ref().map(TrackInfo::from),
+                show: on_air.show.clone(),
+                source: Some(source),
+            };
+        });
+    }
+
+    /// The stream is open: whether it carries metadata, and which server sends it.
+    pub(crate) fn stream_opened(&self, inband: bool, server: Option<String>) {
+        *self.stream.opened.lock().unwrap_or_else(|p| p.into_inner()) =
+            Some(OpenedInfo { at: Instant::now(), inband, server });
+    }
+
+    pub(crate) fn stream_meta(&self) -> &StreamMeta {
+        &self.stream
     }
 
     fn update_now_playing(&self, change: impl FnOnce(&mut NowPlaying)) {
@@ -206,7 +352,7 @@ impl Reporter {
 }
 
 enum Command {
-    Play { url: Url, reply: Sender<Result<(), String>> },
+    Play { url: Url, station: StationRef, reply: Sender<Result<(), String>> },
     Stop,
 }
 
@@ -229,7 +375,8 @@ pub struct DesktopAudioEngine {
 }
 
 impl DesktopAudioEngine {
-    pub fn new(listener: StateListener, now_playing_listener: NowPlayingListener) -> Self {
+    /// `web`: where to look for the title of streams that do not announce it.
+    pub fn new(listener: StateListener, now_playing_listener: NowPlayingListener, web: Arc<WebTitles>) -> Self {
         let controls = Arc::new(Controls::new());
         let status = Arc::new(Status {
             state: Mutex::new(PlayerState::Idle),
@@ -242,7 +389,7 @@ impl DesktopAudioEngine {
         let (c, s) = (controls.clone(), status.clone());
         thread::Builder::new()
             .name("audio-engine".into())
-            .spawn(move || engine_loop(rx, c, s))
+            .spawn(move || engine_loop(rx, c, s, web))
             .expect("failed to start the audio-engine thread");
 
         Self { commands, controls, status }
@@ -258,7 +405,7 @@ impl DesktopAudioEngine {
 }
 
 impl AudioEngine for DesktopAudioEngine {
-    fn play(&mut self, url: &str) -> Result<(), String> {
+    fn play(&mut self, url: &str, station: StationRef) -> Result<(), String> {
         let url: Url = url.trim().parse().map_err(|e| format!("Invalid URL: {e}"))?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err(format!("Unsupported protocol: {}", url.scheme()));
@@ -266,7 +413,7 @@ impl AudioEngine for DesktopAudioEngine {
 
         let (reply, wait) = mpsc::channel();
         self.commands
-            .send(Command::Play { url, reply })
+            .send(Command::Play { url, station, reply })
             .map_err(|_| "The audio engine is stopped".to_string())?;
         wait.recv().map_err(|_| "The audio engine is stopped".to_string())?
     }
@@ -301,7 +448,7 @@ impl AudioEngine for DesktopAudioEngine {
     }
 }
 
-fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc<Status>) {
+fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc<Status>, web: Arc<WebTitles>) {
     // Dedicated runtime: it drives the HTTP download while the decoder thread
     // blocks on synchronous reads from the `stream-download` buffer.
     let runtime = match tokio::runtime::Builder::new_multi_thread()
@@ -330,11 +477,11 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
                 status.clear_now_playing();
                 status.set(PlayerState::Idle);
             }
-            Command::Play { url, reply } => {
+            Command::Play { url, station, reply } => {
                 controls.paused.store(false, Ordering::Relaxed);
                 status.clear_now_playing();
                 status.set(PlayerState::Connecting);
-                match start_session(url, &controls, &status, runtime.handle()) {
+                match start_session(url, station, &controls, &status, &web, runtime.handle()) {
                     Ok(new) => {
                         session = Some(new);
                         let _ = reply.send(Ok(()));
@@ -352,14 +499,23 @@ fn engine_loop(rx: mpsc::Receiver<Command>, controls: Arc<Controls>, status: Arc
 
 fn start_session(
     url: Url,
+    station: StationRef,
     controls: &Arc<Controls>,
     status: &Arc<Status>,
+    web: &Arc<WebTitles>,
     runtime: &tokio::runtime::Handle,
 ) -> Result<Session, String> {
     let (output, producer) = output::open(controls.clone())?;
     let cancel = Arc::new(Cancel::default());
-    let reporter =
-        Reporter { status: status.clone(), controls: controls.clone(), cancel: cancel.clone() };
+    let reporter = Reporter {
+        status: status.clone(),
+        controls: controls.clone(),
+        cancel: cancel.clone(),
+        stream: Arc::new(StreamMeta::default()),
+    };
+
+    // Streams that do not announce their title: look for it on the web.
+    web.spawn(url.clone(), station, reporter.clone(), cancel.clone(), runtime);
 
     decoder::spawn(decoder::Job {
         url,
@@ -377,6 +533,7 @@ fn start_session(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soundfolk_nowplaying::recipe::RecipeBook;
 
     #[test]
     fn cancel_runs_hook_once_even_if_registered_late() {
@@ -410,7 +567,12 @@ mod tests {
         });
         let cancel = Arc::new(Cancel::default());
         let reporter =
-            Reporter { status, controls: Arc::new(Controls::new()), cancel: cancel.clone() };
+            Reporter {
+            status,
+            controls: Arc::new(Controls::new()),
+            cancel: cancel.clone(),
+            stream: Arc::new(StreamMeta::default()),
+        };
 
         reporter.connecting();
         cancel.cancel();
@@ -443,6 +605,7 @@ mod tests {
             status: status.clone(),
             controls: Arc::new(Controls::new()),
             cancel: cancel.clone(),
+            stream: Arc::new(StreamMeta::default()),
         };
 
         reporter.station(Some("Radio".into()));
@@ -453,7 +616,66 @@ mod tests {
 
         let seen = seen.lock().unwrap();
         assert_eq!(seen.len(), 2);
-        assert_eq!(seen[1], NowPlaying { station: Some("Radio".into()), title: Some("A - B".into()) });
+        assert_eq!(
+            seen[1],
+            NowPlaying {
+                station: Some("Radio".into()),
+                title: Some("A - B".into()),
+                source: Some(TitleSource::Icy),
+                ..Default::default()
+            }
+        );
+        assert!(reporter.stream_meta().has_inband_title());
+    }
+
+    /// Plays Fréquence 7 muted: its stream has no metadata, the title comes from its web page.
+    #[test]
+    #[ignore = "network and sound card"]
+    fn live_title_from_a_recipe() {
+        let seen = Arc::new(Mutex::new(Vec::<NowPlaying>::new()));
+        let sink = seen.clone();
+        let web = Arc::new(WebTitles::new(Box::new(|| crate::recipes::load(None)), true));
+        let mut engine = DesktopAudioEngine::new(Arc::new(|_| {}), Arc::new(move |np| sink.lock().unwrap().push(np)), web);
+        engine.set_volume(0.0).unwrap();
+        engine.play("https://live.aurafm.org/Frequence7", StationRef { id: None }).unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while std::time::Instant::now() < deadline {
+            if seen.lock().unwrap().iter().any(|np| np.source == Some(TitleSource::Recipe)) {
+                break;
+            }
+            thread::sleep(std::time::Duration::from_millis(200));
+        }
+        engine.stop().unwrap();
+        let seen = seen.lock().unwrap();
+        let np = seen.iter().rev().find(|np| np.source == Some(TitleSource::Recipe)).expect("a title from the recipe");
+        println!("{np:#?}");
+        let track = np.track.as_ref().unwrap();
+        assert!(track.started_at.is_some(), "start resolved from the page's local time");
+    }
+
+    /// Plays an Ogg Vorbis stream muted: the title comes from its Vorbis comments. Set
+    /// `SOUNDFOLK_OGG_SECS` to listen longer and see chain changes (one per track).
+    #[test]
+    #[ignore = "network and sound card"]
+    fn live_title_from_ogg_tags() {
+        let seen = Arc::new(Mutex::new(Vec::<NowPlaying>::new()));
+        let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
+        let (sink, state_sink) = (seen.clone(), states.clone());
+        let web = Arc::new(WebTitles::new(Box::new(RecipeBook::default), false));
+        let mut engine = DesktopAudioEngine::new(
+            Arc::new(move |s| state_sink.lock().unwrap().push(s)),
+            Arc::new(move |np| sink.lock().unwrap().push(np)),
+            web,
+        );
+        engine.set_volume(0.0).unwrap();
+        engine.play("http://stream.metacast.eu/radio1rock.ogg", StationRef { id: None }).unwrap();
+        let secs = std::env::var("SOUNDFOLK_OGG_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        thread::sleep(std::time::Duration::from_secs(secs));
+        engine.stop().unwrap();
+        let titles: Vec<_> = seen.lock().unwrap().iter().filter_map(|np| np.title.clone().zip(np.source)).collect();
+        println!("titles: {titles:#?}\nstates: {:?}", states.lock().unwrap());
+        assert!(titles.iter().any(|(_, source)| *source == TitleSource::StreamTags), "{titles:?}");
+        assert!(!states.lock().unwrap().iter().any(|s| matches!(s, PlayerState::Error(_))));
     }
 
     /// Against the real network: `cargo test -- --ignored live_`.

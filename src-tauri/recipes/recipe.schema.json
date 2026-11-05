@@ -1,0 +1,311 @@
+{
+  "$defs": {
+    "Extract": {
+      "description": "How to read the page.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "CSS selectors. A field is `selector`, `selector@attribute` or `@attribute` (attribute of\nthe item itself); otherwise the element's text.",
+          "properties": {
+            "artist": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cover": {
+              "description": "Cover art URL.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "duration": {
+              "description": "Duration: seconds, `MM:SS` or ISO 8601.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "item": {
+              "description": "The element holding the track on air; the whole document when absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "next": {
+              "description": "The upcoming track(s), read with the same fields. Several matches = several tracks,\nin order.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "show": {
+              "description": "Name of the show on air (absolute, not relative to `item`).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "start": {
+              "description": "Start time: Unix timestamp, ISO 8601, or the station's local `HH:MM:SS`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "text": {
+              "description": "`Artist - Title` in one value, when the page does not split them.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "html",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Dotted paths (`now_playing.song.title`, `items.0.title`).",
+          "properties": {
+            "artist": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cover": {
+              "description": "Cover art URL.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "duration": {
+              "description": "Duration: seconds, `MM:SS` or ISO 8601.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "item": {
+              "description": "The element holding the track on air; the whole document when absent.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "next": {
+              "description": "The upcoming track(s), read with the same fields. Several matches = several tracks,\nin order.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "show": {
+              "description": "Name of the show on air (absolute, not relative to `item`).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "start": {
+              "description": "Start time: Unix timestamp, ISO 8601, or the station's local `HH:MM:SS`.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "text": {
+              "description": "`Artist - Title` in one value, when the page does not split them.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "title": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "One regular expression over the whole document, with named groups `artist`, `title`,\n`text`, `start`, `duration`.",
+          "properties": {
+            "pattern": {
+              "type": "string"
+            },
+            "type": {
+              "const": "text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "pattern"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Fetch": {
+      "additionalProperties": false,
+      "properties": {
+        "every": {
+          "description": "How often to read the page when the end of the track is unknown (`\"30s\"`, `\"1m\"`).\nOnly a hint: the engine enforces its own minimum and adapts to the track times.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "The page to read (http or https).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "Match": {
+      "additionalProperties": false,
+      "properties": {
+        "stations": {
+          "description": "Radio-Browser station UUIDs.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "streams": {
+          "description": "Stream URLs without the scheme (`host/path`), case-insensitive. A trailing `*` matches\nany path starting with what precedes it.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "Test": {
+      "additionalProperties": false,
+      "description": "A saved page and what the recipe must read from it.",
+      "properties": {
+        "artist": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "at": {
+          "description": "When the page was saved (RFC 3339), used to resolve local times.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "next_title": {
+          "description": "Expected title of the next track.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "page": {
+          "description": "Path of the saved page, relative to the recipe file.",
+          "type": "string"
+        },
+        "started_at": {
+          "description": "Expected start, RFC 3339 (requires `at`).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "page"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "extract": {
+      "$ref": "#/$defs/Extract"
+    },
+    "fetch": {
+      "$ref": "#/$defs/Fetch"
+    },
+    "ignore": {
+      "description": "Regular expressions: a title matching one of them (jingle, ad, station ID) is not shown\nas a track.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "match": {
+      "$ref": "#/$defs/Match",
+      "description": "Which stations the recipe applies to."
+    },
+    "name": {
+      "description": "Station name, for people reading the recipe.",
+      "type": "string"
+    },
+    "schema": {
+      "description": "Recipe format version (currently 1).",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "test": {
+      "description": "Fixtures checked by `recipe-check test`; stripped from the published list.",
+      "items": {
+        "$ref": "#/$defs/Test"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "name",
+    "match",
+    "fetch",
+    "extract"
+  ],
+  "title": "Recipe",
+  "type": "object"
+}

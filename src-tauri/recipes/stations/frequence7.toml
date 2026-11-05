@@ -1,0 +1,27 @@
+#:schema ../recipe.schema.json
+# Fréquence 7 (www.frequence7.net).
+# The Aura FM stream sends no ICY metadata; the station's web player shows the playlist.
+# The page is rendered server-side and always up to date: li.event_0 is on air, negative
+# numbers were played, positive ones are coming up. (The page's own live update over Mercure
+# SSE can lag and show the previous track.) Times are the station's local time.
+schema = 1
+name = "Fréquence 7"
+match = { streams = ["live.aurafm.org/Frequence7"] }
+fetch = { url = "https://www.frequence7.net/player/" }
+
+[extract]
+type = "html"
+item = "li.event_0"
+artist = ".artist"
+title = ".title"
+start = ".played-at"
+duration = "@data-duration"
+next = "li.event_1, li.event_2, li.event_3"
+
+[[test]]
+page = "../fixtures/frequence7.html"
+at = "2026-11-04T21:39:08Z"
+artist = "BLACK RAINBOWS"
+title = "Children Of Fire And Sacrifices"
+started_at = "2026-11-04T21:36:51Z"
+next_title = "Nino"

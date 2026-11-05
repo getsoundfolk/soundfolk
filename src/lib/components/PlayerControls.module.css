@@ -25,7 +25,8 @@
 }
 
 .headline,
-.subline {
+.subline,
+.next {
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -40,6 +41,11 @@
 .subline {
   font-size: 0.8rem;
   color: #9a9aab;
+}
+
+.next {
+  font-size: 0.75rem;
+  color: #74748a;
 }
 
 .like {

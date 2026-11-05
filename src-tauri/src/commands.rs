@@ -11,7 +11,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState};
+use crate::audio::{self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, StationRef, WebTitles};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType, Stats};
 use crate::error::AppResult;
@@ -59,6 +59,11 @@ pub struct CatalogState(pub Arc<dyn CatalogSource>);
 
 /// Setting: report to the catalog that a station is being played (enabled by default).
 const SETTING_CLICK_COUNTING: &str = "click_counting";
+/// Read the title of streams that do not announce it from the web (station page, server status).
+pub const SETTING_WEB_TITLES: &str = "web_titles";
+
+/// Web title sources, to turn them on or off from the settings.
+pub struct WebTitlesState(pub Arc<WebTitles>);
 /// True once the click-counting notice has been shown to the user.
 const SETTING_CLICK_NOTICE_SEEN: &str = "click_notice_seen";
 /// A station is only reported once it has been audible this long: zapping through
@@ -93,6 +98,8 @@ pub(crate) fn start_station(
     // Without a catalog ID, the URL identifies the station in the history.
     let id = station_id.clone().unwrap_or_else(|| url.clone());
     let name = station_name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+    // Lets a recipe recognise the station by its Radio-Browser UUID.
+    let station = StationRef { id: station_id.clone().filter(|id| is_catalog_id(id)) };
     *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name, url: url.clone() });
     let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
 
@@ -112,7 +119,7 @@ pub(crate) fn start_station(
         }
     }
     *audio.pending_click.lock().unwrap_or_else(|p| p.into_inner()) = pending_click;
-    audio.engine().play(&url)?;
+    audio.engine().play(&url, station)?;
     Ok(PlayOutcome { show_click_notice })
 }
 
@@ -196,6 +203,19 @@ pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppRe
     // If the user sets counting themselves, the notice no longer needs to be shown.
     db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
     Ok(db.set_bool(SETTING_CLICK_COUNTING, enabled)?)
+}
+
+#[tauri::command]
+pub async fn get_web_titles(db: State<'_, Database>) -> AppResult<bool> {
+    Ok(db.get_bool(SETTING_WEB_TITLES, true)?)
+}
+
+/// Applies from the next station played.
+#[tauri::command]
+pub async fn set_web_titles(db: State<'_, Database>, web: State<'_, WebTitlesState>, enabled: bool) -> AppResult<()> {
+    db.set_bool(SETTING_WEB_TITLES, enabled)?;
+    web.0.set_enabled(enabled);
+    Ok(())
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────

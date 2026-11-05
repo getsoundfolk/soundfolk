@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS favorites (
 );
 
 -- `artist`, `title` and `track_key` are parsed from `track_title` (see `tracks.rs`) and recomputed
--- when the parsing rules change; `track_title` is never altered.
+-- when the parsing rules change, unless `title_source` is set (artist and title given apart by the
+-- source); `track_title` is never altered.
 CREATE TABLE IF NOT EXISTS listening_history (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id   TEXT NOT NULL,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS listening_history (
     artist       TEXT,
     title        TEXT,
     track_key    TEXT,
+    title_source TEXT,
     played_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_history_played_at ON listening_history (played_at DESC);
@@ -336,7 +338,9 @@ impl Database {
 
 /// Brings a database created by an older version up to the current schema.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-    for column in ["station_name TEXT", "artist TEXT", "title TEXT", "track_key TEXT"] {
+    // `title_source`: NULL = parsed from `track_title`; 'source' = artist and title as the
+    // source gave them (never re-parsed).
+    for column in ["station_name TEXT", "artist TEXT", "title TEXT", "track_key TEXT", "title_source TEXT"] {
         add_column(conn, "listening_history", column)?;
     }
     Ok(())

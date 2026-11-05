@@ -1,0 +1,26 @@
+[package]
+name = "soundfolk-nowplaying"
+version = "0.1.0"
+description = "Network-free engine for now-playing recipes and adapters (Soundfolk)"
+edition = "2021"
+license = "MPL-2.0"
+rust-version = "1.85"
+
+[features]
+# `recipe-check` command-line tool; `cli` adds live fetching (blocking HTTP).
+cli = ["dep:ureq"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+schemars = "1"
+scraper = { version = "0.29", default-features = false, features = ["errors"] }
+regex-lite = "0.1"
+jiff = { version = "0.2", default-features = false, features = ["std"] }
+fastrand = "2"
+ureq = { version = "3", optional = true }
+
+[[bin]]
+name = "recipe-check"
+path = "src/bin/recipe-check.rs"

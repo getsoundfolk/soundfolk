@@ -6,6 +6,9 @@ edition = "2021"
 license = "MPL-2.0"
 rust-version = "1.85"
 
+[workspace]
+members = ["crates/nowplaying"]
+
 [lib]
 name = "soundfolk_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -41,6 +44,11 @@ rubato = "4.0.0"
 
 # Track titles: accent folding for comparison keys
 unicode-normalization = "0.1"
+
+# Titles of streams without metadata: recipes, server status pages, scheduling (no I/O)
+soundfolk-nowplaying = { path = "crates/nowplaying" }
+# HTTP `Date` headers and timestamps
+jiff = { version = "0.2", default-features = false, features = ["std"] }
 
 # System media controls (MPRIS): pure Rust D-Bus (zbus), no libdbus needed
 [target.'cfg(target_os = "linux")'.dependencies]

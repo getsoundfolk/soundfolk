@@ -6,7 +6,8 @@ isolated per target platform, while the Rust backend and the Tauri interface see
 
 ```rust
 pub trait AudioEngine {
-    fn play(&mut self, url: &str) -> Result<(), String>;
+    /// `station` (its Radio-Browser UUID) helps find the title of streams that do not announce it.
+    fn play(&mut self, url: &str, station: StationRef) -> Result<(), String>;
     /// On a live stream, pausing mutes the sound but keeps consuming the stream,
     /// so `resume` picks up on air, not where the pause happened.
     fn pause(&mut self) -> Result<(), String>;

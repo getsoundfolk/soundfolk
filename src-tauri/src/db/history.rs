@@ -75,6 +75,34 @@ impl Database {
         Ok(())
     }
 
+    /// A track whose source gives artist and title apart (station page, stream tags): stored as
+    /// given, never re-parsed. `played_at`: when it started, if the source says
+    /// (`YYYY-MM-DD HH:MM:SS`, UTC).
+    pub fn log_structured_track(
+        &self,
+        station_id: &str,
+        station_name: Option<&str>,
+        track_title: &str,
+        parsed: &ParsedTitle,
+        played_at: Option<&str>,
+    ) -> rusqlite::Result<()> {
+        self.conn().execute(
+            "INSERT INTO listening_history
+                 (station_id, station_name, track_title, artist, title, track_key, title_source, played_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'source', COALESCE(?7, CURRENT_TIMESTAMP))",
+            params![
+                station_id,
+                station_name,
+                track_title,
+                parsed.artist,
+                parsed.title,
+                tracks::track_key(parsed),
+                played_at
+            ],
+        )?;
+        Ok(())
+    }
+
     /// Newest first; `query` filters on the title, artist or station name.
     pub fn recent_history(&self, limit: u32, query: Option<&str>) -> rusqlite::Result<Vec<HistoryEntry>> {
         let pattern = query.filter(|q| !q.trim().is_empty()).map(contains_pattern);
@@ -175,7 +203,8 @@ impl Database {
         let tx = conn.transaction()?;
         {
             let mut select = tx.prepare(&format!(
-                "SELECT h.id, h.track_title, {STATION_NAME} FROM listening_history h {STATION_JOINS}"
+                "SELECT h.id, h.track_title, {STATION_NAME} FROM listening_history h {STATION_JOINS}
+                 WHERE h.title_source IS NULL"
             ))?;
             let rows: Vec<(i64, String, Option<String>)> = select
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
@@ -223,6 +252,29 @@ fn parsed_from(row: &Row<'_>, artist: usize, title: usize, raw: usize) -> rusqli
         Some(title) => ParsedTitle { artist: row.get(artist)?, title },
         None => ParsedTitle { artist: None, title: row.get(raw)? },
     })
+}
+
+#[cfg(test)]
+mod structured_tests {
+    use super::*;
+
+    #[test]
+    fn structured_tracks_keep_their_fields_and_start() {
+        let db = Database::open_in_memory().unwrap();
+        let parsed = ParsedTitle { artist: Some("MELLOW MOOD / ANTHONY B".into()), title: "Home - Abroad".into() };
+        db.log_structured_track("f7", Some("Fréquence 7"), "MELLOW MOOD / ANTHONY B - Home - Abroad", &parsed, Some("2026-11-04 21:36:51"))
+            .unwrap();
+        db.log_track("f7", Some("Fréquence 7"), "Air - Sexy Boy").unwrap();
+        // A parser change re-parses ICY titles only.
+        db.set_str(SETTING_PARSER_VERSION, "0").unwrap();
+        db.reparse_history_if_outdated().unwrap();
+
+        let history = db.recent_history(10, None).unwrap();
+        let structured = history.iter().find(|e| e.station_id == "f7" && e.title == "Home - Abroad").unwrap();
+        assert_eq!(structured.artist.as_deref(), Some("MELLOW MOOD / ANTHONY B"));
+        assert_eq!(structured.played_at, "2026-11-04 21:36:51");
+        assert!(history.iter().any(|e| e.title == "Sexy Boy"));
+    }
 }
 
 #[cfg(test)]

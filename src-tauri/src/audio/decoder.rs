@@ -29,7 +29,7 @@ use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, FormatReader, TrackType};
 use symphonia::core::io::{MediaSource, MediaSourceStream, ReadOnlySource};
-use symphonia::core::meta::MetadataOptions;
+use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag};
 
 use super::icy::{IcyReader, TitleCallback};
 use super::output::OutputFormat;
@@ -178,6 +178,10 @@ struct OpenedStream {
     mime: Option<String>,
     /// Station name announced by the server (`icy-name`).
     station: Option<String>,
+    /// HTTP `Server` header (Icecast, Shoutcast…).
+    server: Option<String>,
+    /// The stream can announce titles itself (ICY, or tags in an Ogg container).
+    inband: bool,
 }
 
 fn build_client() -> Result<Client, String> {
@@ -221,6 +225,7 @@ fn open_stream(
             .header("icy-name")
             .map(|n| n.trim().to_owned())
             .filter(|n| !n.is_empty());
+        let server = http.header("server").map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
 
         let storage = BoundedStorageProvider::new(
             MemoryStorageProvider,
@@ -231,9 +236,9 @@ fn open_stream(
                 .await
                 .map_err(|e| format!("Cannot read stream: {e}"))?;
         tracing::debug!(ms = started.elapsed().as_millis() as u64, "prefetch complete");
-        Ok::<_, String>((reader, mime, metaint, station))
+        Ok::<_, String>((reader, mime, metaint, station, server))
     });
-    let (reader, mime, metaint, station) = opened.map_err(End::Failed)?;
+    let (reader, mime, metaint, station, server) = opened.map_err(End::Failed)?;
 
     // Cancelling = stopping the download, which unblocks a read waiting for data.
     let token = reader.cancellation_token();
@@ -280,7 +285,9 @@ fn open_stream(
         .make_audio_decoder(params, &AudioDecoderOptions::default())
         .map_err(|e| End::Failed(format!("Unsupported codec: {e}")))?;
 
-    Ok(OpenedStream { format, decoder, track_id, mime, station })
+    // Ogg streams change title by starting a new chain with new Vorbis comments.
+    let inband = metaint.is_some() || format.format_info().short_name == "ogg";
+    Ok(OpenedStream { format, decoder, track_id, mime, station, server, inband })
 }
 
 fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
@@ -293,12 +300,14 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
             reporter.title(title);
         })
     };
-    let OpenedStream { mut format, mut decoder, track_id, mime, station } =
+    let OpenedStream { mut format, mut decoder, mut track_id, mime, station, server, inband } =
         match open_stream(client, &job.url, &job.runtime, &job.cancel, on_title, started) {
             Ok(opened) => opened,
             Err(end) => return end,
         };
     job.reporter.station(station);
+    job.reporter.stream_opened(inband, server);
+    report_tags(&job.reporter, format.metadata().skip_to_latest());
     tracing::info!(url = %job.url, mime = ?mime, "stream opened");
 
     // ── 3. Decoding ──────────────────────────────────────────────────────────
@@ -315,8 +324,19 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
             Ok(Some(packet)) => packet,
             Ok(None) => return End::Failed("The stream ended".into()),
             Err(_) if job.cancel.is_cancelled() => return End::Cancelled,
-            // Ogg logical chain change: start over with a fresh connection.
-            Err(SymphoniaError::ResetRequired) => return End::Failed("Stream reset".into()),
+            // New Ogg chain (Icecast does this at every title change): new tags, maybe a new
+            // track and codec setup. Continue on the same connection with a fresh decoder.
+            Err(SymphoniaError::ResetRequired) => {
+                report_tags(&job.reporter, format.metadata().skip_to_latest());
+                match reset_decoder(format.as_ref()) {
+                    Ok((id, new)) => {
+                        track_id = id;
+                        decoder = new;
+                        continue;
+                    }
+                    Err(message) => return End::Failed(message),
+                }
+            }
             Err(e) => return End::Failed(format!("Playback interrupted: {e}")),
         };
         if packet.track_id != track_id {
@@ -367,6 +387,43 @@ fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
             job.reporter.audible();
         }
     }
+}
+
+/// Decoder for the stream's audio track after an Ogg chain change.
+fn reset_decoder(format: &dyn FormatReader) -> Result<(u32, Box<dyn AudioDecoder>), String> {
+    let track = format.default_track(TrackType::Audio).ok_or("No audio track in the stream")?;
+    let params = track.codec_params.as_ref().and_then(|p| p.audio()).ok_or("Audio parameters missing")?;
+    let decoder = symphonia::default::get_codecs()
+        .make_audio_decoder(params, &AudioDecoderOptions::default())
+        .map_err(|e| format!("Unsupported codec: {e}"))?;
+    Ok((track.id, decoder))
+}
+
+/// Publishes the title carried by the stream's tags (Vorbis comments), if any.
+fn report_tags(reporter: &Reporter, revision: Option<&MetadataRevision>) {
+    if let Some((artist, title)) = revision.and_then(title_from_tags) {
+        tracing::debug!(?artist, %title, "title from stream tags");
+        reporter.stream_tags(artist, title);
+    }
+}
+
+/// Artist and title from a metadata revision (global tags first, then per track).
+fn title_from_tags(revision: &MetadataRevision) -> Option<(Option<String>, String)> {
+    let tags = revision.media.tags.iter().chain(revision.per_track.iter().flat_map(|t| t.metadata.tags.iter()));
+    let (mut artist, mut title) = (None, None);
+    for tag in tags {
+        match &tag.std {
+            Some(StandardTag::TrackTitle(t)) if title.is_none() => title = clean(t),
+            Some(StandardTag::Artist(a)) if artist.is_none() => artist = clean(a),
+            _ => {}
+        }
+    }
+    Some((artist, title?))
+}
+
+fn clean(text: &str) -> Option<String> {
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 /// Pushes all samples; waits (in 5 ms steps) when the ring buffer is full, which naturally

@@ -23,14 +23,17 @@ CREATE TABLE IF NOT EXISTS favorites (
 ```
 
 ### `listening_history`
-Tracks played on air, recorded from the stream's ICY metadata (consecutive duplicates are skipped).
+Tracks played on air, recorded from the stream's metadata or from the station's web page (consecutive duplicates are
+skipped; see [07-now-playing.md](07-now-playing.md)).
 `station_name` is copied at listening time, because catalog stations are not stored locally: without it, a catalog
 UUID could not be shown by name. Rows from before this column have it `NULL`; the app then falls back to the favorite
 or personal station of the same ID, if any.
 
 `track_title` is the raw title and is never altered. `artist`, `title` and `track_key` are parsed from it (`tracks.rs`:
 station signature removed, then `Artist - Title` or `Title by Artist`). When the parsing rules change, the
-`title_parser_version` setting no longer matches and every row is re-parsed at startup. `track_key` ignores case,
+`title_parser_version` setting no longer matches and every row is re-parsed at startup. Rows whose source gave the
+artist and title apart (station page, Vorbis comments) have `title_source = 'source'`: they are stored as given, with
+the real start time in `played_at`, and never re-parsed. `track_key` ignores case,
 accents, punctuation, a leading "The", featured artists and bracketed noise such as `(Remastered)`: two spellings of the
 same track share it.
 ```sql
@@ -42,6 +45,7 @@ CREATE TABLE IF NOT EXISTS listening_history (
     artist       TEXT,
     title        TEXT,
     track_key    TEXT,
+    title_source TEXT,
     played_at    DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```

@@ -9,13 +9,18 @@
 
   let clickCounting = $state(true);
   let identify = $state(false);
+  let webTitles = $state(true);
   let version = $state<string | null>(null);
   let back: HTMLButtonElement | undefined = $state();
 
   onMount(async () => {
     back?.focus();
     try {
-      [clickCounting, identify] = await Promise.all([api.getClickCounting(), api.getTrackIdentification()]);
+      [clickCounting, identify, webTitles] = await Promise.all([
+        api.getClickCounting(),
+        api.getTrackIdentification(),
+        api.getWebTitles(),
+      ]);
     } catch (e) {
       player.error = errorMessage(e);
     }
@@ -29,6 +34,16 @@
       if (!enabled) player.clickNotice = false;
     } catch (e) {
       clickCounting = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
+
+  async function changeWebTitles(enabled: boolean) {
+    webTitles = enabled;
+    try {
+      await api.setWebTitles(enabled);
+    } catch (e) {
+      webTitles = !enabled;
       player.error = errorMessage(e);
     }
   }
@@ -83,6 +98,24 @@
 
       <label class={styles.option}>
         <span class={styles.text}>
+          <span class={styles.name}>Find the track on air on the station's website</span>
+          <span class={styles.detail}>
+            When a stream doesn't announce its tracks, Soundfolk reads the station's web page or its streaming
+            server's status, only while you listen to it. That site sees your IP address. Applies from the next
+            station you play.
+          </span>
+        </span>
+        <input
+          class={styles.toggle}
+          type="checkbox"
+          role="switch"
+          checked={webTitles}
+          onchange={(e) => changeWebTitles(e.currentTarget.checked)}
+        />
+      </label>
+
+      <label class={styles.option}>
+        <span class={styles.text}>
           <span class={styles.name}>Identify my liked tracks on MusicBrainz</span>
           <span class={styles.detail}>
             The artist and title of tracks you like (+ IP address) are looked up in the open MusicBrainz database to
@@ -113,6 +146,10 @@
         <div>
           <dt>Station catalog</dt>
           <dd>Radio-Browser</dd>
+        </div>
+        <div>
+          <dt>Now-playing recipes</dt>
+          <dd>soundfolk-recipes contributors (ODbL)</dd>
         </div>
       </dl>
     </section>

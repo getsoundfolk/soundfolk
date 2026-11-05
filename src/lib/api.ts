@@ -6,7 +6,28 @@ export type PlayerState =
   | { status: 'idle' | 'connecting' | 'playing' | 'paused' }
   | { status: 'error'; message: string };
 
-export type NowPlaying = { station: string | null; title: string | null };
+export type TrackInfo = {
+  artist: string | null;
+  title: string;
+  /** RFC 3339. */
+  started_at: string | null;
+  duration_secs: number | null;
+  cover: string | null;
+};
+
+/** Where the title comes from: the stream itself, the station's web page, or the server's status. */
+export type TitleSource = 'icy' | 'stream_tags' | 'recipe' | 'server';
+
+export type NowPlaying = {
+  station: string | null;
+  /** `Artist - Title` as shown. */
+  title: string | null;
+  /** Artist and title apart, when the source gives them that way. */
+  track?: TrackInfo | null;
+  next?: TrackInfo | null;
+  show?: string | null;
+  source?: TitleSource | null;
+};
 
 export type Health =
   | { status: 'ok' }
@@ -161,6 +182,8 @@ export const api = {
 
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),
+  getWebTitles: () => invoke<boolean>('get_web_titles'),
+  setWebTitles: (enabled: boolean) => invoke<void>('set_web_titles', { enabled }),
 };
 
 /** What the player can play, whatever the station's origin. */
