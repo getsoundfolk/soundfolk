@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::audio::{
@@ -24,7 +24,7 @@ use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 use crate::track_services::{self, CustomService};
 
 /// Station being played, as the history records it.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OnAir {
     pub id: String,
     pub name: Option<String>,
@@ -74,6 +74,23 @@ const SETTING_TRACK_SERVICES: &str = "track_services";
 const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
 /// Volume the user last chose (`0.0..=1.0`), restored at the next launch.
 const SETTING_VOLUME: &str = "volume";
+/// Last station played (JSON `OnAir`): the app opens with it in the player, ready to play.
+const SETTING_LAST_STATION: &str = "last_station";
+
+/// Last station played in a previous run, loaded in the player at launch.
+pub(crate) fn saved_station(db: &Database) -> Option<OnAir> {
+    let json = db.get_str(SETTING_LAST_STATION).inspect_err(|e| tracing::warn!("last station not read: {e}")).ok()??;
+    serde_json::from_str(&json).inspect_err(|e| tracing::warn!("last station not restored: {e}")).ok()
+}
+
+fn save_station(db: &Database, station: &OnAir) {
+    let saved = serde_json::to_string(station)
+        .map_err(|e| e.to_string())
+        .and_then(|json| db.set_str(SETTING_LAST_STATION, &json).map_err(|e| e.to_string()));
+    if let Err(e) = saved {
+        tracing::warn!("last station not saved: {e}");
+    }
+}
 
 /// Web title sources, to turn them on or off from the settings.
 pub struct WebTitlesState(pub Arc<WebTitles>);
@@ -113,7 +130,9 @@ pub(crate) fn start_station(
     let name = station_name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
     // Lets a recipe recognise the station by its Radio-Browser UUID.
     let station = StationRef { id: station_id.clone().filter(|id| is_catalog_id(id)) };
-    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name, url: url.clone() });
+    let on_air = OnAir { id, name, url: url.clone() };
+    save_station(&db, &on_air);
+    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(on_air);
     app.state::<CoversState>().0.set_station(station.id.clone());
     let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
     crate::favorite_repair::watch(app, station_id.as_deref(), &url);
@@ -222,7 +241,7 @@ pub async fn get_player_state(audio: State<'_, AudioState>) -> AppResult<PlayerS
     Ok(audio.engine().state())
 }
 
-/// Last station played, for a window opened again while the app kept playing in the background.
+/// Last station played (in this run or the previous one), for the player to show it ready to play.
 #[tauri::command]
 pub async fn get_current_station(audio: State<'_, AudioState>) -> AppResult<Option<ResolvedStation>> {
     Ok(audio.station().map(|s| ResolvedStation {
@@ -767,4 +786,26 @@ pub async fn report_station(
     comment: Option<String>,
 ) -> AppResult<i64> {
     Ok(db.add_report(&station_id, report_type, comment.as_deref())?)
+}
+
+#[cfg(test)]
+mod last_station_tests {
+    use super::*;
+
+    #[test]
+    fn last_station_survives_a_restart() {
+        let db = Database::open_in_memory().unwrap();
+        assert!(saved_station(&db).is_none());
+        let fip = OnAir { id: "uuid-fip".into(), name: Some("FIP".into()), url: "https://example.org/fip.mp3".into() };
+        save_station(&db, &fip);
+        let back = saved_station(&db).unwrap();
+        assert_eq!((back.id, back.name, back.url), (fip.id, fip.name, fip.url));
+    }
+
+    #[test]
+    fn a_damaged_last_station_is_ignored() {
+        let db = Database::open_in_memory().unwrap();
+        db.set_str(SETTING_LAST_STATION, "{not json").unwrap();
+        assert!(saved_station(&db).is_none());
+    }
 }

@@ -193,7 +193,7 @@ impl Database {
     }
 
     #[cfg(test)]
-    fn open_in_memory() -> rusqlite::Result<Self> {
+    pub(crate) fn open_in_memory() -> rusqlite::Result<Self> {
         Self::init(Connection::open_in_memory()?)
     }
 

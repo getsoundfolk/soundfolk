@@ -227,7 +227,8 @@ pub fn run() {
             app.manage(Database::open(data_dir.join("soundfolk.db"))?);
             app.manage(WindowGeometry::default());
 
-            let on_air = Arc::new(Mutex::new(None::<OnAir>));
+            // The last station is in the player from launch: Play (window, tray, media keys) starts it.
+            let on_air = Arc::new(Mutex::new(commands::saved_station(&app.state::<Database>())));
             let last_logged = Arc::new(Mutex::new(None::<Logged>));
             let session_logged = last_logged.clone();
 

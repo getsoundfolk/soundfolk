@@ -68,7 +68,7 @@ class PlayerStore {
       this.favorites = await api.listFavorites();
       this.volume = (await api.getVolume()) ?? this.volume;
       await api.setVolume(this.volume);
-      // The window may be opened again while the app kept playing in the background.
+      // The last station played, in this run (app kept playing in the background) or the previous one.
       this.current = await api.getCurrentStation();
     });
     return () => offs.forEach((off) => off());
