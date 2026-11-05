@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 .box {
+  /* Holds the visually hidden live region, which would otherwise escape the scrolling settings and lengthen the page. */
+  position: relative;
   border: 1px solid #2c2c36;
   border-radius: 0.7rem;
   background: #20202a;
