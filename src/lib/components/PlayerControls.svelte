@@ -132,4 +132,12 @@
     <span class={styles.dot} aria-hidden="true"></span>
     {message}
   </p>
+
+  {#if status === 'error' && player.goneFavorite && player.isFavorite(player.goneFavorite)}
+    <p class={styles.ask}>
+      Remove it from your favorites?
+      <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(true)}>Yes</button>
+      <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(false)}>No</button>
+    </p>
+  {/if}
 </section>

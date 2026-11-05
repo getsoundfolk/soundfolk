@@ -172,6 +172,35 @@
   background: #ff5252;
 }
 
+/* "Remove it from your favorites?" under the error of a favorite gone from the catalog. */
+.ask {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.82rem;
+  color: #c9c9d4;
+}
+
+.answer {
+  padding: 0.2rem 0.7rem;
+  border: 1px solid #4a4a56;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #ececf1;
+  font: inherit;
+  cursor: pointer;
+}
+
+.answer:hover {
+  background: #3a3a46;
+}
+
+.answer:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
 @keyframes pulse {
   50% {
     opacity: 0.25;

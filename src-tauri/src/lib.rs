@@ -6,6 +6,7 @@ mod covers;
 mod db;
 mod error;
 mod export;
+mod favorite_repair;
 mod media_controls;
 mod musicbrainz;
 mod recipe_list;
@@ -283,6 +284,7 @@ pub fn run() {
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
+                    let state = favorite_repair::on_state(&state_handle, state);
                     track_session(&state_handle, &session_station, &session_logged, &state);
                     commands::schedule_click(&state_handle, &state);
                     state_media.show_state(&state);
@@ -300,6 +302,7 @@ pub fn run() {
                 }),
                 web_titles,
             );
+            app.manage(favorite_repair::FavoriteRepair::default());
             app.manage(AudioState::new(engine, on_air));
             app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
 

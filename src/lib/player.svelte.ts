@@ -29,6 +29,8 @@ class PlayerStore {
   titleStatus = $state<TitleStatus | null>(null);
   /** What a local recipe the user just saved reads (or why it is not used). */
   recipeNotice = $state<RecipeNotice | null>(null);
+  /** Favorite that failed and is no longer in the catalog: the player offers to remove it. */
+  goneFavorite = $state<string | null>(null);
 
   /** Audio is (or is about to be) playing: the main button becomes Stop. */
   active = $derived(this.state.status !== 'idle' && this.state.status !== 'error');
@@ -38,11 +40,17 @@ class PlayerStore {
   /** Call once on mount; returns the unsubscribe function. */
   async init(): Promise<() => void> {
     const offs = [
-      await listen<PlayerState>('player:state', (e) => (this.state = e.payload)),
+      await listen<PlayerState>('player:state', (e) => {
+        this.state = e.payload;
+        if (e.payload.status !== 'error') this.goneFavorite = null;
+      }),
+      await listen<string>('favorite:gone', (e) => (this.goneFavorite = e.payload)),
       await listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
       await listen<Cover>('player:cover', (e) => (this.cover = e.payload)),
       await listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
       await listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
+      // A favorite that had moved now plays from its new address, saved by the backend.
+      await listen('favorites:changed', () => this.run(async () => (this.favorites = await api.listFavorites()))),
       // Station switched from the system media controls (next / previous favorite)
       await listen<StationChange>('player:station', (e) => {
         const { show_click_notice, ...station } = e.payload;
@@ -103,6 +111,17 @@ class PlayerStore {
           genre: station.genre ?? null,
         });
       }
+      this.favorites = await api.listFavorites();
+    });
+  }
+
+  /** Answer to "Remove it from your favorites?" after a favorite vanished from the catalog. */
+  async answerGoneFavorite(remove: boolean) {
+    const id = this.goneFavorite;
+    this.goneFavorite = null;
+    if (!remove || !id) return;
+    await this.run(async () => {
+      await api.removeFavorite(id);
       this.favorites = await api.listFavorites();
     });
   }

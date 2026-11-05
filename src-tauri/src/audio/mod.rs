@@ -455,6 +455,14 @@ impl DesktopAudioEngine {
     pub fn now_playing(&self) -> NowPlaying {
         self.status.now_playing().clone()
     }
+
+    /// Shows `message` as the playback error, even when that error already is the state: the
+    /// listener may have held it back (see `crate::favorite_repair`).
+    pub(crate) fn show_error(&self, message: String) {
+        let mut state = self.status.lock();
+        *state = PlayerState::Error(message.clone());
+        (self.status.listener)(PlayerState::Error(message));
+    }
 }
 
 impl AudioEngine for DesktopAudioEngine {

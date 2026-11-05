@@ -116,6 +116,7 @@ pub(crate) fn start_station(
     *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(OnAir { id, name, url: url.clone() });
     app.state::<CoversState>().0.set_station(station.id.clone());
     let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
+    crate::favorite_repair::watch(app, station_id.as_deref(), &url);
 
     // Decided before playing: the first sound may come before `play` returns.
     let mut show_click_notice = false;
@@ -175,7 +176,7 @@ async fn count_click_if_still_on_air(app: &AppHandle, play: u64, station_id: &st
 }
 
 /// Catalog stations have a UUID; personal stations (`user:…`) are never reported.
-fn is_catalog_id(id: &str) -> bool {
+pub(crate) fn is_catalog_id(id: &str) -> bool {
     !id.starts_with("user:") && id.len() == 36
 }
 
