@@ -160,10 +160,14 @@
     menu = { id: row.id, style };
   }
 
-  // A fixed menu would stay put while its row scrolls away: close it on any scroll.
+  // A fixed menu would stay put while its row scrolls away: close it on any scroll, except one
+  // of the menu itself (it scrolls when the window is too short to show all its items).
   $effect(() => {
     if (!menu) return;
-    const close = () => (menu = null);
+    const close = (e: Event) => {
+      if (e.target instanceof Element && e.target.closest(`.${styles.menu}`)) return;
+      menu = null;
+    };
     document.addEventListener('scroll', close, { capture: true, passive: true });
     return () => document.removeEventListener('scroll', close, { capture: true });
   });

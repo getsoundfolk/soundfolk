@@ -168,6 +168,8 @@
   position: fixed;
   z-index: 10;
   overflow-y: auto;
+  /* Scrolling past either end must not scroll the list behind, which would close the menu. */
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   width: 12rem;
