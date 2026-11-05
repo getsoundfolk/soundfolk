@@ -80,7 +80,7 @@ listening stats must be crossed with the sessions.
 - [ ] Volume normalisation across stations (loudness differs a lot, switching station jumps the level). No ReplayGain
   on streams: a per-station gain learned while listening and stored in the DB, or a slow AGC on EBU R128 loudness in
   the engine.
-- [ ] Track notifications while in the background — or only when an artist you liked comes on air.
+- [x] Track notifications while in the background (setting in ⚙, off by default).
 
 **Smaller**
 - [ ] Make the tray optional; check GNOME without the AppIndicator extension (closing may hide the window with no
@@ -94,6 +94,13 @@ listening stats must be crossed with the sessions.
   `navigator.clipboard`: WebKitGTK only allows it right after a click in the page, so "Copy" from the native
   right-click menu (`main.ts`) and the recipe fixture copied after a page fetch (`commands.rs`) would be refused.
   Retest on X11 and Wayland. Low priority: build time and binary size only.
+- [ ] Clock drift between the station's server and the sound card (desktop engine). Nothing compensates it: at a
+  typical 20–100 ppm the connect burst (3–5 s) runs out after ~10–70 h of unbroken listening (a 1 s gap, then
+  rebuffering), or the lag builds up until Icecast drops the client. Reconnects (sleep, network change) reset it.
+  **Measure first**: log the buffer fill every minute, play two or three stations overnight (one at 44.1 kHz, one
+  at 48 kHz). If it moves by more than ~0.5 s/h, or gaps show up with no network cause: replace `rubato::Fft` by
+  rubato's high-quality sinc `Async` resampler, its ratio nudged by a few ppm from the buffer fill (not `Slip`,
+  the cheap variant). Desktop only: on mobile `AVPlayer` / `ExoPlayer` keep the hardware decoding (battery).
 
 **From desktop radio player feedback (r/selfhosted, r/linux…)** — not yet in the app:
 - [ ] Tray menu: play / pause, mute, switch between favorite stations (today: show / hide and quit only).

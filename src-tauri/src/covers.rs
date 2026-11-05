@@ -164,8 +164,9 @@ pub struct Covers {
 /// The app icon, shipped in the binary: the media controls need it as a file.
 const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
 
-/// Writes the app icon to the cache folder (once) and returns its `file://` address.
-fn app_icon_file(app: &tauri::AppHandle) -> Option<String> {
+/// Writes the app icon to the cache folder (once) and returns its `file://` address (also the
+/// icon of the track notifications).
+pub fn app_icon_file(app: &tauri::AppHandle) -> Option<String> {
     let dir = app.path().app_cache_dir().ok()?;
     let path = dir.join("soundfolk.png");
     let current = std::fs::read(&path).is_ok_and(|bytes| bytes == APP_ICON);

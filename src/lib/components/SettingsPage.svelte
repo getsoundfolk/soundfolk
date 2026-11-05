@@ -15,6 +15,7 @@
   let identify = $state(false);
   let webTitles = $state(true);
   let autostart = $state(false);
+  let trackNotifications = $state(false);
   let version = $state<string | null>(null);
   let back: HTMLButtonElement | undefined = $state();
 
@@ -110,10 +111,11 @@
       .then((enabled) => (autostart = enabled))
       .catch((e) => (player.error = errorMessage(e)));
     try {
-      [clickCounting, identify, webTitles] = await Promise.all([
+      [clickCounting, identify, webTitles, trackNotifications] = await Promise.all([
         api.getClickCounting(),
         api.getTrackIdentification(),
         api.getWebTitles(),
+        api.getTrackNotifications(),
       ]);
     } catch (e) {
       player.error = errorMessage(e);
@@ -138,6 +140,16 @@
       await api.setAutostart(enabled);
     } catch (e) {
       autostart = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
+
+  async function changeTrackNotifications(enabled: boolean) {
+    trackNotifications = enabled;
+    try {
+      await api.setTrackNotifications(enabled);
+    } catch (e) {
+      trackNotifications = !enabled;
       player.error = errorMessage(e);
     }
   }
@@ -279,6 +291,26 @@
           role="switch"
           checked={autostart}
           onchange={(e) => changeAutostart(e.currentTarget.checked)}
+        />
+      </label>
+    </section>
+
+    <section class={styles.group} aria-labelledby="settings-notifications">
+      <h2 class={styles.groupTitle} id="settings-notifications">Notifications</h2>
+
+      <label class={styles.option}>
+        <span class={styles.text}>
+          <span class={styles.name}>Track notifications</span>
+          <span class={styles.detail}>
+            Shows a notification when a new track starts and the Soundfolk window is in the background.
+          </span>
+        </span>
+        <input
+          class={styles.toggle}
+          type="checkbox"
+          role="switch"
+          checked={trackNotifications}
+          onchange={(e) => changeTrackNotifications(e.currentTarget.checked)}
         />
       </label>
     </section>

@@ -220,6 +220,9 @@ export const api = {
   /** Launch at login, hidden in the notification area. */
   getAutostart: () => invoke<boolean>('get_autostart'),
   setAutostart: (enabled: boolean) => invoke<void>('set_autostart', { enabled }),
+  /** A notification for each new track while the window is in the background. */
+  getTrackNotifications: () => invoke<boolean>('get_track_notifications'),
+  setTrackNotifications: (enabled: boolean) => invoke<void>('set_track_notifications', { enabled }),
   getWebTitles: () => invoke<boolean>('get_web_titles'),
   setWebTitles: (enabled: boolean) => invoke<void>('set_web_titles', { enabled }),
   getTitleStatus: () => invoke<TitleStatus>('get_title_status'),

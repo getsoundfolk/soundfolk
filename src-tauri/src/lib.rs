@@ -9,6 +9,7 @@ mod export;
 mod favorite_repair;
 mod media_controls;
 mod musicbrainz;
+mod notifications;
 mod recipe_list;
 mod recipes;
 mod track_services;
@@ -42,21 +43,22 @@ const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60
 /// the database, which also catches another spelling of the title). After a stop (`last_logged`
 /// cleared, see `track_session`), the same track is heard again and gets its own entry. Some radios
 /// send their own name as the title between tracks: that is not a track, so it is skipped.
+/// Returns whether a new entry was added: a new track on air.
 fn journalize_title(
     app: &tauri::AppHandle,
     station: &Mutex<Option<OnAir>>,
     last_logged: &Mutex<Option<Logged>>,
     now_playing: &NowPlaying,
-) {
+) -> bool {
     let Some(title) = now_playing.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) else {
-        return;
+        return false;
     };
     let Some(station) = station.lock().unwrap_or_else(|p| p.into_inner()).clone() else {
-        return;
+        return false;
     };
     let is_station_name = |name: Option<&str>| name.is_some_and(|n| n.trim().eq_ignore_ascii_case(title));
     if is_station_name(station.name.as_deref()) || is_station_name(now_playing.station.as_deref()) {
-        return;
+        return false;
     }
 
     let mut last = last_logged.lock().unwrap_or_else(|p| p.into_inner());
@@ -71,7 +73,7 @@ fn journalize_title(
                 Err(e) => tracing::warn!("listening history not updated: {e}"),
             }
         }
-        return;
+        return false;
     }
     let structured = now_playing.track.is_some();
     let continuing = last.is_some();
@@ -92,8 +94,14 @@ fn journalize_title(
         None => db.log_track(&entry.0, station.name.as_deref(), &entry.1, continuing),
     };
     match logged {
-        Ok(_) => *last = Some(Logged { station_id: entry.0, title: entry.1, structured }),
-        Err(e) => tracing::warn!("listening history not saved: {e}"),
+        Ok(_) => {
+            *last = Some(Logged { station_id: entry.0, title: entry.1, structured });
+            true
+        }
+        Err(e) => {
+            tracing::warn!("listening history not saved: {e}");
+            false
+        }
     }
 }
 
@@ -252,6 +260,11 @@ pub fn run() {
                 .ok();
             let covers = covers::Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
             app.manage(commands::CoversState(covers.clone()));
+            app.manage(notifications::TrackNotifications::new(
+                app.handle(),
+                &app.state::<Database>(),
+                covers::app_icon_file(app.handle()),
+            ));
             let local_recipes = app.path().app_config_dir().ok().map(|dir| dir.join("recipes"));
             let events = app.handle().clone();
             let web_titles = Arc::new(WebTitles::new(
@@ -282,8 +295,12 @@ pub fn run() {
                     }
                 }),
                 Arc::new(move |now_playing: NowPlaying| {
-                    journalize_title(&title_handle, &station, &last_logged, &now_playing);
+                    let new_track = journalize_title(&title_handle, &station, &last_logged, &now_playing);
                     let name = station.lock().unwrap_or_else(|p| p.into_inner()).as_ref().and_then(|s| s.name.clone());
+                    if new_track {
+                        let notifications = title_handle.state::<notifications::TrackNotifications>();
+                        notifications.track(&now_playing, name.as_deref());
+                    }
                     covers.update(now_playing.clone(), name);
                     if let Err(e) = title_handle.emit(NOW_PLAYING_EVENT, now_playing) {
                         tracing::warn!("failed to emit now-playing title: {e}");
@@ -338,7 +355,13 @@ pub fn run() {
             }
             // The tray menu offers to show the window or to hide it, whichever it would do. Being
             // minimized or restored comes as a resize (or a focus change), closing as `Destroyed`.
+            // Track notifications are only for when the window does not have the focus.
             if window.label() == MAIN_WINDOW {
+                match event {
+                    WindowEvent::Focused(focused) => notifications::set_foreground(*focused),
+                    WindowEvent::Destroyed => notifications::set_foreground(false),
+                    _ => {}
+                }
                 match event {
                     WindowEvent::Destroyed => tray::show_window_state(window.app_handle(), false),
                     WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
@@ -384,6 +407,8 @@ pub fn run() {
             commands::set_web_titles,
             commands::get_autostart,
             commands::set_autostart,
+            notifications::get_track_notifications,
+            notifications::set_track_notifications,
             commands::get_title_status,
             commands::reload_recipes,
             commands::test_recipe,

@@ -19,6 +19,10 @@ onwards.
 * **Launch at login (desktop):** off by default, turned on in ⚙. Soundfolk then starts in the notification area,
   without its window (and so without its web view) and without playing; the last station is loaded, so Play in the
   tray menu or on the media keys starts it. If no notification area icon can show, the window opens after all.
+* **Track notifications (desktop):** off by default, turned on in ⚙. Each new track in the history (not a repeated
+  title, nor the station's name between tracks) shows a desktop notification while the window does not have the
+  focus: title, then artist and station. On Linux each one replaces the previous one and is transient, so a long
+  listen does not fill the notification list.
 * **Playback resumption (mobile, future):** the last station stays in the system media controls (Android Quick
   Settings and lock screen, Android 13+ through Media3's `onPlaybackResumption`; iOS Now Playing) after the app is
   closed, and Play there starts it without opening the app. On by default; can be turned off in the settings, effective
