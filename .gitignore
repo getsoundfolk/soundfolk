@@ -39,6 +39,7 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Local assistant tooling
+# Local assistant tooling (shared settings, such as .claude/settings.json, are committed)
 .claude/settings.local.json
 .claude/worktrees/
+CLAUDE.local.md
