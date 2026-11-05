@@ -19,6 +19,7 @@ use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::db::{Database, Favorite, HistoryEntry, LikedTrack, PersonalStation, ReportType, Stats};
 use crate::error::AppResult;
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
+use crate::track_services::{self, CustomService};
 
 /// Station being played, as the history records it.
 #[derive(Debug, Clone)]
@@ -64,6 +65,11 @@ pub struct CatalogState(pub Arc<dyn CatalogSource>);
 const SETTING_CLICK_COUNTING: &str = "click_counting";
 /// Read the title of streams that do not announce it from the web (station page, server status).
 pub const SETTING_WEB_TITLES: &str = "web_titles";
+
+/// Services listed under "Find this track on", by id. Unset: the frontend's defaults.
+const SETTING_TRACK_SERVICES: &str = "track_services";
+/// Sites the user added to that menu (JSON list of `CustomService`).
+const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
 
 /// Web title sources, to turn them on or off from the settings.
 pub struct WebTitlesState(pub Arc<WebTitles>);
@@ -361,6 +367,34 @@ fn open_path(app: &AppHandle, path: &std::path::Path) -> AppResult<()> {
     app.opener()
         .open_path(path.display().to_string(), None::<&str>)
         .map_err(|e| crate::error::AppError::from(format!("could not open {}: {e}", path.display())))
+}
+
+/// Ids of the services shown in a track's menu, or `None` if the user never chose.
+#[tauri::command]
+pub async fn get_track_services(db: State<'_, Database>) -> AppResult<Option<Vec<String>>> {
+    Ok(db.get_list(SETTING_TRACK_SERVICES)?)
+}
+
+#[tauri::command]
+pub async fn set_track_services(db: State<'_, Database>, ids: Vec<String>) -> AppResult<()> {
+    let ids: Vec<String> = ids.into_iter().filter(|id| !id.is_empty() && !id.contains(',')).collect();
+    Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?)
+}
+
+/// Sites the user added. A stored list that no longer passes the checks is dropped, not trusted.
+#[tauri::command]
+pub async fn get_custom_track_services(db: State<'_, Database>) -> AppResult<Vec<CustomService>> {
+    let Some(json) = db.get_str(SETTING_CUSTOM_TRACK_SERVICES)? else { return Ok(Vec::new()) };
+    let stored: Vec<CustomService> = serde_json::from_str(&json).unwrap_or_default();
+    Ok(stored.into_iter().filter_map(|s| track_services::validate(s).ok()).collect())
+}
+
+/// Replaces the whole list. Nothing is saved if one site fails the checks.
+#[tauri::command]
+pub async fn set_custom_track_services(db: State<'_, Database>, services: Vec<CustomService>) -> AppResult<()> {
+    let services = track_services::validate_all(services)?;
+    let json = serde_json::to_string(&services).map_err(|e| e.to_string())?;
+    Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────

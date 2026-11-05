@@ -5,11 +5,14 @@
   import { api, errorMessage, type HistoryEntry, type LikedTrack } from '../api';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
-  import { displayTitle, shareText, TRACK_SERVICES } from '../trackLinks';
+  import { displayTitle, shareText } from '../trackLinks';
+  import { trackServices } from '../trackServices.svelte';
   import styles from './HistoryPanel.module.css';
   import StatsPanel from './StatsPanel.svelte';
 
   const LIMIT = 200;
+
+  trackServices.load();
 
   type View = 'all' | 'liked' | 'stats';
   const VIEWS: { id: View; label: string }[] = [
@@ -266,13 +269,15 @@
               >
               {#if menu?.id === row.id}
                 <div class={styles.menu} style={menu.style} role="menu">
-                  <p class={styles.heading}>Find this track on</p>
-                  {#each TRACK_SERVICES as service (service.name)}
-                    <button class={styles.item} type="button" role="menuitem" onclick={() => act(() => openUrl(service.url(row.search_query)))}>
-                      {service.name}
-                    </button>
-                  {/each}
-                  <hr class={styles.separator} />
+                  {#if trackServices.enabled.length}
+                    <p class={styles.heading}>Find this track on</p>
+                    {#each trackServices.enabled as service (service.id)}
+                      <button class={styles.item} type="button" role="menuitem" onclick={() => act(() => openUrl(service.url(row.search_query)))}>
+                        {service.name}
+                      </button>
+                    {/each}
+                    <hr class={styles.separator} />
+                  {/if}
                   <button class={styles.item} type="button" role="menuitem" onclick={() => copy(displayTitle(row), 'Title copied')}>
                     Copy title
                   </button>

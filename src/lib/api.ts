@@ -197,7 +197,18 @@ export const api = {
     }),
   getLocalRecipes: () => invoke<LocalRecipes>('get_local_recipes'),
   openRecipesFolder: () => invoke<void>('open_recipes_folder'),
+  getTrackServices: () => invoke<string[] | null>('get_track_services'),
+  setTrackServices: (ids: string[]) => invoke<void>('set_track_services', { ids }),
+  getCustomTrackServices: () => invoke<CustomService[]>('get_custom_track_services'),
+  setCustomTrackServices: (services: CustomService[]) => invoke<void>('set_custom_track_services', { services }),
 };
+
+/** A site the user added to a track's menu: `{query}` in `template` stands for the track. */
+export interface CustomService {
+  id: string;
+  name: string;
+  template: string;
+}
 
 /** What the player can play, whatever the station's origin. */
 export interface Playable {

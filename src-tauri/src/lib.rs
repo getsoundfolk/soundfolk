@@ -7,6 +7,7 @@ mod error;
 mod media_controls;
 mod musicbrainz;
 mod recipes;
+mod track_services;
 mod tracks;
 
 use std::sync::{Arc, Mutex};
@@ -270,6 +271,10 @@ pub fn run() {
             commands::edit_recipe,
             commands::get_local_recipes,
             commands::open_recipes_folder,
+            commands::get_track_services,
+            commands::set_track_services,
+            commands::get_custom_track_services,
+            commands::set_custom_track_services,
             commands::add_personal_station,
             commands::list_personal_stations,
             commands::remove_personal_station,

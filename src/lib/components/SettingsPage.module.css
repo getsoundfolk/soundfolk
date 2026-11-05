@@ -158,6 +158,230 @@
   transform: translateX(1rem);
 }
 
+/* Track services: compact chips, one fieldset per group, so twenty sites stay one screen. */
+.services {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #2c2c36;
+  border-radius: 0.7rem;
+  background: #20202a;
+}
+
+/* Floated, a legend is laid out inside the box instead of cutting through its border. */
+.servicesLegend {
+  float: left;
+  width: 100%;
+  padding: 0;
+}
+
+.servicesLegend .name,
+.servicesLegend .detail {
+  display: block;
+}
+
+.chips {
+  clear: both;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #3a3a46;
+  border-radius: 999px;
+  color: #9a9aab;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip:hover {
+  border-color: #55556a;
+  color: #ececf1;
+}
+
+.chip:has(input:checked) {
+  border-color: #f0a028;
+  background: rgb(240 160 40 / 0.12);
+  color: #ececf1;
+}
+
+.chip:has(input:focus-visible) {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+/* The chip itself shows the state; the checkbox stays for keyboard and screen readers. */
+.chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.chip:has(input:checked)::before {
+  content: '✓';
+  font-size: 0.72rem;
+  color: #f0a028;
+}
+
+/* A user site: its chip, and a × to remove it. */
+.customChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.remove {
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #7c7c8c;
+  font: inherit;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remove:hover {
+  background: #3a1f22;
+  color: #f3b3b8;
+}
+
+.addSite {
+  align-self: flex-start;
+  padding: 0.3rem 0.65rem;
+  border: 1px dashed #3a3a46;
+  border-radius: 999px;
+  background: transparent;
+  color: #9a9aab;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.addSite:hover {
+  border-color: #f0a028;
+  color: #ececf1;
+}
+
+.siteForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  clear: both;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: #9a9aab;
+  font-size: 0.76rem;
+}
+
+.field input {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #3a3a46;
+  border-radius: 0.5rem;
+  background: #1a1a21;
+  color: #ececf1;
+  font: inherit;
+  font-size: 0.84rem;
+}
+
+.field input:focus {
+  border-color: #f0a028;
+  outline: none;
+}
+
+.hint {
+  margin: 0;
+  color: #7c7c8c;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.hint code {
+  color: #c9c9d6;
+}
+
+.formError {
+  margin: 0;
+  color: #f3b3b8;
+  font-size: 0.76rem;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+}
+
+.primary {
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #f0a028;
+  color: #1a1a21;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.remove:focus-visible,
+.addSite:focus-visible,
+.primary:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+.servicesFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 0;
+  color: #9a9aab;
+  font-size: 0.76rem;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #f0a028;
+  font: inherit;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
 .about {
   display: flex;
   flex-direction: column;
