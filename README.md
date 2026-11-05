@@ -5,7 +5,28 @@
 Tauri v2 + Svelte 5 + Rust audio engine (`stream-download` → `symphonia` → `cpal`) + SQLite (`rusqlite`).
 Specs in [`docs/`](docs/).
 
-## Prerequisites (Debian/Ubuntu)
+## Install (Debian/Ubuntu)
+
+A `.deb` package is built automatically (see [`.github/workflows/deb.yml`](.github/workflows/deb.yml)):
+each tagged version is attached to its [release](https://github.com/raphaelh/soundfolk/releases), and a
+build of `main` is published every night as the **nightly** pre-release.
+
+```bash
+sudo apt install ./Soundfolk_*_amd64.deb
+```
+
+The package is built on Ubuntu 22.04, so it installs on **Ubuntu 22.04 or later** and **Debian 12 or later**
+(amd64). Older releases lack the required glibc and WebKitGTK 4.1 versions.
+
+To check that a `.deb` was built by this repository's CI:
+
+```bash
+gh attestation verify Soundfolk_*_amd64.deb -R raphaelh/soundfolk
+```
+
+## Build from source
+
+### Prerequisites (Debian/Ubuntu)
 
 ```bash
 sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
@@ -15,7 +36,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
 Plus Rust (stable ≥ 1.85) and Node ≥ 20. `libasound2-dev` is required by `cpal` (ALSA; under
 PipeWire/PulseAudio, the `pipewire-alsa` / `pulseaudio-alsa` compatibility layer is enough).
 
-## Run
+### Run
 
 ```bash
 npm install
