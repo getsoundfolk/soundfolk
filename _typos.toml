@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MPL-2.0
+# typos (https://github.com/crate-ci/typos): spelling mistakes in code and docs.
+# Run locally: typos   (fix in place: typos -w)
+
+[files]
+# Station lists measured from the outside: names as the stations write them.
+extend-exclude = ["*.tsv"]
+
+[default.extend-words]
+# Fréquence 7, a French station (recipes/stations/frequence7.toml)
+frequence = "frequence"
+# Cadena SER, a Spanish network
+ser = "ser"
