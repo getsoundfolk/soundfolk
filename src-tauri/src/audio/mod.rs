@@ -47,8 +47,18 @@ pub trait AudioEngine {
     fn pause(&mut self) -> Result<(), String>;
     fn resume(&mut self) -> Result<(), String>;
     fn stop(&mut self) -> Result<(), String>;
-    /// `volume` is clamped to `0.0..=1.0`.
+    /// `volume` is the slider position, clamped to `0.0..=1.0`; the gain follows a
+    /// perceptual curve (see [`gain`]), so the middle of the slider sounds half as loud.
     fn set_volume(&mut self, volume: f32) -> Result<(), String>;
+}
+
+/// Gain applied to the samples for a slider position in `0.0..=1.0`.
+///
+/// Loudness is perceived on a log scale: a linear `sample * position` crowds the whole range
+/// into the first third of the slider. A cube (as PulseAudio / PipeWire do) is close to a
+/// 60 dB dB-scale fader, and still reaches true silence at 0.
+pub(crate) fn gain(position: f32) -> f32 {
+    position.clamp(0.0, 1.0).powi(3)
 }
 
 /// State published to the frontend (`{ "status": "error", "message": "…" }`).
@@ -136,6 +146,7 @@ pub type NowPlayingListener = Arc<dyn Fn(NowPlaying) + Send + Sync>;
 
 /// Parameters read by the real-time callback (atomics: no locks on the audio side).
 pub(crate) struct Controls {
+    /// Gain applied to the samples (already through [`gain`]), not the slider position.
     volume: AtomicU32,
     paused: AtomicBool,
 }
@@ -504,7 +515,7 @@ impl AudioEngine for DesktopAudioEngine {
         if !volume.is_finite() {
             return Err("Invalid volume".into());
         }
-        self.controls.volume.store(volume.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed);
+        self.controls.volume.store(gain(volume).to_bits(), Ordering::Relaxed);
         Ok(())
     }
 }
@@ -643,6 +654,21 @@ fn start_session(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn volume_curve_is_perceptual() {
+        use super::gain;
+        assert_eq!(gain(0.0), 0.0);
+        assert_eq!(gain(1.0), 1.0);
+        assert_eq!(gain(-1.0), 0.0);
+        assert_eq!(gain(2.0), 1.0);
+        // Half the slider is about -18 dB, not the -6 dB of a linear gain.
+        let half_db = 20.0 * gain(0.5).log10();
+        assert!((-19.0..-17.0).contains(&half_db), "{half_db}");
+        // Monotonic: moving the slider up never lowers the sound.
+        let steps: Vec<f32> = (0..=100).map(|i| gain(i as f32 / 100.0)).collect();
+        assert!(steps.windows(2).all(|w| w[0] < w[1]));
+    }
+
     use super::*;
 
     #[test]

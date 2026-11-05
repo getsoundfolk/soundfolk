@@ -148,7 +148,130 @@
 
 .volume {
   flex: 1;
-  accent-color: #f0a028;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.speaker {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #9a9aab;
+  cursor: pointer;
+}
+
+.speaker:hover {
+  background: #2c2c36;
+  color: #ececf1;
+}
+
+.speaker[aria-pressed='true'] {
+  color: #ff8a80;
+}
+
+.speaker:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
+/* The track fills up to the thumb (`--fill`, set from the value); the thumb only shows its
+   full size on hover or while dragging, so at rest the bar reads as a level. */
+.slider {
+  --track: 0.3rem;
+  --fill-color: #f0a028;
+  flex: 1;
+  min-width: 0;
+  height: 1.5rem;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider[data-muted='true'] {
+  --fill-color: #5a5a66;
+}
+
+.slider::-webkit-slider-runnable-track {
+  height: var(--track);
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--fill-color) var(--fill), #34343f var(--fill));
+  transition: height 0.12s ease;
+}
+
+.slider::-webkit-slider-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  margin-top: calc((var(--track) - 0.85rem) / 2);
+  border: 0;
+  border-radius: 50%;
+  background: #ececf1;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  transform: scale(0.75);
+  transition: transform 0.12s ease, margin-top 0.12s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.slider::-moz-range-track {
+  height: var(--track);
+  border-radius: 999px;
+  background: #34343f;
+}
+
+.slider::-moz-range-progress {
+  height: var(--track);
+  border-radius: 999px;
+  background: var(--fill-color);
+}
+
+.slider::-moz-range-thumb {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 0;
+  border-radius: 50%;
+  background: #ececf1;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+}
+
+.slider:hover,
+.slider:active,
+.slider:focus-visible {
+  --track: 0.4rem;
+}
+
+.slider:hover::-webkit-slider-thumb,
+.slider:active::-webkit-slider-thumb,
+.slider:focus-visible::-webkit-slider-thumb {
+  transform: scale(1);
+}
+
+.slider:hover:not([data-muted='true']) {
+  --fill-color: #ffb443;
+}
+
+.slider:focus-visible {
+  outline: none;
+}
+
+.slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgb(240 160 40 / 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slider::-webkit-slider-runnable-track,
+  .slider::-webkit-slider-thumb {
+    transition: none;
+  }
 }
 
 .status {

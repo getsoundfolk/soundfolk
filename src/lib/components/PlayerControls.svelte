@@ -44,6 +44,19 @@
     return /^https?:\/\//i.test(url) ? url : null;
   });
 
+  // Volume: the filled part of the track, the speaker's waves and a wheel step of 5 %.
+  const level = $derived(player.muted ? 0 : player.volume);
+  const percent = $derived(Math.round(player.volume * 100));
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  function onWheel(e: WheelEvent) {
+    const delta = e.deltaY || -e.deltaX;
+    if (!delta) return;
+    e.preventDefault();
+    player.setVolume(Math.round((player.volume + (delta < 0 ? 0.05 : -0.05)) * 100) / 100);
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => player.saveVolume(), 400);
+  }
+
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
   let wasOpen = false;
@@ -125,17 +138,42 @@
       {player.active ? 'Stop' : 'Play'}
     </button>
 
-    <input
-      class={styles.volume}
-      type="range"
-      min="0"
-      max="1"
-      step="0.01"
-      aria-label="Volume"
-      value={player.volume}
-      oninput={(e) => player.setVolume(e.currentTarget.valueAsNumber)}
-      onchange={() => player.saveVolume()}
-    />
+    <div class={styles.volume} onwheel={onWheel}>
+      <button
+        class={styles.speaker}
+        type="button"
+        aria-label={player.muted ? 'Unmute' : 'Mute'}
+        aria-pressed={player.muted}
+        title={player.muted ? 'Unmute' : 'Mute'}
+        onclick={() => player.toggleMute()}
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
+          {#if level === 0}
+            <path d="m16 9 5 6m0-6-5 6" />
+          {:else}
+            <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
+            {#if level > 0.5}<path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" />{/if}
+          {/if}
+        </svg>
+      </button>
+      <input
+        class={styles.slider}
+        type="range"
+        min="0"
+        max="1"
+        step="0.01"
+        aria-label="Volume"
+        aria-valuetext={player.muted ? `Muted (${percent} %)` : `${percent} %`}
+        title={`Volume ${percent} %`}
+        data-muted={player.muted}
+        style:--fill={`${player.volume * 100}%`}
+        value={player.volume}
+        oninput={(e) => player.setVolume(e.currentTarget.valueAsNumber)}
+        onchange={() => player.saveVolume()}
+      />
+    </div>
   </div>
 
   <p class={styles.status} data-status={status} role="status">

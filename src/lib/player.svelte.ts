@@ -21,6 +21,8 @@ class PlayerStore {
   cover = $state<Cover>({ title: null, url: null });
   current = $state<Playable | null>(null);
   volume = $state(0.8);
+  /** Sound cut by the speaker button; the slider keeps its level to come back to. Not saved. */
+  muted = $state(false);
   favorites = $state<Favorite[]>([]);
   /** Error from a command (not a playback error, which arrives via `state`). */
   error = $state<string | null>(null);
@@ -89,9 +91,16 @@ class PlayerStore {
     else if (this.current) await this.play(this.current);
   }
 
+  /** Moving the slider also brings the sound back after a mute. */
   async setVolume(volume: number) {
-    this.volume = volume;
-    await this.run(() => api.setVolume(volume));
+    this.volume = Math.min(1, Math.max(0, volume));
+    this.muted = false;
+    await this.run(() => api.setVolume(this.volume));
+  }
+
+  async toggleMute() {
+    this.muted = !this.muted;
+    await this.run(() => api.setVolume(this.muted ? 0 : this.volume));
   }
 
   /** Remembers the current volume for the next launch (once the slider is released). */

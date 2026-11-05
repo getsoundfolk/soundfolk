@@ -13,7 +13,8 @@ pub trait AudioEngine {
     fn pause(&mut self) -> Result<(), String>;
     fn resume(&mut self) -> Result<(), String>;
     fn stop(&mut self) -> Result<(), String>;
-    /// `volume` is clamped to `0.0..=1.0`.
+    /// `volume` is the slider position, clamped to `0.0..=1.0`; the gain applied is its cube
+    /// (a perceptual curve close to a 60 dB fader, as PulseAudio / PipeWire do).
     fn set_volume(&mut self, volume: f32) -> Result<(), String>;
 }
 ```
