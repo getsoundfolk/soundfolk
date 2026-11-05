@@ -40,6 +40,11 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: deps
+    ignore:
+      # TypeScript only serves svelte-check here, whose peer range stops at ^6 (TS 7 is the Go
+      # rewrite, with a new API). Lift once svelte-check accepts TS 7.
+      - dependency-name: typescript
+        versions: [">=7"]
     groups:
       tauri:
         patterns: ["@tauri-apps/*"]
