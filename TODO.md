@@ -68,3 +68,43 @@ identified (all the stats need), and only once the setting is turned on in ⚙ (
 
 Caveat: a title in the history means it was **announced** while listening, not that it was heard in full. Real
 listening stats must be crossed with the sessions.
+
+---
+
+## Ideas
+
+**Worth doing**
+- [ ] Scrobbling to ListenBrainz (user token pasted in ⚙, no OAuth), then Last.fm. A like becomes a "love". Only
+  submit a track after ~half of it or 4 min on the same station (a title is announced, not necessarily heard; use
+  the sessions). Off by default, with a text saying what leaves the device.
+- [ ] Volume normalisation across stations (loudness differs a lot, switching station jumps the level). No ReplayGain
+  on streams: a per-station gain learned while listening and stored in the DB, or a slow AGC on EBU R128 loudness in
+  the engine.
+- [ ] Track notifications while in the background — or only when an artist you liked comes on air.
+
+**Smaller**
+- [ ] Make the tray optional; check GNOME without the AppIndicator extension (closing may hide the window with no
+  icon to bring it back).
+- [ ] Setting to use the system title bar (window decorations).
+- [ ] Launch at startup (`tauri-plugin-autostart`), possibly with "resume the last station".
+- [ ] Audio quality Low / Auto / High: pick among a station's streams by bitrate (Radio-Browser often lists several).
+- [ ] When a stream fails, fall back to another stream of the same station, or a similar station.
+
+**From desktop radio player feedback (r/selfhosted, r/linux…)** — not yet in the app:
+- [ ] Tray menu: play / pause, mute, switch between favorite stations (today: show / hide and quit only).
+- [x] Reconnect after suspend or a network change, however long it lasted (network watcher, see
+  `docs/04-audio-engine.md`). Still to check on a real suspend / Wi-Fi → 4G switch.
+- [x] Logarithmic volume curve: the gain is the cube of the slider position (`audio::gain`).
+- [ ] Keyboard shortcuts: Space play / pause, M mute, Ctrl+F / Ctrl+K search, arrows to move between stations.
+- [ ] Album art for the track on air (Cover Art Archive, for MusicBrainz-matched tracks), in the player and MPRIS;
+  station logo otherwise.
+- [x] Export the history (CSV / JSON).
+- [ ] Search filters by codec and bitrate (country and tag already exist).
+- [ ] Follow the system light / dark theme (today dark only).
+- [ ] Compact mini-player, optionally always on top.
+- [ ] Measure memory use and keep a target (< ~50 MB idle while playing) — the main argument against Electron
+  players.
+
+**UI pattern to reuse**: ordered sources (drag to reorder, a switch each, a type badge, "a disabled source is never
+queried") — for "Find this track on" or recipe sources. If lyrics come one day, LRCLIB plain text is enough (no
+playback position on radio, so no reliable sync).
