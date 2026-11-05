@@ -6,6 +6,9 @@ edition = "2021"
 license = "MPL-2.0"
 rust-version = "1.85"
 
+[lints]
+workspace = true
+
 [features]
 # `recipe-check` command-line tool; `cli` adds live fetching (blocking HTTP).
 cli = ["dep:ureq"]

@@ -9,6 +9,23 @@ rust-version = "1.85"
 [workspace]
 members = ["crates/nowplaying"]
 
+# Lints of every crate in the workspace (each one opts in with `[lints] workspace = true`).
+# The CI runs clippy with `-D warnings`: a "warn" here fails it.
+[workspace.lints.rust]
+# Each unsafe operation sits in its own `unsafe { }` block, even in an unsafe fn.
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+# Every `unsafe { }` block says why it is sound, in a `// SAFETY:` comment.
+undocumented_unsafe_blocks = "warn"
+# Leftovers from a debugging or a draft session.
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+
+[lints]
+workspace = true
+
 [lib]
 name = "soundfolk_lib"
 # Desktop only needs the rlib. The mobile builds will need "staticlib" (iOS) and "cdylib" (Android)
