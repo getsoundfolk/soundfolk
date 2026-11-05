@@ -178,11 +178,20 @@ A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the hos
   The time zone does not help here.
 * **TODO, other platform adapters.** Probed by hand on 2026-11-05 against real streams; station counts are from
   Radio-Browser (62,596 stations, `hidebroken`), French ones in brackets. All read without a key. In order of value:
-  1. **RadioKing**, 382 (162): `listen.radioking.com/radio/{id}/stream/{stream id}`, or
-     `www.radioking.com/play/{slug}/{id}` (321 stations on `radioking.com` alone, 145 French).
-     `https://api.radioking.io/widgets/api/v1/radio/{id}/track/current` (the numeric radio id from the stream URL,
-     not a slug): `title`, `artist`, `album`, `started_at`, `end_at`, `duration`, `cover`, `default_cover`,
-     `is_live`, `next_track` (nulls during live shows).
+  1. **RadioKing**, 382 (162): `listen.radioking.com/radio/{radio id}/stream/{stream id}`, or
+     `www.radioking.com/play/{slug}/{stream id}` (321 stations on `radioking.com` alone, 145 French). The number in
+     a `play/` URL is the stream id, not the radio id (the API answers 404 with it): the radio id is in the URL the
+     redirects end on (`play.radioking.io/{slug}/{stream id}`, then `listen.radioking.com/radio/{radio id}/…`).
+     `https://api.radioking.io/widgets/api/v1/radio/{radio id}/track/current`: `title`, `artist` (null or empty
+     when the station names only the title), `album`, `started_at`, `end_at`, `duration`, `cover` (hosted by
+     RadioKing), `default_cover`, `is_live`, `next_track`. **`next_track` is not a track** but a time, `end_at` plus
+     one second: when to read the API again. There is no next track: `track/next`, `track/history` and the like
+     answer 404. `end_at`, `next_track` and `duration` are null during live shows.
+     Checked on 24 random stations (2026-11-05): 22 send ICY titles (the other two answer 401 and 404). The first
+     metadata block is empty, and the title follows within a second. ICY and the API change at the same moment
+     with the same text (`' - title'` in ICY when the API has no artist). So the adapter brings no new titles and
+     almost no better split: only the track's start and end (a progress bar), the album when filled in, the cover
+     and `is_live`. That is worth less than its rank here suggests.
   2. **Triton / StreamTheWorld**, 2,814 (0): mount from `playerservices.streamtheworld.com/api/livestream-redirect/
      {MOUNT}.mp3` (drop the extension) or `{n}.live.streamtheworld.com:{port}/{MOUNT}`.
      `http://np.tritondigital.com/public/nowplaying?mountName={MOUNT}&numberToFetch=1&eventType=track`, **http
@@ -196,8 +205,9 @@ A crate with **no I/O**, so a server daemon or WebAssembly can reuse it: the hos
      `https://public.radio.co/stations/{id}/status`: `current_track.title` (artist and title in one string, as in
      ICY), `start_time`, `artwork_url_large`, `history`, `source.type` (`automated` or live). Little beyond the cover.
 
-  These streams already send ICY titles (`icy-metaint: 16000`), so like AzuraCast the adapter adds
-  artist and title apart, cover, timing and next track to the ICY title, matched the same way. Not probed yet:
+  These streams already send ICY titles (`icy-metaint: 16000`), so like AzuraCast the adapter adds what the
+  platform has beyond it (artist and title apart, cover, timing; none of the endpoints above gives the next track) to the ICY
+  title, matched the same way. Not probed yet:
   SonicPanel (`/cp/get_info.php?p={port}`, the port is in the stream URL), and ID3 timed metadata in HLS segments
   (4,053 `.m3u8` streams, 135 French, among them RTL and France Inter), which would belong in the audio engine next
   to ICY and Vorbis comments.
