@@ -64,7 +64,7 @@ need our own data (§5.2).
 
 One screen, one level (06 §1), never empty (06 §3). From top to bottom:
 
-1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language, Good quality). The chips
+1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language). The chips
    are shared with search: what is selected in one is selected in the other.
 2. **Scan** — next to Surprise me (§4.2).
 3. **Collections** — horizontal rows of stations, one per collection (§5), personal ones first.
@@ -78,13 +78,13 @@ The station sheet gets **More like this** (§6).
 
 ### 4.1 Surprise me
 One tap plays a station drawn at random among those matching the active chips. Built on `surprise_station(filters)`
-(08 §6), with a quality floor the listener does not have to set:
+(§8), with a quality floor the listener does not have to set:
 
-* **Catalog side:** `order=random`, `hidebroken=true` whatever the "Working now" switch says, `limit=20`.
+* **Catalog side:** `order=random`, `hidebroken=true`, `limit=20`.
 * **Client side**, on that batch, keep a station only if:
   * it is not HLS, not a duplicate (same rules as search);
   * it has at least one tag (a station without one is also one we cannot describe in a row, 06 §5);
-  * its bitrate is unknown or ≥ 64 kbit/s (a stricter floor when Good quality is on: 08's threshold);
+  * its bitrate is unknown or ≥ 64 kbit/s;
   * the listener has not heard it in the last 30 days and it is not a favorite — explorers want the new;
   * it was not drawn earlier in this session.
 * **Order of the survivors:** those with a homepage and a favicon first (a sign someone maintains the entry), then the
@@ -92,7 +92,7 @@ One tap plays a station drawn at random among those matching the active chips. B
 * **Play the first one that actually plays.** The catalog check gives false negatives and false positives; the real
   test is the stream. No sound within 5 s → next survivor, silently. Batch exhausted → a new request, at most three
   in a row, then one sentence: "Nothing playable right now with these filters", with a button removing the most
-  restrictive one (08 §4).
+  restrictive one (08 §5).
 * While a surprise plays, the player shows **Another one** (and media "next" does the same): the next survivor,
   without a new request when the batch still has some.
 
@@ -144,8 +144,8 @@ First set, in this order on screen:
 | **In your language** | `language` from the system locale, outside your country. |
 | **Stations that played artists you like** | Personal, §6.2. Hidden until there are enough likes. |
 | **Your hidden gems** | Personal, §5.3. Hidden until there is enough listening. |
-| One row per main genre family | Jazz, Classical, Electronic, Ambient, Lo-fi, World… (08 §3.1), Good quality on. |
-| **Trending now** | `clicktrend`, Working now on. The only popularity row, last. |
+| One row per main genre family | Jazz, Classical, Electronic, Ambient, Lo-fi, World… (08 §3.1), `bitrateMin=128`. |
+| **Trending now** | `clicktrend`, `hidebroken=true`. The only popularity row, last. |
 
 Rows are fetched as they scroll into view, not all at the opening of the screen.
 
@@ -242,7 +242,7 @@ The history already knows which artists each station plays (stats: "tracks heard
 
 * Is "not heard in 30 days" the right exclusion? It keeps surprises new, but an explorer may want to stumble again on
   a station they forgot to add to favorites. Alternative: exclude only stations heard for more than a few minutes.
-* 64 kbit/s as the default floor, and 128 with Good quality: same question as 08 §7 about codecs.
+* 64 kbit/s as the floor, 128 for genre rows: same question as 08 §8 about codecs.
 * Scan interval: is 15 s enough to judge a station that is between two tracks or in an ad break?
 * Hand-picked lists: who curates, how are they reviewed, and how does a folker suggest a station without an account?
 * Should Discover replace the Search tab now (three destinations of 06 §1), or come as a fourth tab until Listen

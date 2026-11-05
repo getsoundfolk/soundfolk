@@ -63,23 +63,31 @@ ISO 639 code), `/json/tags`, `/json/codecs`. Top tags are noise as much as genre
 
 Every filter on a field the catalog often leaves empty also hides the stations that never filled it: a language filter
 hides a quarter of the popular stations, a quality filter a sixth. The UI must not pretend these stations do not exist
-(see §4, empty results).
+(see §5, empty results).
 
 ---
 
 ## 3. Filters offered
 
-Chips above the results, applied at once, combinable, typed text narrowing what the chips selected (06 §4). No
-separate filter screen.
+Search stays one text box. Under it, **three chips**, for what a listener says ("some jazz", "a Belgian station",
+"in Spanish"): applied at once, combinable, typed text narrowing what the chips selected (06 §4). No separate filter
+screen, no "Apply" button, no count of active filters.
 
-| Chip | Values | Sent as | Default |
-|---|---|---|---|
-| **Country** | Countries from `/json/countries`, localised names, sorted by name; the system locale's country first. | `countrycode` | none |
-| **Genre** | A curated list of ~30 translated genres (§3.1), not raw tags. | `tag` (substring) | none |
-| **Language** | Languages from `/json/languages` with more than ~20 stations, localised names; the system language first. | `language` (English name) | none |
-| **Good quality** | A switch: ≥ 128 kbit/s. An *HD* badge marks ≥ 192 kbit/s or lossless in rows (06 §5). | `bitrateMin=128` | off |
-| **Working now** | A switch. | `hidebroken=true` | off (§3.2) |
-| **Sort** | Relevance, Popular, Trending, Most voted, Name, Surprise me. | `order` | Relevance (§3.3) |
+| Chip | Values | Sent as |
+|---|---|---|
+| **Genre** | A curated list of ~30 translated genres (§3.1), not raw tags. | `tag` (substring) |
+| **Country** | Countries from `/json/countries`, localised names, sorted by name; the system locale's country first. | `countrycode` |
+| **Language** | Languages from `/json/languages` with more than ~20 stations, localised names; the system language first. | `language` (English name) |
+
+* An empty chip shows its name ("Country"); a set one shows its value with a remove button ("Belgium ✕").
+* Each picker has a search field.
+* The text box can set the chips itself (§6): most listeners never open a picker.
+
+Everything else a filter would do is a **default**, so that nobody has to set it:
+* **Quality** (§3.2): of a station's copies, the highest bitrate is shown; an *HD* badge in the row.
+* **Working stations** (§3.3): first in the list; suspect ones stay, after them, with a warning.
+* **Order** (§3.4): relevance only. Popularity, trends and chance belong to discovery
+  ([09-discovery.md](09-discovery.md): Surprise me, Trending row), not to search.
 
 **Not offered as chips:**
 * **Codec**: the desktop engine plays every codec the catalog lists except HLS, and the listener does not choose a
@@ -105,33 +113,95 @@ translations; it is not fetched.
 Two genres at once mean **OR** for a listener ("jazz or soul"), but `tagList` is an AND. First version: **one genre
 at a time**. Multi-genre OR, if asked for, is one request per genre then merge, deduplicate and re-sort client-side.
 
-### 3.2 Working now
-Off by default, as today: the catalog check gives false negatives (brief outages, geo-blocking of the checking
-servers), so suspect stations stay visible with a warning and are ranked after healthy ones (`Health::Unreachable`).
-The switch is for the listener who wants none of them. If listeners turn it on most of the time, make it the default.
+### 3.2 Quality
+No `bitrateMin` filter: it would also hide the 16 % of stations whose bitrate is unknown. Instead:
+* **Duplicates** (`catalog/dedup.rs`): of the copies of one station, the one shown is the working one, then the highest
+  bitrate (unknown counts as the lowest), then the most clicked. It takes the place of the group's first copy in the
+  list. A favorite copy always stays, whatever its bitrate.
+* **No other ranking** of copies: clicks are not summed over a group, and the station sheet lists the other copies
+  without a "most used" label or a particular order.
+* The *HD* badge (§4) says which stations stream at a high bitrate.
 
-### 3.3 Sort
-06 §5: popularity is never the default, it puts the largest commercial networks first.
-* **Relevance** (default): with text, names that start with the text, then names that contain it as a word, then the
-  rest, each group by click count. Without text, click count (the catalog's only proxy for "good stations" until
-  curated collections exist). Computed client-side on what the catalog returned.
-* **Popular** `clickcount`, **Trending** `clicktrend`, **Most voted** `votes`, **Name** `name` (ascending),
-  all descending except Name.
-* **Surprise me** `order=random` with the active filters: one tap plays a random working station that matches (with
-  `hidebroken=true` whatever the switch says). Not "completely random": the filters make it a surprise *within* what
-  the listener chose.
+### 3.3 Working stations
+No "Working now" switch: the catalog check gives false negatives (brief outages, geo-blocking of the checking
+servers), so suspect stations stay visible, ranked after healthy ones (`Health::Unreachable`), with a short warning
+(§4). If listeners still ask to hide them, a switch can come back.
 
-Healthy stations stay first in every order except Name.
+### 3.4 Order
+06 §5: popularity is never the default, it puts the largest commercial networks first. Search has one order,
+**relevance**: with text, names that start with the text, then names that contain it as a word, then the rest, each
+group by click count. Without text, click count (the catalog's only proxy for "good stations" until curated
+collections exist). Computed client-side on what the catalog returned; healthy stations stay first.
 
 ---
 
-## 4. Behaviour
+## 4. Result rows
+
+What a row shows decides what the filters need to do. Today's row (`FR · MP3 128 kbit/s · pop, music`) breaks 06 §5:
+codec, bitrate and raw tags, no logo. Measured on the 3,000 most-clicked stations: 72 % have a logo, 76 % at least
+one tag; 5 % of the names start or end with spaces or a tab, 11 % are in capitals, 5 % are longer than 40 characters.
+
+```
+[logo]  Station name                                   [HD]  ☆  ⓘ
+        Jazz · Lounge · Belgium
+        ⚠ Maybe offline                 ← only when the last check failed
+```
+
+* **Logo**: the favicon, loaded when the row scrolls into view, cached. Missing or failing: a tile with the name's
+  initial, its colour drawn from the name. Never a broken image.
+* **Name**: cleaned for display (§4.1), one line, cut with "…", the full name in a tooltip.
+* **Second line**: up to two translated genres (§3.1; tags that map to no genre are not shown, `music`, `radio` or
+  `hits` never), then the country in words. What an active chip already filters is not repeated: with [Belgium] set,
+  no row says "Belgium". The language is not shown, even when it differs from the country's (an English station in
+  France): it is in the station sheet.
+* **Badges**: *HD* (≥ 192 kbit/s, or lossless) and *personal* only. *Ad-free* and *listener-supported* wait for a source
+  (09 §5.2).
+* **Warning**: "Maybe offline", short; the date of the last successful check in a tooltip.
+* **Actions**: a click on the row plays (the main action); ☆ adds to favorites; ⓘ or a right-click (a long press on
+  mobile) opens the station sheet (§4.2). The playing station is highlighted, a small animation in place of ▶.
+* **Not in rows**: codec, bitrate in figures, language, votes, clicks, URL, raw tags.
+* **Same row everywhere**: search, favorites, Discover and My stations (06 §8).
+* **No highlight of the searched text** for now. The name search folds accents and separators (`NameQuery`), so a
+  JavaScript `indexOf` would highlight some results and not others, with no visible reason. It comes when
+  `NameQuery::matches` returns where the fragments are in the displayed name.
+
+### 4.1 Station names
+Display only: the raw name stays as is in the database, favorites and history, so the rule can change without losing
+anything (as raw ICY titles, see the TODO).
+* Remove invisible characters (direction marks, zero-width spaces: `ایران‎  Radio Liberty`) and collapse runs of
+  spaces.
+* At both ends, remove only `# * - = + ~ | < > _` and spaces: `# TOP 100…`, `* Meme dans les orties *`,
+  `---تراتيل---`, `=KECO=70s ROCK`, `+Exclusively Bad Bunny`, `Grunge FM<`. Nothing else, as other characters are
+  part of names: `.977 Hitz`, `Mouv'`, `Slow Rock 90'`, `NPO Radio %`, `CCTV-13 新闻（伴音）`.
+* Keep emojis: rare (4 names in 3,000), sometimes part of the name (`🍒 La Radio sous la Cerise 🍒`,
+  `Mega St☆r Spain`).
+* Never change the case, never cut at the first " - " (12 % hold one, and `Radio Nacional de España - Radio 5` is a
+  name).
+* If nothing is left, show the raw name. Names broken in the catalog (`����� ����`) cannot be repaired.
+
+### 4.2 Station sheet
+Details are not shown on hover: hover does not exist on touch screens, is not reachable with the keyboard, and its
+content can be neither clicked nor copied. Hover only gives the full name and the date of the last check.
+
+The station sheet (`StationSheet.svelte`) shows the station in the player only, today; it opens for any station. Its
+parts tied to playback (track on air, recipes) show only for the station playing. From a list, in this order:
+1. Name, logo, genres, country, language, link to the website.
+2. Quality in words, figures below: "Good quality — AAC 128 kbit/s".
+3. **Other streams of this station** (its duplicates), each with its bitrate and ▶. This is where codec and bitrate
+   help: choosing between two streams of the same station.
+4. Folded, "Technical details": stream URL, raw tags, votes, clicks, last check.
+
+The listen count goes to the entry actually played (its UUID), not to the one the row showed.
+
+---
+
+## 5. Behaviour
 
 * **Pagination** is unchanged: the offset counts catalog entries, not shown stations (client-side drops: HLS,
   duplicates). Filters are server-side, so they do not make pages emptier; only the genre OR (§3.1) would.
 * **Changing a chip** starts a new search (offset 0), with the same debounce as typing.
-* **Empty results** with filters: say which filter excludes most ("No station in French with Good quality — 12
-  without the quality filter"), with a button removing it. One extra count request per empty result, not more.
+* **Empty results** with filters: one sentence and one button, naming the filter that excludes most ("No jazz
+  station in Belgium. [Remove Belgium] (14 stations)"). One extra count request per empty result, not more.
 * **Fields the catalog leaves empty** are never shown as "Unknown" (06 §7); a filter that hides them says so once in
   its picker ("Stations without a language are not shown").
 * **Persistence**: the chips last for the session (until the app closes). No saved filters (06 §4: no "filter feeds"
@@ -141,7 +211,7 @@ Healthy stations stay first in every order except Name.
 
 ---
 
-## 5. Text that understands filters
+## 6. Text that understands filters
 
 Typing `jazz france` should give French jazz stations, not stations named "jazz france".
 
@@ -160,38 +230,43 @@ Matching happens in Rust, next to `NameQuery`, so that the folding rules (`catal
 
 ---
 
-## 6. Changes
+## 7. Changes
 
 **Backend** (`catalog/`)
-- [ ] `SearchQuery`: add `language`, `bitrate_min`, `working_only`, `order`; sanitise them like the existing fields
-  (`language` lower case, `bitrate_min` ≤ 320, `order` from a closed enum).
-- [ ] `search_params`: send them; `hidebroken` follows `working_only`; `order`/`reverse` follow the sort. Always
-  send `order`: the catalog's default is `name`, and an unknown value silently falls back to it.
-- [ ] Relevance ranking client-side when the sort is Relevance and there is text.
+- [x] Duplicates: the working copy, then the highest bitrate, then the most clicked (§3.2).
+- [ ] `SearchQuery`: add `language`; sanitise it like the existing fields (lower case). Keep `country_code` and `tag`.
+- [ ] `search_params`: send it. Always send `order`: the catalog's default is `name`, and an unknown value silently
+  falls back to it.
+- [ ] Relevance ranking client-side when there is text (§3.4).
 - [ ] Commands `list_countries`, `list_languages` (`/json/countries`, `/json/languages`, in-memory cache).
-- [ ] `surprise_station(filters)`: `order=random`, `limit` a few, first playable one.
+- [ ] The other streams of a station, for the sheet (§4.2): the duplicates dropped from a group, kept with the
+  station shown.
+- [ ] Station name cleaning (§4.1), with tests on the names quoted there.
 - [ ] Tests: parameters per filter combination, relevance order, sanitising.
 
-**Frontend** (`StationBrowser.svelte`, `api.ts`)
-- [ ] Chip bar under the search box: Country, Genre, Language, Good quality, Working now, Sort; each picker searchable.
+**Frontend** (`StationBrowser.svelte`, `StationRow.svelte`, `StationSheet.svelte`, `api.ts`)
+- [ ] Chip bar under the search box: Genre, Country, Language; each picker searchable.
 - [ ] Genre list with translations.
+- [ ] Result row (§4): logo or initial tile, cleaned name, genres and country, *HD* badge, short warning, row click
+  plays, ⓘ and right-click open the sheet.
+- [ ] Station sheet for any station, with the other streams (§4.2).
 - [ ] Empty-result message naming the most restrictive filter.
-- [ ] Surprise me button.
 
 **Later**
-- [ ] Text that understands filters (§5).
+- [ ] Text that understands filters (§6).
+- [ ] Highlight of the searched text, once `NameQuery` gives positions (§4).
 - [ ] Multi-genre OR (§3.1).
 - [ ] Default country and language from the system locale, as preselected chips the listener can remove.
 
 ---
 
-## 7. Open questions
+## 8. Open questions
 
 * Should the system country be preselected? It answers "stations from my country" at once, but hides the rest of the
   world from someone looking for a station abroad by name. Proposal: preselect only when the text box is empty
   (browsing), never while a name is typed.
 * `language` matches the English names the catalog stores (`french`, `german`); a few entries hold local names
   (`deutsch`, `español`). Send both names for the main languages, or accept the loss?
-* Is ≥ 128 kbit/s the right single threshold? AAC+ at 64 kbit/s sounds better than MP3 at 128. A codec-aware
-  threshold (AAC/AAC+/Ogg ≥ 64, MP3 ≥ 128) cannot be sent to the catalog in one request; it would be a client-side
-  filter, with emptier pages.
+* Is the raw bitrate the right measure of quality, for the *HD* badge and for picking a station's copy? AAC+ at
+  64 kbit/s sounds better than MP3 at 128. A codec-aware measure (AAC/AAC+/Ogg counted double) is a client-side rule,
+  easy to add if the copies picked sound worse.
