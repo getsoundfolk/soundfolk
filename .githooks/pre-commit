@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+#
+# Fast checks before a commit, on the files it touches: Rust formatting (cargo fmt), front-end
+# formatting (Prettier), spelling (typos, when installed) and SPDX lines. Clippy, the tests and
+# the rest run in CI (.github/workflows/ci.yml). Bypass once with `git commit --no-verify`.
+#
+# Enable it once per clone: git config core.hooksPath .githooks
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+# Files added, copied, modified or renamed by this commit.
+mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR)
+[ "${#files[@]}" -eq 0 ] && exit 0
+
+failed=0
+fail() {
+  echo "pre-commit: $1" >&2
+  failed=1
+}
+
+rust=()
+front=()
+for file in "${files[@]}"; do
+  case "$file" in
+    src-tauri/*.rs) rust+=("$file") ;;
+    src/* | *.js | *.ts | *.json) front+=("$file") ;;
+  esac
+done
+
+if [ "${#rust[@]}" -gt 0 ]; then
+  if ! rustfmt --edition 2021 --check "${rust[@]}" > /dev/null; then
+    fail "Rust code is not formatted. Run 'cargo fmt' in src-tauri/."
+  fi
+fi
+
+if [ "${#front[@]}" -gt 0 ]; then
+  if ! npx --no-install prettier --check --ignore-unknown "${front[@]}" > /dev/null 2>&1; then
+    fail "front-end code is not formatted. Run 'npm run format'."
+  fi
+fi
+
+if command -v typos > /dev/null; then
+  if ! typos --force-exclude "${files[@]}" > /dev/null; then
+    fail "spelling mistakes (run 'typos' to see them, 'typos -w' to fix)."
+  fi
+fi
+
+if ! .github/scripts/check-spdx.sh > /dev/null 2>&1; then
+  fail "a source file has no SPDX line (run .github/scripts/check-spdx.sh to see which)."
+fi
+
+exit "$failed"

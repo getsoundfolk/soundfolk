@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Commits that only reformat code, skipped by `git blame`.
+# Enable once per clone: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: format Rust code with cargo fmt
+cd9d7abe535ee807850d380253d3bd0f38837e09
+
+# style: format the front end with Prettier
+25769faddc24d0f6957519ed0f27cfaff78f4d42

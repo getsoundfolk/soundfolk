@@ -69,9 +69,38 @@ name.
 
 ## Before opening a pull request
 
+The CI ([`ci.yml`](.github/workflows/ci.yml)) runs these on every pull request; run them first:
+
 ```bash
-cd src-tauri && cargo clippy --all-targets && cargo test
-cd .. && npm run check
+cd src-tauri
+cargo fmt --all
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cd ..
+npm run format
+npm run lint
+npm run check
 ```
 
-New source files start with `SPDX-License-Identifier: MPL-2.0` (as a comment).
+New source files start with `SPDX-License-Identifier: MPL-2.0` (as a comment);
+`.github/scripts/check-spdx.sh` checks it.
+
+The CI also runs [typos](https://github.com/crate-ci/typos) (spelling, rules in `_typos.toml`),
+[cargo-machete](https://github.com/bnjbvr/cargo-machete) (unused crates), and
+[actionlint](https://github.com/rhysd/actionlint) and [zizmor](https://docs.zizmor.sh) when a workflow changes.
+Dependencies (advisories, licenses, duplicates) are checked by [`deps.yml`](.github/workflows/deps.yml), with
+[cargo-deny](https://github.com/EmbarkStudios/cargo-deny) (`cd src-tauri && cargo deny check`).
+
+### Pre-commit hook
+
+A `pre-commit` hook ([`.githooks/pre-commit`](.githooks/pre-commit)) runs the fast checks on the files a commit
+touches: `cargo fmt`, Prettier, typos (when installed) and the SPDX lines. It comes with the `commit-msg` hook
+(`git config core.hooksPath .githooks`, see above). Skip it once with `git commit --no-verify`.
+
+### Formatting commits and `git blame`
+
+The commits that only reformat code are listed in `.git-blame-ignore-revs`. To have `git blame` skip them:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
