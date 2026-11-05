@@ -2,7 +2,14 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app';
   import { onMount } from 'svelte';
-  import { api, errorMessage, type CoverSource, type CoverSourceId, type HistorySummary, type LocalRecipes } from '../api';
+  import {
+    api,
+    errorMessage,
+    type CoverSource,
+    type CoverSourceId,
+    type HistorySummary,
+    type LocalRecipes,
+  } from '../api';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { checkCustom, MAX_CUSTOM, SERVICE_GROUPS, TRACK_SERVICES } from '../trackLinks';
@@ -32,7 +39,9 @@
 
   const siteProblem = $derived(checkCustom(siteName, siteAddress));
   const sitePreview = $derived(
-    siteProblem ? null : siteAddress.trim().replace('{query}', encodeURIComponent('Artist - Title')),
+    siteProblem
+      ? null
+      : siteAddress.trim().replace('{query}', encodeURIComponent('Artist - Title')),
   );
 
   function openForm() {
@@ -85,7 +94,10 @@
   let coverSources = $state<CoverSource[]>(DEFAULT_COVER_SOURCES);
   const coverItems = $derived(coverSources.map((s) => ({ ...COVER_SOURCES[s.id], ...s })));
   const coverDefault = $derived(
-    coverSources.every((s, i) => s.id === DEFAULT_COVER_SOURCES[i].id && s.enabled === DEFAULT_COVER_SOURCES[i].enabled),
+    coverSources.every(
+      (s, i) =>
+        s.id === DEFAULT_COVER_SOURCES[i].id && s.enabled === DEFAULT_COVER_SOURCES[i].enabled,
+    ),
   );
 
   async function saveCoverSources(sources: CoverSource[]) {
@@ -206,7 +218,9 @@
   const tracks = (n: number) => `${n.toLocaleString()} ${n === 1 ? 'track' : 'tracks'}`;
   const since = $derived(
     summary?.since
-      ? new Date(`${summary.since.replace(' ', 'T')}Z`).toLocaleDateString(undefined, { dateStyle: 'long' })
+      ? new Date(`${summary.since.replace(' ', 'T')}Z`).toLocaleDateString(undefined, {
+          dateStyle: 'long',
+        })
       : null,
   );
 
@@ -294,7 +308,8 @@
         <span class={styles.text}>
           <span class={styles.name}>Launch at login</span>
           <span class={styles.detail}>
-            Soundfolk starts in the notification area when you log in, without opening its window or playing.
+            Soundfolk starts in the notification area when you log in, without opening its window or
+            playing.
           </span>
         </span>
         <input
@@ -332,7 +347,8 @@
         <span class={styles.text}>
           <span class={styles.name}>Track notifications</span>
           <span class={styles.detail}>
-            Shows a notification when a new track starts and the Soundfolk window is in the background.
+            Shows a notification when a new track starts and the Soundfolk window is in the
+            background.
           </span>
         </span>
         <input
@@ -348,16 +364,16 @@
     <section class={styles.group} aria-labelledby="settings-privacy">
       <h2 class={styles.groupTitle} id="settings-privacy">Privacy</h2>
       <p class={styles.groupIntro}>
-        Soundfolk sends nothing about you unless you allow it here. Your history, likes and stations stay on this
-        device.
+        Soundfolk sends nothing about you unless you allow it here. Your history, likes and stations
+        stay on this device.
       </p>
 
       <label class={styles.option}>
         <span class={styles.text}>
           <span class={styles.name}>Report my listens to Radio-Browser</span>
           <span class={styles.detail}>
-            Each station you start is counted (station + IP address) in the open Radio-Browser catalog, which helps
-            small radios get discovered.
+            Each station you start is counted (station + IP address) in the open Radio-Browser
+            catalog, which helps small radios get discovered.
           </span>
         </span>
         <input
@@ -373,9 +389,10 @@
         <span class={styles.text}>
           <span class={styles.name}>Find the track on air on the station's website</span>
           <span class={styles.detail}>
-            When a stream doesn't announce its tracks, Soundfolk reads the station's web page or its streaming
-            server's status, only while you listen to it. That site sees your IP address. The list of recipes that
-            say where to look is downloaded from GitHub once a day. Applies from the next station you play.
+            When a stream doesn't announce its tracks, Soundfolk reads the station's web page or its
+            streaming server's status, only while you listen to it. That site sees your IP address.
+            The list of recipes that say where to look is downloaded from GitHub once a day. Applies
+            from the next station you play.
           </span>
         </span>
         <input
@@ -393,16 +410,22 @@
             <span class={styles.name}>My recipes</span>
             <span class={styles.detail}>
               {#if !localRecipes || localRecipes.count === 0}
-                Recipes you write to read a station's website. Start from a station's details (ⓘ in the player).
+                Recipes you write to read a station's website. Start from a station's details (ⓘ in
+                the player).
               {:else}
-                {localRecipes.count === 1 ? '1 recipe' : `${localRecipes.count} recipes`}{#if localRecipes.errors.length}, {localRecipes.errors.length} not used{/if}.
+                {localRecipes.count === 1
+                  ? '1 recipe'
+                  : `${localRecipes.count} recipes`}{#if localRecipes.errors.length}, {localRecipes
+                    .errors.length} not used{/if}.
               {/if}
             </span>
             {#each localRecipes?.errors ?? [] as problem (problem.file)}
               <span class={styles.recipeError}>{problem.file}: {problem.error}</span>
             {/each}
           </span>
-          <button class="{styles.link} {styles.folder}" type="button" onclick={openRecipesFolder}>Open folder</button>
+          <button class="{styles.link} {styles.folder}" type="button" onclick={openRecipesFolder}
+            >Open folder</button
+          >
         </div>
       {/if}
 
@@ -410,8 +433,8 @@
         <span class={styles.text}>
           <span class={styles.name}>Identify my liked tracks on MusicBrainz</span>
           <span class={styles.detail}>
-            The artist and title of tracks you like (+ IP address) are looked up in the open MusicBrainz database to
-            show artist, album, genre, decade and country stats.
+            The artist and title of tracks you like (+ IP address) are looked up in the open
+            MusicBrainz database to show artist, album, genre, decade and country stats.
           </span>
         </span>
         <input
@@ -431,7 +454,8 @@
         intro="Asked from top to bottom: the first cover found is shown in the player. A disabled source is never asked. Without a cover, the station's logo is shown. The desktop's media controls always show the station's logo."
         items={coverItems}
         isDefault={coverDefault}
-        onchange={(items) => saveCoverSources(items.map(({ id, enabled }) => ({ id: id as CoverSourceId, enabled })))}
+        onchange={(items) =>
+          saveCoverSources(items.map(({ id, enabled }) => ({ id: id as CoverSourceId, enabled })))}
         onreset={() => saveCoverSources(DEFAULT_COVER_SOURCES)}
       />
     </section>
@@ -439,8 +463,8 @@
     <section class={styles.group} aria-labelledby="settings-services">
       <h2 class={styles.groupTitle} id="settings-services">Find this track on</h2>
       <p class={styles.groupIntro}>
-        Choose the sites listed in a track's ⋯ menu in your history. They open a search in your browser: no
-        account, nothing sent until you click.
+        Choose the sites listed in a track's ⋯ menu in your history. They open a search in your
+        browser: no account, nothing sent until you click.
       </p>
 
       {#each SERVICE_GROUPS as group (group.id)}
@@ -467,7 +491,9 @@
       <fieldset class={styles.services}>
         <legend class={styles.servicesLegend}>
           <span class={styles.name}>Your sites</span>
-          <span class={styles.detail}>Any site with a search page, such as your Invidious or PeerTube instance</span>
+          <span class={styles.detail}
+            >Any site with a search page, such as your Invidious or PeerTube instance</span
+          >
         </legend>
         {#if trackServices.custom.length}
           <div class={styles.chips}>
@@ -497,7 +523,13 @@
           <form class={styles.siteForm} onsubmit={addSite} novalidate>
             <label class={styles.field}>
               <span>Name</span>
-              <input bind:this={nameInput} bind:value={siteName} maxlength="40" placeholder="Invidious" autocomplete="off" />
+              <input
+                bind:this={nameInput}
+                bind:value={siteName}
+                maxlength="40"
+                placeholder="Invidious"
+                autocomplete="off"
+              />
             </label>
             <label class={styles.field}>
               <span>Search address</span>
@@ -510,7 +542,8 @@
               />
             </label>
             <p class={styles.hint}>
-              Search for any word on the site, copy the address of the results page, and replace your word with
+              Search for any word on the site, copy the address of the results page, and replace
+              your word with
               <code>{'{query}'}</code>. Only https:// addresses.
             </p>
             {#if tried && (siteProblem || saveError)}
@@ -537,7 +570,9 @@
             : `${trackServices.enabled.length} shown in the menu.`}
         </span>
         {#if !trackServices.isDefault}
-          <button class={styles.link} type="button" onclick={trackServices.reset}>Restore the default list</button>
+          <button class={styles.link} type="button" onclick={trackServices.reset}
+            >Restore the default list</button
+          >
         {/if}
       </p>
     </section>
@@ -552,13 +587,23 @@
         <span class={styles.text}>
           <span class={styles.name}>Export my history</span>
           <span class={styles.detail}>
-            Every track heard, with its station and time, as a file in your Downloads folder. Liked tracks alone can
-            be exported from History › Liked.
+            Every track heard, with its station and time, as a file in your Downloads folder. Liked
+            tracks alone can be exported from History › Liked.
           </span>
         </span>
         <span class={styles.dataActions}>
-          <button class={styles.link} type="button" disabled={exporting || !summary?.count} onclick={() => exportHistory('csv')}>CSV</button>
-          <button class={styles.link} type="button" disabled={exporting || !summary?.count} onclick={() => exportHistory('json')}>JSON</button>
+          <button
+            class={styles.link}
+            type="button"
+            disabled={exporting || !summary?.count}
+            onclick={() => exportHistory('csv')}>CSV</button
+          >
+          <button
+            class={styles.link}
+            type="button"
+            disabled={exporting || !summary?.count}
+            onclick={() => exportHistory('json')}>JSON</button
+          >
         </span>
       </div>
 
@@ -571,24 +616,40 @@
             {:else if summary.count === 0}
               The history is empty.
             {:else}
-              {tracks(summary.count)}{#if since} since {since}{/if}. Liked tracks are kept.
+              {tracks(summary.count)}{#if since}
+                since {since}{/if}. Liked tracks are kept.
             {/if}
           </span>
           {#if confirmingClear && summary?.count}
             <span class={styles.warning} role="alert">
-              Delete {tracks(summary.count)} for good? The stats on tracks heard, stations and artists start over.
-              This cannot be undone: export first if you may want them back.
+              Delete {tracks(summary.count)} for good? The stats on tracks heard, stations and artists
+              start over. This cannot be undone: export first if you may want them back.
             </span>
             <span class={styles.formActions}>
-              <button class={styles.link} type="button" bind:this={cancelClear} onclick={() => (confirmingClear = false)}>Cancel</button>
-              <button class={styles.danger} type="button" disabled={clearing} onclick={clearHistory}>
+              <button
+                class={styles.link}
+                type="button"
+                bind:this={cancelClear}
+                onclick={() => (confirmingClear = false)}>Cancel</button
+              >
+              <button
+                class={styles.danger}
+                type="button"
+                disabled={clearing}
+                onclick={clearHistory}
+              >
                 Delete {tracks(summary.count)}
               </button>
             </span>
           {/if}
         </span>
         {#if !confirmingClear}
-          <button class="{styles.link} {styles.dataActions}" type="button" disabled={!summary?.count} onclick={askClear}>Clear…</button>
+          <button
+            class="{styles.link} {styles.dataActions}"
+            type="button"
+            disabled={!summary?.count}
+            onclick={askClear}>Clear…</button
+          >
         {/if}
       </div>
 

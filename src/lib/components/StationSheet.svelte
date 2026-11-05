@@ -69,7 +69,7 @@
       case 'idle':
         return 'Play the station to see where its track on air comes from.';
       case 'off':
-        return "Reading station websites is turned off in the settings (Privacy).";
+        return 'Reading station websites is turned off in the settings (Privacy).';
       case 'searching':
         return 'Looking for it…';
       case 'stream':
@@ -96,7 +96,9 @@
   const time = (iso: string | null) => {
     if (!iso) return null;
     const d = new Date(iso);
-    return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return Number.isNaN(d.getTime())
+      ? null
+      : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
   const utc = (minutes: number) => {
     const sign = minutes < 0 ? '−' : '+';
@@ -156,7 +158,9 @@
   {#if station}
     <header class={styles.header}>
       <h2 class={styles.title} id="station-sheet-title">{station.name}</h2>
-      <button class={styles.close} type="button" aria-label="Close" onclick={ui.closeStation}>✕</button>
+      <button class={styles.close} type="button" aria-label="Close" onclick={ui.closeStation}
+        >✕</button
+      >
     </header>
 
     <dl class={styles.details}>
@@ -177,7 +181,11 @@
       {#if level !== null}
         <div>
           <dt>Volume</dt>
-          <dd>{level === 0 ? 'Level not adjusted' : `Level adjusted: ${level > 0 ? '+' : '−'}${Math.abs(level)} dB`}</dd>
+          <dd>
+            {level === 0
+              ? 'Level not adjusted'
+              : `Level adjusted: ${level > 0 ? '+' : '−'}${Math.abs(level)} dB`}
+          </dd>
         </div>
       {/if}
     </dl>
@@ -210,25 +218,32 @@
           </button>
         {/if}
         {#if status?.state === 'none' && !recipe}
-          <button class={styles.button} type="button" onclick={() => openUrl(recipeRequestLink(station))}>
+          <button
+            class={styles.button}
+            type="button"
+            onclick={() => openUrl(recipeRequestLink(station))}
+          >
             Ask for a recipe
           </button>
         {/if}
       </div>
       {#if shared}
         <p class={styles.hint} role="status">
-          GitHub is open with your recipe and an excerpt of the page filled in. Submit the form: a bot checks the
-          recipe and proposes it for every listener.
+          GitHub is open with your recipe and an excerpt of the page filled in. Submit the form: a
+          bot checks the recipe and proposes it for every listener.
           {#if shared.fixture_in_clipboard}
-            <strong>The excerpt is too long for the link: it is in your clipboard, paste it into the Fixture field.</strong>
+            <strong
+              >The excerpt is too long for the link: it is in your clipboard, paste it into the
+              Fixture field.</strong
+            >
           {/if}
           A copy is in {shared.folder}.
         </p>
       {/if}
       {#if opened}
         <p class={styles.hint}>
-          {fileName(opened)} is open in your editor. Save it and come back here: Soundfolk reloads it and reads the
-          page again.
+          {fileName(opened)} is open in your editor. Save it and come back here: Soundfolk reloads it
+          and reads the page again.
         </p>
       {/if}
       {#if error}<p class={styles.warning} role="alert">{error}</p>{/if}
@@ -250,7 +265,9 @@
             {#if test.next}
               <p>
                 <span class={styles.label}>Next</span>
-                {trackText(test.next)}{#if time(test.next.started_at)}&nbsp;at {time(test.next.started_at)}{/if}
+                {trackText(test.next)}{#if time(test.next.started_at)}&nbsp;at {time(
+                    test.next.started_at,
+                  )}{/if}
               </p>
             {/if}
             {#if test.show}<p><span class={styles.label}>Show</span> {test.show}</p>{/if}

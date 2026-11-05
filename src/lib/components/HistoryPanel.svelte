@@ -122,8 +122,10 @@
     return result;
   });
 
-  const time = (r: Row) => r.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  const meta = (r: Row) => [r.artist, r.station_name ?? 'Unknown station', time(r)].filter(Boolean).join(' · ');
+  const time = (r: Row) =>
+    r.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  const meta = (r: Row) =>
+    [r.artist, r.station_name ?? 'Unknown station', time(r)].filter(Boolean).join(' · ');
 
   function notify(message: string, ms = 1800) {
     toast = message;
@@ -181,7 +183,10 @@
     try {
       const list = view === 'all' ? 'history' : 'likes';
       const file = await api.exportHistory(list, format, text.trim() || undefined);
-      notify(`${file.count} ${file.count === 1 ? 'track' : 'tracks'} saved to Downloads: ${file.file_name}`, 4000);
+      notify(
+        `${file.count} ${file.count === 1 ? 'track' : 'tracks'} saved to Downloads: ${file.file_name}`,
+        4000,
+      );
     } catch (e) {
       player.error = errorMessage(e);
     } finally {
@@ -251,7 +256,11 @@
             >
 
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div class={styles.text} title="Double-click to copy" ondblclick={() => copy(displayTitle(row), 'Title copied')}>
+            <div
+              class={styles.text}
+              title="Double-click to copy"
+              ondblclick={() => copy(displayTitle(row), 'Title copied')}
+            >
               <p class={styles.title}>{row.title}</p>
               <p class={styles.meta}>{meta(row)}</p>
             </div>
@@ -270,25 +279,44 @@
                   {#if trackServices.enabled.length}
                     <p class={styles.heading}>Find this track on</p>
                     {#each trackServices.enabled as service (service.id)}
-                      <button class={styles.item} type="button" role="menuitem" onclick={() => act(() => openUrl(service.url(row.search_query)))}>
+                      <button
+                        class={styles.item}
+                        type="button"
+                        role="menuitem"
+                        onclick={() => act(() => openUrl(service.url(row.search_query)))}
+                      >
                         {service.name}
                       </button>
                     {/each}
                     <hr class={styles.separator} />
                   {/if}
-                  <button class={styles.item} type="button" role="menuitem" onclick={() => copy(displayTitle(row), 'Title copied')}>
+                  <button
+                    class={styles.item}
+                    type="button"
+                    role="menuitem"
+                    onclick={() => copy(displayTitle(row), 'Title copied')}
+                  >
                     Copy title
                   </button>
                   <button
                     class={styles.item}
                     type="button"
                     role="menuitem"
-                    onclick={() => copy(shareText(displayTitle(row), row.station_name), 'Copied, ready to share')}
+                    onclick={() =>
+                      copy(
+                        shareText(displayTitle(row), row.station_name),
+                        'Copied, ready to share',
+                      )}
                   >
                     Copy to share
                   </button>
                   <hr class={styles.separator} />
-                  <button class={styles.item} type="button" role="menuitem" onclick={() => act(async () => player.play(await resolve(row)))}>
+                  <button
+                    class={styles.item}
+                    type="button"
+                    role="menuitem"
+                    onclick={() => act(async () => player.play(await resolve(row)))}
+                  >
                     Play {row.station_name ?? 'the station'}
                   </button>
                   {#if player.isFavorite(row.station_id)}
@@ -296,7 +324,16 @@
                       class={styles.item}
                       type="button"
                       role="menuitem"
-                      onclick={() => act(() => player.toggleFavorite({ id: row.station_id, name: row.station_name ?? '', url: '' }), 'Station removed from favorites')}
+                      onclick={() =>
+                        act(
+                          () =>
+                            player.toggleFavorite({
+                              id: row.station_id,
+                              name: row.station_name ?? '',
+                              url: '',
+                            }),
+                          'Station removed from favorites',
+                        )}
                     >
                       Remove station from favorites
                     </button>
@@ -305,7 +342,11 @@
                       class={styles.item}
                       type="button"
                       role="menuitem"
-                      onclick={() => act(async () => player.toggleFavorite(await resolve(row)), 'Station added to favorites')}
+                      onclick={() =>
+                        act(
+                          async () => player.toggleFavorite(await resolve(row)),
+                          'Station added to favorites',
+                        )}
                     >
                       Add station to favorites
                     </button>
@@ -326,7 +367,9 @@
           class={styles.export}
           type="button"
           disabled={exporting}
-          title={text.trim() ? `Save the tracks matching “${text.trim()}” to Downloads` : 'Save to the Downloads folder'}
+          title={text.trim()
+            ? `Save the tracks matching “${text.trim()}” to Downloads`
+            : 'Save to the Downloads folder'}
           onclick={() => exportAs(format)}>Export {format.toUpperCase()}</button
         >
       {/each}
@@ -334,4 +377,6 @@
   {/if}
 {/if}
 
-<p class={styles.toast} role="status" aria-live="polite" data-visible={toast !== null}>{toast ?? ''}</p>
+<p class={styles.toast} role="status" aria-live="polite" data-visible={toast !== null}>
+  {toast ?? ''}
+</p>

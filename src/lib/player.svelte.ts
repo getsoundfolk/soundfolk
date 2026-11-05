@@ -52,7 +52,9 @@ class PlayerStore {
       await listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
       await listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
       // A favorite that had moved now plays from its new address, saved by the backend.
-      await listen('favorites:changed', () => this.run(async () => (this.favorites = await api.listFavorites()))),
+      await listen('favorites:changed', () =>
+        this.run(async () => (this.favorites = await api.listFavorites())),
+      ),
       // Station switched from the system media controls (next / previous favorite)
       await listen<StationChange>('player:station', (e) => {
         const { show_click_notice, ...station } = e.payload;

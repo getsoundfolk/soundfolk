@@ -48,9 +48,15 @@
     bind:value={name}
     disabled={pending}
   />
-  <button class={styles.button} type="submit" disabled={pending || url.trim() === '' || name.trim() === ''}>
+  <button
+    class={styles.button}
+    type="submit"
+    disabled={pending || url.trim() === '' || name.trim() === ''}
+  >
     {pending ? 'Testing stream…' : 'Add'}
   </button>
-  <p class={styles.hint}>The stream is tested before it is saved. The station stays on this device.</p>
+  <p class={styles.hint}>
+    The stream is tested before it is saved. The station stays on this device.
+  </p>
   {#if error}<p class={styles.error} role="alert">{error}</p>{/if}
 </form>

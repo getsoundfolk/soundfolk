@@ -125,7 +125,12 @@
 
   <ol class={styles.list}>
     {#each shown as item, index (item.id)}
-      <li class={styles.row} data-dragged={item.id === draggedId} {@attach register(rows, item.id)} animate:flip={{ duration: 150 }}>
+      <li
+        class={styles.row}
+        data-dragged={item.id === draggedId}
+        {@attach register(rows, item.id)}
+        animate:flip={{ duration: 150 }}
+      >
         <button
           class={styles.handle}
           type="button"

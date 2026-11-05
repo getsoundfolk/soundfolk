@@ -55,21 +55,27 @@
     }
   };
   const month = (ym: string) =>
-    new Date(`${ym}-01T12:00:00`).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+    new Date(`${ym}-01T12:00:00`).toLocaleDateString(undefined, {
+      month: 'short',
+      year: '2-digit',
+    });
 
-  const hours = (h: number) => (h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(h < 10 ? 1 : 0)} h`);
+  const hours = (h: number) =>
+    h < 1 ? `${Math.round(h * 60)} min` : `${h.toFixed(h < 10 ? 1 : 0)} h`;
   const percent = (r: number) => `${(r * 100).toFixed(r < 0.1 ? 1 : 0)} %`;
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   const stations = $derived.by(() => {
     const list = stats?.stations ?? [];
-    if (stationOrder === 'likes') return list.filter((s) => s.likes > 0 || s.listening_hours > 0).slice(0, 10);
+    if (stationOrder === 'likes')
+      return list.filter((s) => s.likes > 0 || s.listening_hours > 0).slice(0, 10);
     return list
       .filter((s) => s.listening_hours >= MIN_HOURS_FOR_RATE && s.likes_per_hour !== null)
       .sort((a, b) => b.likes_per_hour! - a.likes_per_hour!)
       .slice(0, 10);
   });
-  const stationValue = (s: StationStats) => (stationOrder === 'likes' ? s.likes : (s.likes_per_hour ?? 0));
+  const stationValue = (s: StationStats) =>
+    stationOrder === 'likes' ? s.likes : (s.likes_per_hour ?? 0);
   const stationMax = $derived(Math.max(...stations.map(stationValue), 0));
 
   const quality = $derived(
@@ -80,12 +86,15 @@
   );
 
   /** Liked tracks the artist-based figures leave out. */
-  const leftOut = $derived(stats ? stats.identification.not_found + stats.identification.pending : 0);
+  const leftOut = $derived(
+    stats ? stats.identification.not_found + stats.identification.pending : 0,
+  );
   const identified = $derived(stats ? stats.identification.matched > 0 : false);
   const listened = $derived(stats ? stats.totals.listening_hours > 0 : false);
 
   const max = (items: { count: number }[]) => Math.max(...items.map((i) => i.count), 0);
-  const width = (value: number, top: number) => `${top > 0 ? Math.max((value / top) * 100, 2) : 0}%`;
+  const width = (value: number, top: number) =>
+    `${top > 0 ? Math.max((value / top) * 100, 2) : 0}%`;
   const height = (value: number, top: number) => `${top > 0 ? (value / top) * 100 : 0}%`;
 </script>
 
@@ -93,12 +102,17 @@
   {@const top = max(items)}
   <ul class={styles.bars}>
     {#each items as item (item.label + (item.detail ?? ''))}
-      <li class={styles.bar} title={`${format(item)}${item.detail ? ` — ${item.detail}` : ''}: ${item.count}`}>
+      <li
+        class={styles.bar}
+        title={`${format(item)}${item.detail ? ` — ${item.detail}` : ''}: ${item.count}`}
+      >
         <span class={styles.label}>
           {format(item)}
           {#if item.detail}<span class={styles.detail}>{item.detail}</span>{/if}
         </span>
-        <span class={styles.track}><span class={styles.fill} style:width={width(item.count, top)}></span></span>
+        <span class={styles.track}
+          ><span class={styles.fill} style:width={width(item.count, top)}></span></span
+        >
         <span class={styles.value}>{item.count}</span>
       </li>
     {/each}
@@ -110,7 +124,9 @@
   <div class={styles.columns} style:--count={values.length}>
     {#each values as value, i (i)}
       <div class={styles.column} title={`${labels[i]}: ${format(value)}`}>
-        <span class={styles.stick}><span class={styles.rise} style:height={height(value, top)}></span></span>
+        <span class={styles.stick}
+          ><span class={styles.rise} style:height={height(value, top)}></span></span
+        >
         <span class={styles.tick}>{i % every === 0 ? labels[i] : ''}</span>
       </div>
     {/each}
@@ -119,7 +135,13 @@
 
 <div class={styles.periods} role="radiogroup" aria-label="Period">
   {#each PERIODS as p (p.label)}
-    <button class={styles.period} type="button" role="radio" aria-checked={period === p.days} onclick={() => (period = p.days)}>
+    <button
+      class={styles.period}
+      type="button"
+      role="radio"
+      aria-checked={period === p.days}
+      onclick={() => (period = p.days)}
+    >
       {p.label}
     </button>
   {/each}
@@ -127,21 +149,29 @@
 
 {#if stats}
   <div class={styles.tiles}>
-    <div class={styles.tile}><span class={styles.big}>{hours(stats.totals.listening_hours)}</span>listened</div>
-    <div class={styles.tile}><span class={styles.big}>{stats.totals.tracks_heard}</span>tracks heard</div>
+    <div class={styles.tile}>
+      <span class={styles.big}>{hours(stats.totals.listening_hours)}</span>listened
+    </div>
+    <div class={styles.tile}>
+      <span class={styles.big}>{stats.totals.tracks_heard}</span>tracks heard
+    </div>
     <div class={styles.tile}><span class={styles.big}>{stats.totals.likes}</span>liked</div>
   </div>
 
   {#if !stats.identification.enabled}
     <div class={styles.notice}>
       <p>
-        Artists, albums, genres, decades and countries need your liked tracks to be identified on MusicBrainz, the open
-        music database. Only the artist and title of liked tracks are sent.
+        Artists, albums, genres, decades and countries need your liked tracks to be identified on
+        MusicBrainz, the open music database. Only the artist and title of liked tracks are sent.
       </p>
-      <button class={styles.action} type="button" onclick={enableIdentification}>Turn on identification</button>
+      <button class={styles.action} type="button" onclick={enableIdentification}
+        >Turn on identification</button
+      >
     </div>
   {:else if stats.identification.pending > 0}
-    <p class={styles.note}>Identifying {plural(stats.identification.pending, 'liked track')} on MusicBrainz…</p>
+    <p class={styles.note}>
+      Identifying {plural(stats.identification.pending, 'liked track')} on MusicBrainz…
+    </p>
   {/if}
 
   {#if stats.totals.likes === 0 && !listened && stats.totals.tracks_heard === 0}
@@ -153,14 +183,24 @@
       <header class={styles.head}>
         <h3 class={styles.title}>Stations</h3>
         <div class={styles.switch} role="radiogroup" aria-label="Rank stations by">
-          <button type="button" role="radio" aria-checked={stationOrder === 'likes'} onclick={() => (stationOrder = 'likes')}>Likes</button>
-          <button type="button" role="radio" aria-checked={stationOrder === 'rate'} onclick={() => (stationOrder = 'rate')}>Per hour</button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={stationOrder === 'likes'}
+            onclick={() => (stationOrder = 'likes')}>Likes</button
+          >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={stationOrder === 'rate'}
+            onclick={() => (stationOrder = 'rate')}>Per hour</button
+          >
         </div>
       </header>
       {#if stationOrder === 'rate'}
         <p class={styles.note}>
-          Fairer than raw counts: the station you listen to most is not always the one you like most. Stations with at
-          least {MIN_HOURS_FOR_RATE} h of listening.
+          Fairer than raw counts: the station you listen to most is not always the one you like
+          most. Stations with at least {MIN_HOURS_FOR_RATE} h of listening.
         </p>
       {/if}
       {#if stations.length === 0}
@@ -171,13 +211,22 @@
             {@const meta = [
               plural(s.likes, 'like'),
               s.listening_hours > 0 ? hours(s.listening_hours) : null,
-              s.likes_per_hour !== null && s.listening_hours >= MIN_HOURS_FOR_RATE ? `${s.likes_per_hour.toFixed(1)}/h` : null,
+              s.likes_per_hour !== null && s.listening_hours >= MIN_HOURS_FOR_RATE
+                ? `${s.likes_per_hour.toFixed(1)}/h`
+                : null,
               s.like_rate !== null ? `${percent(s.like_rate)} of tracks` : null,
-            ].filter(Boolean).join(' · ')}
+            ]
+              .filter(Boolean)
+              .join(' · ')}
             <li class={styles.bar} title={`${s.name}: ${meta}`}>
               <span class={styles.label}>{s.name}<span class={styles.detail}>{meta}</span></span>
-              <span class={styles.track}><span class={styles.fill} style:width={width(stationValue(s), stationMax)}></span></span>
-              <span class={styles.value}>{stationOrder === 'likes' ? s.likes : stationValue(s).toFixed(1)}</span>
+              <span class={styles.track}
+                ><span class={styles.fill} style:width={width(stationValue(s), stationMax)}
+                ></span></span
+              >
+              <span class={styles.value}
+                >{stationOrder === 'likes' ? s.likes : stationValue(s).toFixed(1)}</span
+              >
             </li>
           {/each}
         </ul>
@@ -272,12 +321,17 @@
     <section class={styles.section}>
       <h3 class={styles.title}>Station profiles</h3>
       <p class={styles.note}>
-        Stations with at least {MIN_TRACKS_FOR_QUALITY} tracks heard. Repetition: plays per distinct track. Diversity:
-        distinct artists per 100 tracks. Unrecognised: titles without an artist (ads, jingles, missing metadata).
+        Stations with at least {MIN_TRACKS_FOR_QUALITY} tracks heard. Repetition: plays per distinct track.
+        Diversity: distinct artists per 100 tracks. Unrecognised: titles without an artist (ads, jingles,
+        missing metadata).
       </p>
       <table class={styles.table}>
         <thead>
-          <tr><th scope="col">Station</th><th scope="col">Repetition</th><th scope="col">Diversity</th><th scope="col">Unrecognised</th></tr>
+          <tr
+            ><th scope="col">Station</th><th scope="col">Repetition</th><th scope="col"
+              >Diversity</th
+            ><th scope="col">Unrecognised</th></tr
+          >
         </thead>
         <tbody>
           {#each quality as s (s.station_id)}

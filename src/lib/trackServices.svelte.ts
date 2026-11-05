@@ -18,7 +18,10 @@ class TrackServicesStore {
   /** Whether the catalog part of the selection is the default one (the user's own sites aside). */
   isDefault = $derived.by(() => {
     const catalog = this.ids.filter((id) => !isCustom(id));
-    return catalog.length === DEFAULT_SERVICE_IDS.length && DEFAULT_SERVICE_IDS.every((id) => catalog.includes(id));
+    return (
+      catalog.length === DEFAULT_SERVICE_IDS.length &&
+      DEFAULT_SERVICE_IDS.every((id) => catalog.includes(id))
+    );
   });
 
   load() {

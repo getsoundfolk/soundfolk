@@ -1,7 +1,14 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, errorMessage, type Favorite, type PersonalStation, type Playable, type Station } from '../api';
+  import {
+    api,
+    errorMessage,
+    type Favorite,
+    type PersonalStation,
+    type Playable,
+    type Station,
+  } from '../api';
   import { player } from '../player.svelte';
   import AddStationForm from './AddStationForm.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
@@ -94,11 +101,25 @@
     genre: s.tags[0] ?? null,
     homepage: s.homepage,
   });
-  const fromPersonal = (p: PersonalStation): Playable => ({ id: p.station_id, name: p.name, url: p.stream_url, genre: p.genre });
-  const fromFavorite = (f: Favorite): Playable => ({ id: f.station_id, name: f.name, url: f.stream_url, genre: f.genre });
+  const fromPersonal = (p: PersonalStation): Playable => ({
+    id: p.station_id,
+    name: p.name,
+    url: p.stream_url,
+    genre: p.genre,
+  });
+  const fromFavorite = (f: Favorite): Playable => ({
+    id: f.station_id,
+    name: f.name,
+    url: f.stream_url,
+    genre: f.genre,
+  });
 
   const meta = (s: Station) =>
-    [s.country_code, [s.codec, s.bitrate > 0 ? `${s.bitrate} kbit/s` : ''].filter(Boolean).join(' '), s.tags.slice(0, 2).join(', ')]
+    [
+      s.country_code,
+      [s.codec, s.bitrate > 0 ? `${s.bitrate} kbit/s` : ''].filter(Boolean).join(' '),
+      s.tags.slice(0, 2).join(', '),
+    ]
       .filter(Boolean)
       .join(' · ');
 
@@ -126,7 +147,9 @@
         onclick={() => (tab = t.id)}
       >
         {t.label}
-        {#if t.id === 'favorites' && player.favorites.length}<span class={styles.count}>{player.favorites.length}</span>{/if}
+        {#if t.id === 'favorites' && player.favorites.length}<span class={styles.count}
+            >{player.favorites.length}</span
+          >{/if}
       </button>
     {/each}
   </div>

@@ -30,7 +30,10 @@
     if (!next) return null;
     const text = next.artist ? `${next.artist} – ${next.title}` : next.title;
     const at = next.started_at ? new Date(next.started_at) : null;
-    const time = at && !Number.isNaN(at.getTime()) ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null;
+    const time =
+      at && !Number.isNaN(at.getTime())
+        ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : null;
     return { text, time };
   });
 
@@ -57,12 +60,18 @@
     const raw = e.deltaY || -e.deltaX;
     if (!raw) return;
     e.preventDefault();
-    const px = e.deltaMode === WheelEvent.DOM_DELTA_LINE ? raw * 33 : e.deltaMode === WheelEvent.DOM_DELTA_PAGE ? raw * NOTCH_PX * 3 : raw;
+    const px =
+      e.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? raw * 33
+        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? raw * NOTCH_PX * 3
+          : raw;
     // A direction change drops what was left over from the other way.
     if (Math.sign(px) !== Math.sign(wheelPx)) wheelPx = 0;
     wheelPx += px;
     // At least one step per event: a mouse notch must never do nothing.
-    const steps = Math.trunc(wheelPx / NOTCH_PX) || (Math.abs(px) >= NOTCH_PX / 2 ? Math.sign(px) : 0);
+    const steps =
+      Math.trunc(wheelPx / NOTCH_PX) || (Math.abs(px) >= NOTCH_PX / 2 ? Math.sign(px) : 0);
     if (!steps) return;
     wheelPx = Math.abs(wheelPx) >= NOTCH_PX ? wheelPx - steps * NOTCH_PX : 0;
     player.setVolume(Math.round(player.volume * 100 - steps) / 100);
@@ -97,8 +106,16 @@
           onerror={() => (brokenCover = cover)}
         />
       {:else}
-        <svg class={styles.placeholder} width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M9 18.5a2.5 2.5 0 1 1-2-2.45V5.2l12-2.2v12.5a2.5 2.5 0 1 1-2-2.45V7.3l-8 1.47z" />
+        <svg
+          class={styles.placeholder}
+          width="28"
+          height="28"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+        >
+          <path
+            d="M9 18.5a2.5 2.5 0 1 1-2-2.45V5.2l12-2.2v12.5a2.5 2.5 0 1 1-2-2.45V7.3l-8 1.47z"
+          />
         </svg>
       {/if}
     </div>
@@ -119,7 +136,8 @@
         aria-pressed={track.liked}
         aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
         data-on={track.liked}
-        onclick={() => history.toggleLike({ ...track, historyId: track.id })}>{track.liked ? '♥' : '♡'}</button
+        onclick={() => history.toggleLike({ ...track, historyId: track.id })}
+        >{track.liked ? '♥' : '♡'}</button
       >
     {/if}
     <button
@@ -155,7 +173,10 @@
           <rect x="6" y="5" width="4" height="14" rx="1" />
           <rect x="14" y="5" width="4" height="14" rx="1" />
         {:else}
-          <path transform="translate(-1.5 0)" d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
+          <path
+            transform="translate(-1.5 0)"
+            d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"
+          />
         {/if}
       </svg>
     </button>
@@ -169,8 +190,17 @@
         title={player.muted ? 'Unmute' : 'Mute'}
         onclick={() => player.toggleMute()}
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
           <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
           {#if level === 0}
             <path d="m16 9 5 6m0-6-5 6" />
@@ -206,8 +236,12 @@
   {#if status === 'error' && player.goneFavorite && player.isFavorite(player.goneFavorite)}
     <p class={styles.ask}>
       Remove it from your favorites?
-      <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(true)}>Yes</button>
-      <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(false)}>No</button>
+      <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(true)}
+        >Yes</button
+      >
+      <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(false)}
+        >No</button
+      >
     </p>
   {/if}
 </section>

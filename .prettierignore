@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MPL-2.0
 # Prettier formats the front end (src/) and the config files next to it; Rust has cargo fmt,
-# Markdown docs are written by hand.
+# Markdown docs and the workflows are written by hand.
+.github/
 dist/
 node_modules/
 src-tauri/

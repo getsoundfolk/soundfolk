@@ -26,8 +26,11 @@
       <span class={styles.file}>{notice.file}</span>
       {notice.message}
     </p>
-    <button class={styles.close} type="button" aria-label="Dismiss" onclick={() => (player.recipeNotice = null)}
-      >✕</button
+    <button
+      class={styles.close}
+      type="button"
+      aria-label="Dismiss"
+      onclick={() => (player.recipeNotice = null)}>✕</button
     >
   </aside>
 {/if}

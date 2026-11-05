@@ -181,7 +181,8 @@ export const api = {
   getNowPlaying: () => invoke<NowPlaying>('get_now_playing'),
   getCover: () => invoke<Cover>('get_cover'),
   getCoverSources: () => invoke<CoverSource[]>('get_cover_sources'),
-  setCoverSources: (sources: CoverSource[]) => invoke<CoverSource[]>('set_cover_sources', { sources }),
+  setCoverSources: (sources: CoverSource[]) =>
+    invoke<CoverSource[]>('set_cover_sources', { sources }),
 
   searchStations: (query: SearchQuery) => invoke<SearchPage>('search_stations', { query }),
 
@@ -205,7 +206,8 @@ export const api = {
 
   likeTrack: (historyId: number) => invoke<boolean>('like_track', { historyId }),
   unlikeTrack: (trackKey: string) => invoke<boolean>('unlike_track', { trackKey }),
-  listLikes: (limit?: number, query?: string) => invoke<LikedTrack[]>('list_likes', { limit, query }),
+  listLikes: (limit?: number, query?: string) =>
+    invoke<LikedTrack[]>('list_likes', { limit, query }),
 
   resolveStation: (stationId: string, name?: string) =>
     invoke<Playable>('resolve_station', { stationId, name }),
@@ -213,7 +215,8 @@ export const api = {
   getStats: (days?: number) => invoke<Stats>('get_stats', { days }),
 
   getTrackIdentification: () => invoke<boolean>('get_track_identification'),
-  setTrackIdentification: (enabled: boolean) => invoke<void>('set_track_identification', { enabled }),
+  setTrackIdentification: (enabled: boolean) =>
+    invoke<void>('set_track_identification', { enabled }),
 
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),
@@ -233,7 +236,8 @@ export const api = {
   getTitleStatus: () => invoke<TitleStatus>('get_title_status'),
   /** Picks up recipe files saved since the last check. */
   reloadRecipes: () => invoke<void>('reload_recipes'),
-  testRecipe: (url: string, stationId?: string) => invoke<RecipeTest>('test_recipe', { url, stationId }),
+  testRecipe: (url: string, stationId?: string) =>
+    invoke<RecipeTest>('test_recipe', { url, stationId }),
   editRecipe: (station: Playable) =>
     invoke<string>('edit_recipe', {
       url: station.url,
@@ -242,13 +246,15 @@ export const api = {
       homepage: station.homepage ?? null,
     }),
   /** Opens the "Share a recipe" form on GitHub, filled in with the recipe and its fixture. */
-  shareRecipe: (url: string, stationId?: string) => invoke<SharedRecipe>('share_recipe', { url, stationId }),
+  shareRecipe: (url: string, stationId?: string) =>
+    invoke<SharedRecipe>('share_recipe', { url, stationId }),
   getLocalRecipes: () => invoke<LocalRecipes>('get_local_recipes'),
   openRecipesFolder: () => invoke<void>('open_recipes_folder'),
   getTrackServices: () => invoke<string[] | null>('get_track_services'),
   setTrackServices: (ids: string[]) => invoke<void>('set_track_services', { ids }),
   getCustomTrackServices: () => invoke<CustomService[]>('get_custom_track_services'),
-  setCustomTrackServices: (services: CustomService[]) => invoke<void>('set_custom_track_services', { services }),
+  setCustomTrackServices: (services: CustomService[]) =>
+    invoke<void>('set_custom_track_services', { services }),
 };
 
 /** A site the user added to a track's menu: `{query}` in `template` stands for the track. */
@@ -294,9 +300,13 @@ export function recipeRequestLink(station: Playable): string {
   const params = new URLSearchParams({
     template: 'station.yml',
     title: `Station: ${station.name}`,
-    station: catalog ? `${station.name} (https://www.radio-browser.info/history/${station.id})` : station.name,
+    station: catalog
+      ? `${station.name} (https://www.radio-browser.info/history/${station.id})`
+      : station.name,
     page: '',
-    notes: [`Stream: ${station.url}`, station.homepage ? `Website: ${station.homepage}` : ''].filter(Boolean).join('\n'),
+    notes: [`Stream: ${station.url}`, station.homepage ? `Website: ${station.homepage}` : '']
+      .filter(Boolean)
+      .join('\n'),
   });
   return `${RECIPES_REPOSITORY}/issues/new?${params}`;
 }

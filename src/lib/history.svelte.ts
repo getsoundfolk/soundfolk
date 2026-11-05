@@ -31,7 +31,8 @@ class HistoryStore {
     try {
       if (track.liked) await api.unlikeTrack(track.track_key);
       else if (track.historyId !== undefined) await api.likeTrack(track.historyId);
-      if (this.latest?.track_key === track.track_key) this.latest = { ...this.latest, liked: !track.liked };
+      if (this.latest?.track_key === track.track_key)
+        this.latest = { ...this.latest, liked: !track.liked };
       this.version++;
     } catch (e) {
       player.error = errorMessage(e);

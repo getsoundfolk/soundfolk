@@ -1,7 +1,11 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 :root {
   color-scheme: dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   background: #121216;
   color: #ececf1;
 }
