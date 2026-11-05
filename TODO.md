@@ -89,6 +89,11 @@ listening stats must be crossed with the sessions.
 - [ ] Launch at startup (`tauri-plugin-autostart`), possibly with "resume the last station".
 - [ ] Audio quality Low / Auto / High: pick among a station's streams by bitrate (Radio-Browser often lists several).
 - [ ] When a stream fails, fall back to another stream of the same station, or a similar station.
+- [ ] Drop `tauri-plugin-clipboard-manager` (~10–15 crates fewer, mostly `image`, for text only): a small `copy_text`
+  command on `arboard` with `default-features = false, features = ["wayland-data-control"]`. Not
+  `navigator.clipboard`: WebKitGTK only allows it right after a click in the page, so "Copy" from the native
+  right-click menu (`main.ts`) and the recipe fixture copied after a page fetch (`commands.rs`) would be refused.
+  Retest on X11 and Wayland. Low priority: build time and binary size only.
 
 **From desktop radio player feedback (r/selfhosted, r/linux…)** — not yet in the app:
 - [ ] Tray menu: play / pause, mute, switch between favorite stations (today: show / hide and quit only).
