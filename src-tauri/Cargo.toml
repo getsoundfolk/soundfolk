@@ -11,7 +11,9 @@ members = ["crates/nowplaying"]
 
 [lib]
 name = "soundfolk_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop only needs the rlib. The mobile builds will need "staticlib" (iOS) and "cdylib" (Android)
+# back, or a small mobile crate that has them: built every time, they add ~1.6 GB per debug build.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -77,6 +79,12 @@ souvlaki = { version = "0.8", default-features = false, features = ["use_zbus"] 
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }
+
+# Dependencies (Tauri, GTK, WebKit…) without debug info: smaller and faster debug builds. Our own crates
+# keep it in full; panics and backtraces still name the dependencies' functions. To step into a
+# dependency with a debugger, build once with: --config 'profile.dev.package."*".debug=true'
+[profile.dev.package."*"]
+debug = false
 
 [profile.release]
 opt-level = 3
