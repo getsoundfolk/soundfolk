@@ -147,9 +147,9 @@ impl CatalogSource for RadioBrowser {
             let name_query = q.text.as_deref().and_then(NameQuery::new);
             let (name, filter) = match &name_query {
                 None => (None, None),
-                Some(n) if n.is_single() => (Some(n.longest_fragment().to_owned()), None),
+                Some(n) if n.is_single() => (Some(n.longest_fragment()), None),
                 Some(n) if self.wildcards().await? => (Some(n.wildcard_term()), Some((n, true))),
-                Some(n) => (Some(n.longest_fragment().to_owned()), Some((n, false))),
+                Some(n) => (Some(n.longest_fragment()), Some((n, false))),
             };
             let wanted = |s: &Station| {
                 s.is_supported() && filter.is_none_or(|(n, trust)| n.matches(&s.name, trust))
@@ -408,6 +408,18 @@ mod tests {
         // "Radio-Canada" and "Radio–Canada".
         let canada = names(&rb, "Radio-Canada").await;
         assert!(canada.iter().any(|n| n.contains("Radio-Canada")), "{canada:?}");
+    }
+
+    /// Against the real API: `%` is searched as typed, `_` as a space.
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_search_reads_percent_and_underscore_as_typed() {
+        let rb = RadioBrowser::new().unwrap();
+        let percent = names(&rb, "100%").await;
+        assert!(!percent.is_empty());
+        assert!(percent.iter().all(|n| n.contains('%')), "{percent:?}");
+        let underscore = names(&rb, "radio_x").await;
+        assert!(underscore.iter().any(|n| n.contains("Radio X")), "{underscore:?}");
     }
 
     async fn names(rb: &RadioBrowser, text: &str) -> Vec<String> {

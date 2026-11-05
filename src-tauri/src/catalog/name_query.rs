@@ -4,9 +4,14 @@
 //! The catalog finds a name when it contains the searched text, ignoring case and accents, but it
 //! compares everything else character by character: `80's` does not find `80’s`, `Radio-Canada`
 //! does not find `Radio–Canada`, `Radio France` does not find `Radio  France` (all of these exist).
-//! So the text is cut into fragments at those characters (spaces, quotes, dashes, dots), the
-//! catalog is asked for names holding the fragments in order, and [`NameQuery::matches`] keeps
-//! the names where only such characters separate them.
+//! So the text is cut into fragments at those characters (spaces, quotes, dashes, dots,
+//! underscores), the catalog is asked for names holding the fragments in order, and
+//! [`NameQuery::matches`] keeps the names where only such characters separate them.
+//!
+//! The catalog compares with SQL `LIKE`, where `%` and `_` stand for other characters and `\`
+//! escapes. An underscore is a separator here (`radio_x` means "Radio X"), so it never reaches the
+//! catalog; `%` and `\` are escaped and searched as typed (`100%` finds "100% Jazz", not every
+//! name holding "100").
 
 use unicode_normalization::char::is_combining_mark;
 use unicode_normalization::UnicodeNormalization;
@@ -47,19 +52,17 @@ impl NameQuery {
     /// characters" (SQL `LIKE`): this is not documented, see [`super::radio_browser`] which
     /// checks that it still works before relying on it.
     pub fn wildcard_term(&self) -> String {
-        self.fragments.join("%")
+        self.fragments.iter().map(|f| like_literal(f)).collect::<Vec<_>>().join("%")
     }
 
-    /// Longest fragment: what to ask the catalog for when `%` is not available.
-    pub fn longest_fragment(&self) -> &str {
-        self.fragments
-            .iter()
-            .max_by_key(|f| f.chars().count())
-            .map_or("", String::as_str)
+    /// Longest fragment, as catalog search text: what to ask the catalog for when `%` is not
+    /// available, or the whole search when there is a single fragment.
+    pub fn longest_fragment(&self) -> String {
+        self.fragments.iter().max_by_key(|f| f.chars().count()).map_or_else(String::new, |f| like_literal(f))
     }
 
-    /// Whether `name` holds the fragments in order, separated only by spaces, quotes, dashes or
-    /// dots (or nothing: `Rock'nRoll` matches `Rock'n'Roll`).
+    /// Whether `name` holds the fragments in order, separated only by spaces, quotes, dashes, dots
+    /// or underscores (or nothing: `Rock'nRoll` matches `Rock'n'Roll`).
     ///
     /// `trust_catalog`: the catalog already found every fragment in order. If [`fold`] does not
     /// find them all (the catalog folds a letter differently, `æ` for example), the name is kept
@@ -88,7 +91,19 @@ impl NameQuery {
 
 /// Characters a name may spell several ways, once [`catalog_text`] made them ASCII.
 fn is_separator(c: char) -> bool {
-    c.is_whitespace() || matches!(c, '\'' | '"' | '-' | '.')
+    c.is_whitespace() || matches!(c, '\'' | '"' | '-' | '.' | '_')
+}
+
+/// `text` searched as typed by SQL `LIKE`: its own `%`, `_` and `\\` lose their meaning.
+fn like_literal(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 /// Text in the form the comparison uses: [`catalog_text`], then without case, accents or
@@ -150,6 +165,27 @@ mod tests {
         assert!(!q.matches("Smooth Jazz on Radio", false));
         assert!(!q.matches("Smooth Jazz on Radio", true));
         assert!(!query("Rock'n'Roll").matches("Rock and Roll", false));
+    }
+
+    #[test]
+    fn an_underscore_separates_words() {
+        let q = query("radio_x");
+        assert_eq!(q.wildcard_term(), "radio%x");
+        for name in ["CHOI 98.1 Radio X", "Radio-X", "radio_x"] {
+            assert!(q.matches(name, false), "{name}");
+        }
+        assert!(query("radio x").matches("radio_x", false));
+    }
+
+    #[test]
+    fn percent_and_backslash_are_searched_as_typed() {
+        let q = query("100%");
+        assert!(q.is_single());
+        assert_eq!(q.longest_fragment(), "100\\%");
+        assert_eq!(query("abc\\").longest_fragment(), "abc\\\\");
+        assert_eq!(query("100% Jazz").wildcard_term(), "100\\%%Jazz");
+        assert!(query("100% Jazz").matches("100% JAZZ", false));
+        assert!(!query("100% Jazz").matches("100 Jazz", false));
     }
 
     #[test]
