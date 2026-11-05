@@ -24,7 +24,10 @@ fn bundle_recipes() {
     for path in &files {
         println!("cargo:rerun-if-changed={}", path.display());
         let name = path.file_name().unwrap().to_string_lossy();
-        code.push_str(&format!("    ({name:?}, include_str!({:?})),\n", path.display().to_string()));
+        code.push_str(&format!(
+            "    ({name:?}, include_str!({:?})),\n",
+            path.display().to_string()
+        ));
     }
     code.push_str("];\n");
     let out = Path::new(&std::env::var("OUT_DIR").unwrap()).join("bundled_recipes.rs");

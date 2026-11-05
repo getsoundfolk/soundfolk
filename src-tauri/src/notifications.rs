@@ -40,13 +40,20 @@ pub struct TrackNotifications {
 
 impl TrackNotifications {
     pub fn new(app: &AppHandle, db: &Database, icon: Option<String>) -> Self {
-        let enabled = db.get_bool(SETTING_TRACK_NOTIFICATIONS, false).unwrap_or_else(|e| {
-            tracing::warn!("track notifications setting not read: {e}");
-            false
-        });
+        let enabled = db
+            .get_bool(SETTING_TRACK_NOTIFICATIONS, false)
+            .unwrap_or_else(|e| {
+                tracing::warn!("track notifications setting not read: {e}");
+                false
+            });
         let identifier = app.config().identifier.clone();
         init(&identifier);
-        Self { enabled: AtomicBool::new(enabled), icon, identifier, last: Arc::default() }
+        Self {
+            enabled: AtomicBool::new(enabled),
+            icon,
+            identifier,
+            last: Arc::default(),
+        }
     }
 
     /// A new track is on air (`station`: the name the user knows it by).
@@ -54,14 +61,31 @@ impl TrackNotifications {
         if !self.enabled.load(Ordering::Relaxed) || FOREGROUND.load(Ordering::Relaxed) {
             return;
         }
-        let station = station.or(now_playing.station.as_deref()).map(str::trim).filter(|s| !s.is_empty());
-        let Some(raw) = now_playing.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) else { return };
+        let station = station
+            .or(now_playing.station.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let Some(raw) = now_playing
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        else {
+            return;
+        };
         let parsed = match &now_playing.track {
-            Some(track) => ParsedTitle { artist: track.artist.clone(), title: track.title.clone() },
+            Some(track) => ParsedTitle {
+                artist: track.artist.clone(),
+                title: track.title.clone(),
+            },
             None => tracks::parse(raw, station),
         };
         let (summary, body) = text(&parsed, station);
-        let (icon, identifier, last) = (self.icon.clone(), self.identifier.clone(), self.last.clone());
+        let (icon, identifier, last) = (
+            self.icon.clone(),
+            self.identifier.clone(),
+            self.last.clone(),
+        );
         // Showing waits for the desktop (D-Bus on Linux): not on the audio thread.
         tauri::async_runtime::spawn_blocking(move || {
             let mut last = last.lock().unwrap_or_else(|p| p.into_inner());
@@ -75,7 +99,11 @@ impl TrackNotifications {
 
 /// The title on the first line; artist and station below, as in the history.
 fn text(parsed: &ParsedTitle, station: Option<&str>) -> (String, String) {
-    let body = [parsed.artist.as_deref(), station].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+    let body = [parsed.artist.as_deref(), station]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" · ");
     (parsed.title.clone(), body)
 }
 
@@ -91,14 +119,21 @@ mod imp {
         replaces: Option<u32>,
     ) -> Result<Option<u32>, String> {
         let mut notification = Notification::new();
-        notification.appname("Soundfolk").summary(summary).body(body).hint(Hint::Transient(true));
+        notification
+            .appname("Soundfolk")
+            .summary(summary)
+            .body(body)
+            .hint(Hint::Transient(true));
         if let Some(icon) = icon {
             notification.icon(icon);
         }
         if let Some(id) = replaces {
             notification.id(id);
         }
-        notification.show().map(|shown| Some(shown.id())).map_err(|e| e.to_string())
+        notification
+            .show()
+            .map(|shown| Some(shown.id()))
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -115,7 +150,10 @@ mod imp {
         _replaces: Option<u32>,
     ) -> Result<Option<u32>, String> {
         let mut notification = Notification::new();
-        notification.appname("Soundfolk").summary(summary).body(body);
+        notification
+            .appname("Soundfolk")
+            .summary(summary)
+            .body(body);
         // Installed, the app has its own identity; a development build borrows PowerShell's
         // (Windows) or the Terminal's (macOS), which every system knows.
         #[cfg(windows)]
@@ -162,12 +200,18 @@ mod tests {
     use super::*;
 
     fn parsed(artist: Option<&str>, title: &str) -> ParsedTitle {
-        ParsedTitle { artist: artist.map(str::to_owned), title: title.to_owned() }
+        ParsedTitle {
+            artist: artist.map(str::to_owned),
+            title: title.to_owned(),
+        }
     }
 
     #[test]
     fn title_first_then_artist_and_station() {
-        let (summary, body) = text(&parsed(Some("Ben E. King"), "Stand By Me"), Some("Radio Swiss Jazz"));
+        let (summary, body) = text(
+            &parsed(Some("Ben E. King"), "Stand By Me"),
+            Some("Radio Swiss Jazz"),
+        );
         assert_eq!(summary, "Stand By Me");
         assert_eq!(body, "Ben E. King · Radio Swiss Jazz");
     }
@@ -175,7 +219,10 @@ mod tests {
     #[test]
     fn missing_parts_leave_no_separator() {
         assert_eq!(text(&parsed(None, "Morning show"), Some("FIP")).1, "FIP");
-        assert_eq!(text(&parsed(Some("Nina Simone"), "Feeling Good"), None).1, "Nina Simone");
+        assert_eq!(
+            text(&parsed(Some("Nina Simone"), "Feeling Good"), None).1,
+            "Nina Simone"
+        );
         assert_eq!(text(&parsed(None, "Jingle"), None).1, "");
     }
 }

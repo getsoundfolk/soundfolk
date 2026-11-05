@@ -145,13 +145,32 @@ pub struct Leveler {
 
 impl Leveler {
     /// `stored`: the station's remembered level; `guess`: the starting point otherwise.
-    pub fn new(sample_rate: u32, channels: usize, enabled: bool, stored: Option<StoredLevel>, guess: f64) -> Self {
-        let meter = u32::try_from(channels)
-            .ok()
-            .and_then(|c| EbuR128::new(c, sample_rate, Mode::S).inspect_err(|e| tracing::warn!("no loudness meter: {e:?}")).ok());
+    pub fn new(
+        sample_rate: u32,
+        channels: usize,
+        enabled: bool,
+        stored: Option<StoredLevel>,
+        guess: f64,
+    ) -> Self {
+        let meter = u32::try_from(channels).ok().and_then(|c| {
+            EbuR128::new(c, sample_rate, Mode::S)
+                .inspect_err(|e| tracing::warn!("no loudness meter: {e:?}"))
+                .ok()
+        });
         let (phase, estimate, history) = match stored {
-            Some(level) => (Phase::Steady, level.loudness_lufs, (level.measured_secs / HISTORY_FULL).clamp(0.0, 1.0)),
-            None => (Phase::First { energy: 0.0, blocks: 0 }, guess, 0.0),
+            Some(level) => (
+                Phase::Steady,
+                level.loudness_lufs,
+                (level.measured_secs / HISTORY_FULL).clamp(0.0, 1.0),
+            ),
+            None => (
+                Phase::First {
+                    energy: 0.0,
+                    blocks: 0,
+                },
+                guess,
+                0.0,
+            ),
         };
         let mut leveler = Self {
             meter,
@@ -203,7 +222,9 @@ impl Leveler {
         }
         let mut rest = samples;
         while !rest.is_empty() {
-            let frames = (rest.len() / self.channels).min(self.frames_per_block - self.block_fill).max(1);
+            let frames = (rest.len() / self.channels)
+                .min(self.frames_per_block - self.block_fill)
+                .max(1);
             let len = (frames * self.channels).min(rest.len());
             let (chunk, tail) = rest.split_at_mut(len);
             self.measure(chunk);
@@ -250,7 +271,10 @@ impl Leveler {
         } else {
             (start - step).max(self.target_db)
         };
-        let (from, to) = (db_to_linear(start) as f32, db_to_linear(self.gain_db) as f32);
+        let (from, to) = (
+            db_to_linear(start) as f32,
+            db_to_linear(self.gain_db) as f32,
+        );
         if from == 1.0 && to == 1.0 {
             return;
         }
@@ -329,9 +353,16 @@ impl Leveler {
             if (value - stored.loudness_lufs).abs() > DIVERGENCE_DB {
                 self.diverging += BLOCK;
                 if self.diverging >= DIVERGENCE_TIME {
-                    tracing::info!(stored = stored.loudness_lufs, live = value, "station level changed: history dropped");
+                    tracing::info!(
+                        stored = stored.loudness_lufs,
+                        live = value,
+                        "station level changed: history dropped"
+                    );
                     self.history = 0.0;
-                    self.stored = Some(StoredLevel { measured_secs: 0.0, ..stored });
+                    self.stored = Some(StoredLevel {
+                        measured_secs: 0.0,
+                        ..stored
+                    });
                 }
             } else {
                 self.diverging = Duration::ZERO;
@@ -359,7 +390,11 @@ impl Leveler {
         if !self.enabled {
             return 0.0;
         }
-        let max_boost = if self.learning() { MAX_BOOST_LEARNING_DB } else { MAX_BOOST_DB };
+        let max_boost = if self.learning() {
+            MAX_BOOST_LEARNING_DB
+        } else {
+            MAX_BOOST_DB
+        };
         let mut gain = (TARGET_LUFS - self.estimate).min(max_boost);
         if gain > 0.0 {
             gain = gain.min((PEAK_CEILING_DBFS - self.peak_dbfs()).max(0.0));
@@ -391,7 +426,11 @@ fn db_to_linear(db: f64) -> f64 {
 }
 
 fn linear_to_db(linear: f64) -> f64 {
-    if linear > 0.0 { 20.0 * linear.log10() } else { f64::NEG_INFINITY }
+    if linear > 0.0 {
+        20.0 * linear.log10()
+    } else {
+        f64::NEG_INFINITY
+    }
 }
 
 /// The leveler of a playback, with where its level is remembered: saved every minute and when the
@@ -413,9 +452,17 @@ impl StationLevel {
         enabled: bool,
     ) -> Self {
         let stored = memory.as_ref().and_then(|m| m.recall(&station));
-        let guess = memory.as_ref().and_then(|m| m.guess()).unwrap_or(DEFAULT_GUESS_LUFS);
+        let guess = memory
+            .as_ref()
+            .and_then(|m| m.guess())
+            .unwrap_or(DEFAULT_GUESS_LUFS);
         tracing::debug!(%station, ?stored, guess, "station level");
-        Self { leveler: Leveler::new(sample_rate, channels, enabled, stored, guess), memory, station, saved: Instant::now() }
+        Self {
+            leveler: Leveler::new(sample_rate, channels, enabled, stored, guess),
+            memory,
+            station,
+            saved: Instant::now(),
+        }
     }
 
     pub fn process(&mut self, samples: &mut [f32], enabled: bool) {
@@ -450,14 +497,19 @@ mod tests {
         let frames = (seconds * f64::from(RATE)) as usize;
         let raw: Vec<f32> = (0..frames.max(RATE as usize))
             .flat_map(|i| {
-                let s = (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / f64::from(RATE)).sin() as f32 * 0.1;
+                let s = (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / f64::from(RATE)).sin()
+                    as f32
+                    * 0.1;
                 [s, s]
             })
             .collect();
         let mut meter = EbuR128::new(2, RATE, Mode::M).unwrap();
         meter.add_frames_f32(&raw[..RATE as usize]).unwrap();
         let scale = db_to_linear(lufs - meter.loudness_momentary().unwrap()) as f32;
-        raw.into_iter().take(frames * 2).map(|s| s * scale).collect()
+        raw.into_iter()
+            .take(frames * 2)
+            .map(|s| s * scale)
+            .collect()
     }
 
     fn silence(seconds: f64) -> Vec<f32> {
@@ -484,7 +536,11 @@ mod tests {
     }
 
     fn known_with_peak(lufs: f64, peak_dbfs: f64) -> Leveler {
-        let stored = StoredLevel { loudness_lufs: lufs, peak_dbfs, measured_secs: 600.0 };
+        let stored = StoredLevel {
+            loudness_lufs: lufs,
+            peak_dbfs,
+            measured_secs: 600.0,
+        };
         Leveler::new(RATE, 2, true, Some(stored), DEFAULT_GUESS_LUFS)
     }
 
@@ -497,7 +553,11 @@ mod tests {
     fn a_loud_station_is_brought_down_within_three_seconds() {
         let mut leveler = unknown();
         play(&mut leveler, &sine(-8.0, 3.0), true);
-        assert!((leveler.gain_db() - -8.0).abs() < 1.0, "{}", leveler.gain_db());
+        assert!(
+            (leveler.gain_db() - -8.0).abs() < 1.0,
+            "{}",
+            leveler.gain_db()
+        );
     }
 
     #[test]
@@ -512,9 +572,17 @@ mod tests {
         let mut leveler = unknown();
         let gains = play(&mut leveler, &sine(-26.0, 9.0), true);
         assert!(gains.iter().all(|g| *g <= MAX_BOOST_LEARNING_DB + 1e-9));
-        assert!((leveler.gain_db() - MAX_BOOST_LEARNING_DB).abs() < 0.1, "{}", leveler.gain_db());
+        assert!(
+            (leveler.gain_db() - MAX_BOOST_LEARNING_DB).abs() < 0.1,
+            "{}",
+            leveler.gain_db()
+        );
         play(&mut leveler, &sine(-26.0, 12.0), true);
-        assert!((leveler.gain_db() - MAX_BOOST_DB).abs() < 0.1, "{}", leveler.gain_db());
+        assert!(
+            (leveler.gain_db() - MAX_BOOST_DB).abs() < 0.1,
+            "{}",
+            leveler.gain_db()
+        );
     }
 
     #[test]
@@ -543,7 +611,11 @@ mod tests {
         play(&mut leveler, &sine(-12.0, 10.0), true);
         let before = leveler.gain_db();
         let gains = play(&mut leveler, &sine(-30.0, 20.0), true);
-        assert!(gains.iter().all(|g| *g < before + 1.0), "{before} → {:?}", gains.last());
+        assert!(
+            gains.iter().all(|g| *g < before + 1.0),
+            "{before} → {:?}",
+            gains.last()
+        );
     }
 
     #[test]
@@ -562,7 +634,10 @@ mod tests {
         let mut leveler = known(-10.0);
         leveler.process(&mut packet, true);
         let ratio = packet[11] / original[11];
-        assert!((linear_to_db(f64::from(ratio)) - -6.0).abs() < 0.01, "{ratio}");
+        assert!(
+            (linear_to_db(f64::from(ratio)) - -6.0).abs() < 0.01,
+            "{ratio}"
+        );
     }
 
     #[test]
@@ -574,7 +649,11 @@ mod tests {
         }
         let mut leveler = known_with_peak(-24.0, -3.0);
         let gains = play(&mut leveler, &signal, true);
-        assert!(gains.iter().all(|g| *g <= 2.0 + 1e-6), "{:?}", gains.iter().cloned().fold(f64::MIN, f64::max));
+        assert!(
+            gains.iter().all(|g| *g <= 2.0 + 1e-6),
+            "{:?}",
+            gains.iter().cloned().fold(f64::MIN, f64::max)
+        );
     }
 
     #[test]
@@ -608,6 +687,9 @@ mod tests {
         play(&mut leveler, &sine(-12.0, 8.0), true);
         let level = leveler.level().unwrap();
         assert!((level.loudness_lufs - -12.0).abs() < 0.5, "{level:?}");
-        assert!(level.peak_dbfs < 0.0 && level.peak_dbfs > -20.0, "{level:?}");
+        assert!(
+            level.peak_dbfs < 0.0 && level.peak_dbfs > -20.0,
+            "{level:?}"
+        );
     }
 }

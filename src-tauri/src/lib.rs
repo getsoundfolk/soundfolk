@@ -51,13 +51,19 @@ fn journalize_title(
     last_logged: &Mutex<Option<Logged>>,
     now_playing: &NowPlaying,
 ) -> bool {
-    let Some(title) = now_playing.title.as_deref().map(str::trim).filter(|t| !t.is_empty()) else {
+    let Some(title) = now_playing
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+    else {
         return false;
     };
     let Some(station) = station.lock().unwrap_or_else(|p| p.into_inner()).clone() else {
         return false;
     };
-    let is_station_name = |name: Option<&str>| name.is_some_and(|n| n.trim().eq_ignore_ascii_case(title));
+    let is_station_name =
+        |name: Option<&str>| name.is_some_and(|n| n.trim().eq_ignore_ascii_case(title));
     if is_station_name(station.name.as_deref()) || is_station_name(now_playing.station.as_deref()) {
         return false;
     }
@@ -65,10 +71,16 @@ fn journalize_title(
     let mut last = last_logged.lock().unwrap_or_else(|p| p.into_inner());
     let entry = (station.id, title.to_owned());
     let db = app.state::<Database>();
-    if let Some(logged) = last.as_mut().filter(|l| l.station_id == entry.0 && l.title == entry.1) {
+    if let Some(logged) = last
+        .as_mut()
+        .filter(|l| l.station_id == entry.0 && l.title == entry.1)
+    {
         // The same title, now with artist and title apart (a server API confirming the ICY title).
         if let (Some(track), false) = (&now_playing.track, logged.structured) {
-            let parsed = tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() };
+            let parsed = tracks::ParsedTitle {
+                artist: track.artist.clone(),
+                title: track.title.clone(),
+            };
             match db.set_track_parts(&entry.0, &entry.1, &parsed) {
                 Ok(()) => logged.structured = true,
                 Err(e) => tracing::warn!("listening history not updated: {e}"),
@@ -81,7 +93,10 @@ fn journalize_title(
     let logged = match &now_playing.track {
         // Artist and title given apart by the source: stored as given, with the real start.
         Some(track) => {
-            let parsed = tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() };
+            let parsed = tracks::ParsedTitle {
+                artist: track.artist.clone(),
+                title: track.title.clone(),
+            };
             let played_at = track.started_at.as_deref().and_then(history_time);
             db.log_structured_track(
                 &entry.0,
@@ -96,7 +111,11 @@ fn journalize_title(
     };
     match logged {
         Ok(_) => {
-            *last = Some(Logged { station_id: entry.0, title: entry.1, structured });
+            *last = Some(Logged {
+                station_id: entry.0,
+                title: entry.1,
+                structured,
+            });
             true
         }
         Err(e) => {
@@ -132,7 +151,10 @@ fn track_session(
     last_logged: &Mutex<Option<Logged>>,
     state: &PlayerState,
 ) {
-    if matches!(state, PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_)) {
+    if matches!(
+        state,
+        PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_)
+    ) {
         *last_logged.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
     let db = app.state::<Database>();
@@ -143,9 +165,10 @@ fn track_session(
         },
         // While reconnecting nothing is heard: the session ends when the sound stopped (a sleep
         // is not listening time), and a new one starts when it comes back.
-        PlayerState::Idle | PlayerState::Paused | PlayerState::Reconnecting(_) | PlayerState::Error(_) => {
-            db.end_session()
-        }
+        PlayerState::Idle
+        | PlayerState::Paused
+        | PlayerState::Reconnecting(_)
+        | PlayerState::Error(_) => db.end_session(),
         PlayerState::Connecting => Ok(()),
     };
     if let Err(e) = result {
@@ -166,8 +189,9 @@ struct WindowGeometry(Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>>)
 
 /// Whether the main window is open, visible and not minimized.
 fn main_window_shown(app: &tauri::AppHandle) -> bool {
-    app.get_webview_window(MAIN_WINDOW)
-        .is_some_and(|window| window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false))
+    app.get_webview_window(MAIN_WINDOW).is_some_and(|window| {
+        window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
+    })
 }
 
 /// Shows the main window if it is closed or minimized, closes it otherwise.
@@ -194,7 +218,11 @@ fn show_main_window(app: &tauri::AppHandle) {
                 Err(e) => return tracing::warn!("failed to open the main window: {e}"),
             },
         };
-        if let Err(e) = window.show().and_then(|()| window.unminimize()).and_then(|()| window.set_focus()) {
+        if let Err(e) = window
+            .show()
+            .and_then(|()| window.unminimize())
+            .and_then(|()| window.set_focus())
+        {
             tracing::warn!("failed to show the main window: {e}");
         }
     });
@@ -206,11 +234,22 @@ fn show_main_window(app: &tauri::AppHandle) {
 /// Creates the main window as `tauri.conf.json` declares it, where it was when it was closed.
 fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
     let windows = &app.config().app.windows;
-    let config = windows.iter().find(|w| w.label == MAIN_WINDOW).cloned().ok_or(tauri::Error::WindowNotFound)?;
+    let config = windows
+        .iter()
+        .find(|w| w.label == MAIN_WINDOW)
+        .cloned()
+        .ok_or(tauri::Error::WindowNotFound)?;
     let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
-    let geometry = *app.state::<WindowGeometry>().0.lock().unwrap_or_else(|p| p.into_inner());
+    let geometry = *app
+        .state::<WindowGeometry>()
+        .0
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     if let Some((position, size)) = geometry {
-        if let Err(e) = window.set_size(size).and_then(|()| window.set_position(position)) {
+        if let Err(e) = window
+            .set_size(size)
+            .and_then(|()| window.set_position(position))
+        {
             tracing::debug!("previous window geometry not restored: {e}");
         }
     }
@@ -221,7 +260,8 @@ fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindo
 pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("soundfolk_lib=info")),
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new("soundfolk_lib=info")),
         )
         .init();
 
@@ -230,7 +270,9 @@ pub fn run() {
     // (which keeps playing and shows its window) and exits before opening the database or the audio
     #[cfg(desktop)]
     let builder = builder
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app)
+        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_ARG]),
@@ -246,7 +288,9 @@ pub fn run() {
             app.manage(WindowGeometry::default());
 
             // The last station is in the player from launch: Play (window, tray, media keys) starts it.
-            let on_air = Arc::new(Mutex::new(commands::saved_station(&app.state::<Database>())));
+            let on_air = Arc::new(Mutex::new(commands::saved_station(
+                &app.state::<Database>(),
+            )));
             let last_logged = Arc::new(Mutex::new(None::<Logged>));
             let session_logged = last_logged.clone();
 
@@ -259,18 +303,24 @@ pub fn run() {
                 .map(Arc::new)
                 .inspect_err(|e| tracing::warn!("MusicBrainz lookups disabled: {e}"))
                 .ok();
-            let covers = covers::Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
+            let covers =
+                covers::Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
             app.manage(commands::CoversState(covers.clone()));
             app.manage(notifications::TrackNotifications::new(
                 app.handle(),
                 &app.state::<Database>(),
                 covers::app_icon_file(app.handle()),
             ));
-            let local_recipes = app.path().app_config_dir().ok().map(|dir| dir.join("recipes"));
+            let local_recipes = app
+                .path()
+                .app_config_dir()
+                .ok()
+                .map(|dir| dir.join("recipes"));
             let events = app.handle().clone();
             let web_titles = Arc::new(WebTitles::new(
                 Arc::new(recipes::Recipes::new(local_recipes)),
-                app.state::<Database>().get_bool(commands::SETTING_WEB_TITLES, true)?,
+                app.state::<Database>()
+                    .get_bool(commands::SETTING_WEB_TITLES, true)?,
                 Box::new(move |event| {
                     let sent = match event {
                         WebEvent::Status(status) => events.emit(TITLE_STATUS_EVENT, status),
@@ -282,7 +332,13 @@ pub fn run() {
                 }),
             ));
             app.manage(commands::WebTitlesState(web_titles.clone()));
-            recipe_list::start(web_titles.clone(), app.path().app_cache_dir().ok().map(|dir| dir.join("recipes")));
+            recipe_list::start(
+                web_titles.clone(),
+                app.path()
+                    .app_cache_dir()
+                    .ok()
+                    .map(|dir| dir.join("recipes")),
+            );
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
@@ -296,10 +352,16 @@ pub fn run() {
                     }
                 }),
                 Arc::new(move |now_playing: NowPlaying| {
-                    let new_track = journalize_title(&title_handle, &station, &last_logged, &now_playing);
-                    let name = station.lock().unwrap_or_else(|p| p.into_inner()).as_ref().and_then(|s| s.name.clone());
+                    let new_track =
+                        journalize_title(&title_handle, &station, &last_logged, &now_playing);
+                    let name = station
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .as_ref()
+                        .and_then(|s| s.name.clone());
                     if new_track {
-                        let notifications = title_handle.state::<notifications::TrackNotifications>();
+                        let notifications =
+                            title_handle.state::<notifications::TrackNotifications>();
                         notifications.track(&now_playing, name.as_deref());
                     }
                     covers.update(now_playing.clone(), name);
@@ -367,9 +429,10 @@ pub fn run() {
                 }
                 match event {
                     WindowEvent::Destroyed => tray::show_window_state(window.app_handle(), false),
-                    WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
-                        tray::show_window_state(window.app_handle(), main_window_shown(window.app_handle()))
-                    }
+                    WindowEvent::Resized(_) | WindowEvent::Focused(_) => tray::show_window_state(
+                        window.app_handle(),
+                        main_window_shown(window.app_handle()),
+                    ),
                     _ => {}
                 }
             }
@@ -435,7 +498,10 @@ pub fn run() {
         .run(|app, event| {
             // The last window closing does not end the app (no exit code): it goes on in the tray,
             // when there is one to come back from
-            if let tauri::RunEvent::ExitRequested { code: None, api, .. } = &event {
+            if let tauri::RunEvent::ExitRequested {
+                code: None, api, ..
+            } = &event
+            {
                 if tray::available() {
                     api.prevent_exit();
                 }

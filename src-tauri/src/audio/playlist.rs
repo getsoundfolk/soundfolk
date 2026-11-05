@@ -38,7 +38,10 @@ pub async fn resolve_stream_url(url: Url) -> Result<Url, String> {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let icy = response.headers().keys().any(|k| k.as_str().starts_with("icy-"));
+        let icy = response
+            .headers()
+            .keys()
+            .any(|k| k.as_str().starts_with("icy-"));
         if icy || is_audio_type(&content_type) {
             return Ok(current); // direct stream: close without reading the body
         }
@@ -72,17 +75,19 @@ pub async fn resolve_stream_url(url: Url) -> Result<Url, String> {
 }
 
 /// `audio/*` MIME types that are actually playlists.
-const PLAYLIST_TYPES: [&str; 4] =
-    ["audio/x-mpegurl", "audio/mpegurl", "audio/x-scpls", "audio/scpls"];
+const PLAYLIST_TYPES: [&str; 4] = [
+    "audio/x-mpegurl",
+    "audio/mpegurl",
+    "audio/x-scpls",
+    "audio/scpls",
+];
 
 fn is_audio_type(content_type: &str) -> bool {
     let essence = content_type.split(';').next().unwrap_or("").trim();
     if PLAYLIST_TYPES.contains(&essence) {
         return false;
     }
-    essence.starts_with("audio/")
-        || essence == "application/ogg"
-        || essence == "application/x-ogg"
+    essence.starts_with("audio/") || essence == "application/ogg" || essence == "application/x-ogg"
 }
 
 #[derive(Debug, PartialEq)]
@@ -110,7 +115,10 @@ fn parse_playlist(body: &[u8]) -> Playlist {
     }
 
     let lines = text.lines().map(str::trim);
-    if text.get(..10).is_some_and(|h| h.eq_ignore_ascii_case("[playlist]")) {
+    if text
+        .get(..10)
+        .is_some_and(|h| h.eq_ignore_ascii_case("[playlist]"))
+    {
         // PLS : `File1=http://…`
         let entry = lines.into_iter().find_map(|l| {
             let (key, value) = l.split_once('=')?;
@@ -121,7 +129,10 @@ fn parse_playlist(body: &[u8]) -> Playlist {
     }
 
     // M3U: first line that is neither empty nor a comment.
-    match lines.into_iter().find(|l| !l.is_empty() && !l.starts_with('#')) {
+    match lines
+        .into_iter()
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+    {
         Some(entry) if entry.contains("://") || entry.starts_with('/') || entry.contains('.') => {
             Playlist::Entry(entry.to_owned())
         }
@@ -136,7 +147,10 @@ mod tests {
     #[test]
     fn parses_pls() {
         let pls = b"[playlist]\nNumberOfEntries=2\nFile1=http://a.example:8000/live\nTitle1=Radio\nFile2=http://b.example/x\n";
-        assert_eq!(parse_playlist(pls), Playlist::Entry("http://a.example:8000/live".into()));
+        assert_eq!(
+            parse_playlist(pls),
+            Playlist::Entry("http://a.example:8000/live".into())
+        );
         // Case and whitespace tolerated.
         assert_eq!(
             parse_playlist(b"[Playlist]\r\n file1 = http://a.example/x \r\n"),
@@ -147,8 +161,14 @@ mod tests {
     #[test]
     fn parses_m3u_skipping_comments() {
         let m3u = b"\xef\xbb\xbf#EXTM3U\n#EXTINF:-1,Radio\nhttp://a.example/live.mp3\n";
-        assert_eq!(parse_playlist(m3u), Playlist::Entry("http://a.example/live.mp3".into()));
-        assert_eq!(parse_playlist(b"/stream.mp3\n"), Playlist::Entry("/stream.mp3".into()));
+        assert_eq!(
+            parse_playlist(m3u),
+            Playlist::Entry("http://a.example/live.mp3".into())
+        );
+        assert_eq!(
+            parse_playlist(b"/stream.mp3\n"),
+            Playlist::Entry("/stream.mp3".into())
+        );
     }
 
     #[test]
@@ -158,8 +178,14 @@ mod tests {
             Playlist::Hls
         );
         assert_eq!(parse_playlist(b"  \n"), Playlist::Empty);
-        assert_eq!(parse_playlist(b"[playlist]\nNumberOfEntries=0\n"), Playlist::Empty);
-        assert_eq!(parse_playlist(&[0xff, 0xfb, 0x90, 0x00, 0x00]), Playlist::Binary);
+        assert_eq!(
+            parse_playlist(b"[playlist]\nNumberOfEntries=0\n"),
+            Playlist::Empty
+        );
+        assert_eq!(
+            parse_playlist(&[0xff, 0xfb, 0x90, 0x00, 0x00]),
+            Playlist::Binary
+        );
         assert_eq!(parse_playlist(b"#EXTM3U\n#EXTINF:1,x\n"), Playlist::Binary);
     }
 

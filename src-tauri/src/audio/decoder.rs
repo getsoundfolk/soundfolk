@@ -89,7 +89,9 @@ pub struct Job {
 }
 
 pub fn spawn(job: Job) -> io::Result<()> {
-    thread::Builder::new().name("audio-decoder".into()).spawn(move || run(job))?;
+    thread::Builder::new()
+        .name("audio-decoder".into())
+        .spawn(move || run(job))?;
     Ok(())
 }
 
@@ -165,16 +167,24 @@ fn run(mut job: Job) {
                     // connection, which is waited for as long as it takes).
                     Blame::Unknown => {
                         failing_since = None;
-                        format!("Cannot play the station ({}) — retrying…", failure.symptom())
+                        format!(
+                            "Cannot play the station ({}) — retrying…",
+                            failure.symptom()
+                        )
                     }
                     Blame::Station => {
                         let reason = failure.reason();
                         // Never played: dead URL, not audio… the user must be told right away.
                         if !ever_played {
-                            return job.reporter.failed(format!("The station is not broadcasting: {reason}"));
+                            return job
+                                .reporter
+                                .failed(format!("The station is not broadcasting: {reason}"));
                         }
-                        if failing_since.get_or_insert_with(Instant::now).elapsed() > GIVE_UP_AFTER {
-                            return job.reporter.failed(format!("The station stopped broadcasting: {reason}"));
+                        if failing_since.get_or_insert_with(Instant::now).elapsed() > GIVE_UP_AFTER
+                        {
+                            return job
+                                .reporter
+                                .failed(format!("The station stopped broadcasting: {reason}"));
                         }
                         format!("The station is not broadcasting ({reason}) — retrying…")
                     }
@@ -232,7 +242,8 @@ fn wait_before_retry(job: &Job, delay: Duration, message: &str) -> bool {
             return false;
         }
         let state = *net.borrow_and_update();
-        job.reporter.reconnecting(if state.online { message } else { NO_NETWORK });
+        job.reporter
+            .reconnecting(if state.online { message } else { NO_NETWORK });
         if state.online && start.elapsed() >= delay {
             return true;
         }
@@ -271,7 +282,9 @@ pub fn probe(url: &Url, runtime: &tokio::runtime::Handle) -> Result<StreamInfo, 
         None,
     ) {
         Ok(opened) => opened,
-        Err(End::Failed(failure)) => return Err(format!("Cannot play this stream: {}", failure.reason())),
+        Err(End::Failed(failure)) => {
+            return Err(format!("Cannot play this stream: {}", failure.reason()))
+        }
         Err(End::Interrupted(why)) => return Err(format!("Test interrupted: {why}")),
         Err(End::Cancelled) => return Err("Test cancelled".into()),
     };
@@ -336,15 +349,21 @@ struct Activity {
 
 impl Activity {
     fn new() -> Self {
-        Self { base: Instant::now(), last_ms: AtomicU64::new(0) }
+        Self {
+            base: Instant::now(),
+            last_ms: AtomicU64::new(0),
+        }
     }
 
     fn touch(&self) {
-        self.last_ms.store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
+        self.last_ms
+            .store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
     }
 
     fn idle(&self) -> Duration {
-        self.base.elapsed().saturating_sub(Duration::from_millis(self.last_ms.load(Ordering::Relaxed)))
+        self.base
+            .elapsed()
+            .saturating_sub(Duration::from_millis(self.last_ms.load(Ordering::Relaxed)))
     }
 }
 
@@ -425,7 +444,10 @@ fn open_stream(
         let http = HttpStream::new(client.clone(), url.clone())
             .await
             .map_err(|e| Failure::connect(&e))?;
-        tracing::debug!(ms = started.elapsed().as_millis() as u64, "HTTP headers received");
+        tracing::debug!(
+            ms = started.elapsed().as_millis() as u64,
+            "HTTP headers received"
+        );
         let mime = http
             .content_type()
             .as_ref()
@@ -438,27 +460,36 @@ fn open_stream(
             .header("icy-name")
             .map(|n| n.trim().to_owned())
             .filter(|n| !n.is_empty());
-        let server = http.header("server").map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+        let server = http
+            .header("server")
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
 
         let storage = BoundedStorageProvider::new(
             MemoryStorageProvider,
             NonZeroUsize::new(BUFFER_BYTES).expect("BUFFER_BYTES > 0"),
         );
-        let reader =
-            StreamDownload::from_stream(
-                http,
-                storage,
-                Settings::default().prefetch_bytes(PREFETCH_BYTES).on_progress(move |_, _, _| progress.touch()),
-            )
-            .await
-            .map_err(|e| Failure::Stopped(format!("cannot read the stream: {e}")))?;
-        tracing::debug!(ms = started.elapsed().as_millis() as u64, "prefetch complete");
+        let reader = StreamDownload::from_stream(
+            http,
+            storage,
+            Settings::default()
+                .prefetch_bytes(PREFETCH_BYTES)
+                .on_progress(move |_, _, _| progress.touch()),
+        )
+        .await
+        .map_err(|e| Failure::Stopped(format!("cannot read the stream: {e}")))?;
+        tracing::debug!(
+            ms = started.elapsed().as_millis() as u64,
+            "prefetch complete"
+        );
         Ok::<_, Failure>((reader, mime, metaint, station, server))
     };
     // A connection attempt on a network that just went away can hang until its timeout: a
     // change of network starts a new attempt at once.
     let opened = runtime.block_on(async {
-        let Some(guard) = &guard else { return connect.await.map_err(End::Failed) };
+        let Some(guard) = &guard else {
+            return connect.await.map_err(End::Failed);
+        };
         let mut net = guard.net.clone();
         net.mark_unchanged();
         tokio::select! {
@@ -476,7 +507,10 @@ fn open_stream(
         return Err(End::Cancelled);
     }
     activity.touch();
-    let watchdog = guard.as_ref().zip(opened_at).map(|(g, at)| Watchdog::spawn(runtime, g, at, activity, move || stop.cancel()));
+    let watchdog = guard
+        .as_ref()
+        .zip(opened_at)
+        .map(|(g, at)| Watchdog::spawn(runtime, g, at, activity, move || stop.cancel()));
 
     // ── 2. Format detection ──────────────────────────────────────────────────
     let mut hint = Hint::new();
@@ -486,7 +520,9 @@ fn open_stream(
     // A live stream is neither seekable nor of known length: `ReadOnlySource` tells symphonia so.
     // With ICY, metadata blocks are stripped before symphonia reads the stream.
     let source: Box<dyn MediaSource> = match metaint {
-        Some(metaint) => Box::new(ReadOnlySource::new(IcyReader::new(reader, metaint, on_title))),
+        Some(metaint) => Box::new(ReadOnlySource::new(IcyReader::new(
+            reader, metaint, on_title,
+        ))),
         None => Box::new(ReadOnlySource::new(reader)),
     };
     let source = MediaSourceStream::new(source, Default::default());
@@ -502,8 +538,14 @@ fn open_stream(
             return Err(End::Cancelled);
         }
         // The stream broke while being read: not a format problem.
-        Err(SymphoniaError::IoError(e)) => return Err(End::Failed(Failure::Stopped(e.to_string()))),
-        Err(e) => return Err(End::Failed(Failure::NotAudio(format!("unrecognized format: {e}")))),
+        Err(SymphoniaError::IoError(e)) => {
+            return Err(End::Failed(Failure::Stopped(e.to_string())))
+        }
+        Err(e) => {
+            return Err(End::Failed(Failure::NotAudio(format!(
+                "unrecognized format: {e}"
+            ))))
+        }
     };
 
     tracing::debug!(ms = started.elapsed().as_millis() as u64, "format detected");
@@ -511,7 +553,9 @@ fn open_stream(
         return Err(End::Failed(Failure::NotAudio("no audio track".into())));
     };
     let Some(params) = track.codec_params.as_ref().and_then(|p| p.audio()) else {
-        return Err(End::Failed(Failure::NotAudio("audio parameters missing".into())));
+        return Err(End::Failed(Failure::NotAudio(
+            "audio parameters missing".into(),
+        )));
     };
     let track_id = track.id;
     let decoder = symphonia::default::get_codecs()
@@ -520,7 +564,16 @@ fn open_stream(
 
     // Ogg streams change title by starting a new chain with new Vorbis comments.
     let inband = metaint.is_some() || format.format_info().short_name == "ogg";
-    Ok(OpenedStream { format, decoder, track_id, mime, station, server, inband, _watchdog: watchdog })
+    Ok(OpenedStream {
+        format,
+        decoder,
+        track_id,
+        mime,
+        station,
+        server,
+        inband,
+        _watchdog: watchdog,
+    })
 }
 
 fn play_once(job: &mut Job, client: &Client, played: &mut bool) -> End {
@@ -544,12 +597,31 @@ fn decode(job: &mut Job, client: &Client, played: &mut bool, fired: &Fired) -> E
             reporter.title(title);
         })
     };
-    let guard = NetGuard { net: job.net.clone(), fired: fired.clone() };
-    let OpenedStream { mut format, mut decoder, mut track_id, mime, station, server, inband, _watchdog } =
-        match open_stream(client, &job.url, &job.runtime, &job.cancel, on_title, started, Some(guard)) {
-            Ok(opened) => opened,
-            Err(end) => return end,
-        };
+    let guard = NetGuard {
+        net: job.net.clone(),
+        fired: fired.clone(),
+    };
+    let OpenedStream {
+        mut format,
+        mut decoder,
+        mut track_id,
+        mime,
+        station,
+        server,
+        inband,
+        _watchdog,
+    } = match open_stream(
+        client,
+        &job.url,
+        &job.runtime,
+        &job.cancel,
+        on_title,
+        started,
+        Some(guard),
+    ) {
+        Ok(opened) => opened,
+        Err(end) => return end,
+    };
     job.reporter.station(station);
     job.reporter.stream_opened(inband, server);
     report_tags(&job.reporter, format.metadata().skip_to_latest());
@@ -639,8 +711,14 @@ fn decode(job: &mut Job, client: &Client, played: &mut bool, fired: &Fired) -> E
 
 /// Decoder for the stream's audio track after an Ogg chain change.
 fn reset_decoder(format: &dyn FormatReader) -> Result<(u32, Box<dyn AudioDecoder>), String> {
-    let track = format.default_track(TrackType::Audio).ok_or("No audio track in the stream")?;
-    let params = track.codec_params.as_ref().and_then(|p| p.audio()).ok_or("Audio parameters missing")?;
+    let track = format
+        .default_track(TrackType::Audio)
+        .ok_or("No audio track in the stream")?;
+    let params = track
+        .codec_params
+        .as_ref()
+        .and_then(|p| p.audio())
+        .ok_or("Audio parameters missing")?;
     let decoder = symphonia::default::get_codecs()
         .make_audio_decoder(params, &AudioDecoderOptions::default())
         .map_err(|e| format!("Unsupported codec: {e}"))?;
@@ -657,7 +735,12 @@ fn report_tags(reporter: &Reporter, revision: Option<&MetadataRevision>) {
 
 /// Artist and title from a metadata revision (global tags first, then per track).
 fn title_from_tags(revision: &MetadataRevision) -> Option<(Option<String>, String)> {
-    let tags = revision.media.tags.iter().chain(revision.per_track.iter().flat_map(|t| t.metadata.tags.iter()));
+    let tags = revision.media.tags.iter().chain(
+        revision
+            .per_track
+            .iter()
+            .flat_map(|t| t.metadata.tags.iter()),
+    );
     let (mut artist, mut title) = (None, None);
     for tag in tags {
         match &tag.std {
@@ -808,16 +891,24 @@ mod tests {
     use std::f32::consts::TAU;
 
     fn format(rate: u32, channels: usize) -> OutputFormat {
-        OutputFormat { sample_rate: rate, channels }
+        OutputFormat {
+            sample_rate: rate,
+            channels,
+        }
     }
 
     fn sine(rate: u32, hz: f32, seconds: f32) -> Vec<f32> {
-        (0..(rate as f32 * seconds) as usize).map(|n| (TAU * hz * n as f32 / rate as f32).sin()).collect()
+        (0..(rate as f32 * seconds) as usize)
+            .map(|n| (TAU * hz * n as f32 / rate as f32).sin())
+            .collect()
     }
 
     /// Frequency estimated by counting rising zero crossings.
     fn frequency(signal: &[f32], rate: u32) -> f32 {
-        let crossings = signal.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+        let crossings = signal
+            .windows(2)
+            .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
+            .count();
         crossings as f32 * rate as f32 / signal.len() as f32
     }
 
@@ -855,11 +946,19 @@ mod tests {
             c.process(chunk, &mut out);
         }
         // The last blocks stay pending: the loss is bounded by the block size.
-        assert!(out.len() > 2 * 48_000 - 3 * RESAMPLER_CHUNK_FRAMES * 2, "len = {}", out.len());
+        assert!(
+            out.len() > 2 * 48_000 - 3 * RESAMPLER_CHUNK_FRAMES * 2,
+            "len = {}",
+            out.len()
+        );
 
         let steady = &out[4800..];
         assert!((frequency(steady, 48_000) - 1000.0).abs() < 5.0);
-        assert!((rms(steady) - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.02, "rms = {}", rms(steady));
+        assert!(
+            (rms(steady) - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.02,
+            "rms = {}",
+            rms(steady)
+        );
     }
 
     #[test]

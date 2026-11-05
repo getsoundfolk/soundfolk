@@ -27,7 +27,13 @@ impl Database {
                  ORDER BY l.liked_at, l.rowid
                  LIMIT 1",
                 [],
-                |r| Ok(TrackToIdentify { track_key: r.get(0)?, artist: r.get(1)?, title: r.get(2)? }),
+                |r| {
+                    Ok(TrackToIdentify {
+                        track_key: r.get(0)?,
+                        artist: r.get(1)?,
+                        title: r.get(2)?,
+                    })
+                },
             )
             .optional()
     }
@@ -55,7 +61,11 @@ impl Database {
         Ok(())
     }
 
-    pub fn save_track_match(&self, track_key: &str, found: &RecordingMatch) -> rusqlite::Result<()> {
+    pub fn save_track_match(
+        &self,
+        track_key: &str,
+        found: &RecordingMatch,
+    ) -> rusqlite::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute(
@@ -95,7 +105,11 @@ impl Database {
     pub fn artist_needs_lookup(&self, mbid: &str) -> rusqlite::Result<bool> {
         let looked_up: Option<bool> = self
             .conn()
-            .query_row("SELECT looked_up_at IS NOT NULL FROM artists WHERE mbid = ?1", params![mbid], |r| r.get(0))
+            .query_row(
+                "SELECT looked_up_at IS NOT NULL FROM artists WHERE mbid = ?1",
+                params![mbid],
+                |r| r.get(0),
+            )
             .optional()?;
         Ok(!looked_up.unwrap_or(false))
     }
@@ -136,7 +150,11 @@ mod tests {
             title: "Sexy Boy".into(),
             artist_mbid: "air".into(),
             artist_name: "Air".into(),
-            album: Some(Album { mbid: "mw".into(), title: "Moon Safari".into(), primary_type: Some("Album".into()) }),
+            album: Some(Album {
+                mbid: "mw".into(),
+                title: "Moon Safari".into(),
+                primary_type: Some("Album".into()),
+            }),
             first_release_date: Some("1998-01-16".into()),
             tags: vec!["downtempo".into()],
         }
@@ -151,13 +169,22 @@ mod tests {
         assert_eq!(db.next_track_to_identify().unwrap().unwrap().track_key, air);
 
         db.save_track_match(&air, &found()).unwrap();
-        assert_eq!(db.next_track_to_identify().unwrap().unwrap().track_key, moby);
+        assert_eq!(
+            db.next_track_to_identify().unwrap().unwrap().track_key,
+            moby
+        );
         // A failed lookup waits before being retried.
         db.postpone_track(&moby).unwrap();
         assert_eq!(db.next_track_to_identify().unwrap(), None);
         db.postpone_track(&moby).unwrap();
-        let attempts: i64 =
-            db.conn().query_row("SELECT attempts FROM tracks WHERE track_key = ?1", [&moby], |r| r.get(0)).unwrap();
+        let attempts: i64 = db
+            .conn()
+            .query_row(
+                "SELECT attempts FROM tracks WHERE track_key = ?1",
+                [&moby],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(attempts, 2);
     }
 

@@ -40,12 +40,24 @@ mod tests {
     fn covers_are_cached_and_misses_expire() {
         let db = Database::open_in_memory().unwrap();
         assert_eq!(db.cached_cover("air|sexy boy").unwrap(), None);
-        db.save_cover("air|sexy boy", Some("https://x/1.jpg")).unwrap();
-        assert_eq!(db.cached_cover("air|sexy boy").unwrap(), Some(Some("https://x/1.jpg".into())));
+        db.save_cover("air|sexy boy", Some("https://x/1.jpg"))
+            .unwrap();
+        assert_eq!(
+            db.cached_cover("air|sexy boy").unwrap(),
+            Some(Some("https://x/1.jpg".into()))
+        );
         db.save_cover("x|y", None).unwrap();
         assert_eq!(db.cached_cover("x|y").unwrap(), Some(None));
-        db.conn().execute("UPDATE covers SET looked_up_at = datetime('now', '-31 days')", []).unwrap();
+        db.conn()
+            .execute(
+                "UPDATE covers SET looked_up_at = datetime('now', '-31 days')",
+                [],
+            )
+            .unwrap();
         assert_eq!(db.cached_cover("x|y").unwrap(), None);
-        assert_eq!(db.cached_cover("air|sexy boy").unwrap(), Some(Some("https://x/1.jpg".into())));
+        assert_eq!(
+            db.cached_cover("air|sexy boy").unwrap(),
+            Some(Some("https://x/1.jpg".into()))
+        );
     }
 }

@@ -6,19 +6,23 @@ use scraper::{ElementRef, Html, Selector};
 use serde_json::Value;
 
 use crate::recipe::{Extract, Fields, Recipe};
-use crate::value::{clean_text, duration_from_secs, parse_duration, parse_start, start_from_number};
+use crate::value::{
+    clean_text, duration_from_secs, parse_duration, parse_start, start_from_number,
+};
 use crate::{ExtractError, RawTrack, Snapshot};
 
 /// Reads the page with the recipe, and drops the titles the recipe ignores.
 pub fn read(recipe: &Recipe, page: &str) -> Result<Snapshot, ExtractError> {
     let mut snapshot = extract(&recipe.extract, page)?;
-    let ignored = |t: &RawTrack| t.title.as_deref().is_some_and(|title| {
-        let shown = match &t.artist {
-            Some(artist) => format!("{artist} - {title}"),
-            None => title.to_owned(),
-        };
-        recipe.ignores(&shown) || recipe.ignores(title)
-    });
+    let ignored = |t: &RawTrack| {
+        t.title.as_deref().is_some_and(|title| {
+            let shown = match &t.artist {
+                Some(artist) => format!("{artist} - {title}"),
+                None => title.to_owned(),
+            };
+            recipe.ignores(&shown) || recipe.ignores(title)
+        })
+    };
     if snapshot.current.as_ref().is_some_and(ignored) {
         snapshot.current = None;
     }
@@ -66,14 +70,23 @@ impl HtmlField {
         let (selector, attribute) = match spec.rsplit_once('@') {
             Some((sel, attr))
                 if !attr.is_empty()
-                    && attr.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':')) =>
+                    && attr
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':')) =>
             {
                 (sel.trim(), Some(attr.to_owned()))
             }
             _ => (spec, None),
         };
-        let selector = if selector.is_empty() { None } else { Some(selector_of(selector)?) };
-        Ok(Self { selector, attribute })
+        let selector = if selector.is_empty() {
+            None
+        } else {
+            Some(selector_of(selector)?)
+        };
+        Ok(Self {
+            selector,
+            attribute,
+        })
     }
 
     /// First value found under `scope` (the scope itself when there is no selector).
@@ -149,7 +162,11 @@ fn read_html(fields: &HtmlFields, page: &str) -> Snapshot {
         .map(|sel| root.select(sel).filter_map(|el| fields.track(el)).collect())
         .unwrap_or_default();
     let show = fields.show.as_ref().and_then(|f| f.value(root));
-    Snapshot { current, next, show }
+    Snapshot {
+        current,
+        next,
+        show,
+    }
 }
 
 /// A track from its fields; `text` (`Artist - Title` in one value) fills in a missing title.
@@ -167,13 +184,20 @@ fn raw_track(
         (Some(artist), None) if text.is_none() => (None, Some(artist)),
         (_, None) => (None, text),
     };
-    RawTrack { artist, title, start, duration, cover }
+    RawTrack {
+        artist,
+        title,
+        start,
+        duration,
+        cover,
+    }
 }
 
 // ── JSON ────────────────────────────────────────────────────────────────────
 
 fn read_json(fields: &Fields, page: &str) -> Result<Snapshot, ExtractError> {
-    let document: Value = serde_json::from_str(page).map_err(|e| ExtractError::Json(e.to_string()))?;
+    let document: Value =
+        serde_json::from_str(page).map_err(|e| ExtractError::Json(e.to_string()))?;
     let scope = match &fields.item {
         Some(path) => lookup(&document, path),
         None => Some(&document),
@@ -184,8 +208,16 @@ fn read_json(fields: &Fields, page: &str) -> Result<Snapshot, ExtractError> {
         Some(item) => json_track(fields, item).into_iter().collect(),
         None => Vec::new(),
     };
-    let show = fields.show.as_deref().and_then(|p| lookup(&document, p)).and_then(json_text);
-    Ok(Snapshot { current, next, show })
+    let show = fields
+        .show
+        .as_deref()
+        .and_then(|p| lookup(&document, p))
+        .and_then(json_text);
+    Ok(Snapshot {
+        current,
+        next,
+        show,
+    })
 }
 
 fn json_track(fields: &Fields, item: &Value) -> Option<RawTrack> {
@@ -214,11 +246,13 @@ fn json_track(fields: &Fields, item: &Value) -> Option<RawTrack> {
 
 /// `a.b.0.c`: object keys and array indexes.
 fn lookup<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
-    path.split('.').filter(|s| !s.is_empty()).try_fold(value, |v, key| match v {
-        Value::Object(map) => map.get(key),
-        Value::Array(items) => items.get(key.parse::<usize>().ok()?),
-        _ => None,
-    })
+    path.split('.')
+        .filter(|s| !s.is_empty())
+        .try_fold(value, |v, key| match v {
+            Value::Object(map) => map.get(key),
+            Value::Array(items) => items.get(key.parse::<usize>().ok()?),
+            _ => None,
+        })
 }
 
 fn json_text(value: &Value) -> Option<String> {
@@ -232,7 +266,9 @@ fn json_text(value: &Value) -> Option<String> {
 // ── Text ────────────────────────────────────────────────────────────────────
 
 fn read_text(re: &Regex, page: &str) -> Snapshot {
-    let Some(caps) = re.captures(page) else { return Snapshot::default() };
+    let Some(caps) = re.captures(page) else {
+        return Snapshot::default();
+    };
     let group = |name: &str| caps.name(name).and_then(|m| clean_text(m.as_str()));
     let track = raw_track(
         group("artist"),
@@ -242,7 +278,10 @@ fn read_text(re: &Regex, page: &str) -> Snapshot {
         group("duration").and_then(|d| parse_duration(&d)),
         None,
     );
-    Snapshot { current: (!track.is_empty()).then_some(track), ..Snapshot::default() }
+    Snapshot {
+        current: (!track.is_empty()).then_some(track),
+        ..Snapshot::default()
+    }
 }
 
 #[cfg(test)]
@@ -285,8 +324,14 @@ mod tests {
         let snapshot = extract(&Extract::Html(html_fields()), PLAYLIST).unwrap();
         let current = snapshot.current.unwrap();
         assert_eq!(current.artist.as_deref(), Some("MELLOW MOOD / ANTHONY B"));
-        assert_eq!(current.title.as_deref(), Some("Home or Abroad (feat Anthony B & Dub Inc)"));
-        assert_eq!(current.start, Some(Start::Local(Time::constant(22, 36, 51, 0))));
+        assert_eq!(
+            current.title.as_deref(),
+            Some("Home or Abroad (feat Anthony B & Dub Inc)")
+        );
+        assert_eq!(
+            current.start,
+            Some(Start::Local(Time::constant(22, 36, 51, 0)))
+        );
         assert_eq!(current.duration, Some(SignedDuration::from_secs(276)));
         assert_eq!(snapshot.next.len(), 1);
         assert_eq!(snapshot.next[0].title.as_deref(), Some("Nino"));
@@ -306,8 +351,14 @@ mod tests {
             ..Fields::default()
         };
         let page = r#"<p id="now"> Air -  Sexy Boy </p><img class="cover" src="https://x/c.jpg">"#;
-        let current = extract(&Extract::Html(fields), page).unwrap().current.unwrap();
-        assert_eq!((current.artist, current.title.as_deref()), (None, Some("Air - Sexy Boy")));
+        let current = extract(&Extract::Html(fields), page)
+            .unwrap()
+            .current
+            .unwrap();
+        assert_eq!(
+            (current.artist, current.title.as_deref()),
+            (None, Some("Air - Sexy Boy"))
+        );
         assert_eq!(current.cover.as_deref(), Some("https://x/c.jpg"));
     }
 
@@ -330,18 +381,34 @@ mod tests {
         let snapshot = extract(&Extract::Json(fields), page).unwrap();
         let current = snapshot.current.unwrap();
         assert_eq!(current.title.as_deref(), Some("Sexy Boy"));
-        assert_eq!(current.start, Some(Start::At(crate::Timestamp::from_second(1_793_828_211).unwrap())));
+        assert_eq!(
+            current.start,
+            Some(Start::At(
+                crate::Timestamp::from_second(1_793_828_211).unwrap()
+            ))
+        );
         assert_eq!(current.duration, Some(SignedDuration::from_secs(298)));
         assert_eq!(snapshot.next.len(), 2);
         assert_eq!(snapshot.next[1].title.as_deref(), Some("1999"));
         assert_eq!(snapshot.show.as_deref(), Some("Morning"));
-        assert!(matches!(extract(&Extract::Json(Fields::default()), "<html>"), Err(ExtractError::Json(_))));
+        assert!(matches!(
+            extract(&Extract::Json(Fields::default()), "<html>"),
+            Err(ExtractError::Json(_))
+        ));
     }
 
     #[test]
     fn text_pattern() {
-        let pattern = Pattern { pattern: r"Now: (?<artist>[^/]+) / (?<title>[^<]+)<".into() };
-        let current = extract(&Extract::Text(pattern), "<b>Now: Air / Sexy Boy</b>").unwrap().current.unwrap();
-        assert_eq!((current.artist.as_deref(), current.title.as_deref()), (Some("Air"), Some("Sexy Boy")));
+        let pattern = Pattern {
+            pattern: r"Now: (?<artist>[^/]+) / (?<title>[^<]+)<".into(),
+        };
+        let current = extract(&Extract::Text(pattern), "<b>Now: Air / Sexy Boy</b>")
+            .unwrap()
+            .current
+            .unwrap();
+        assert_eq!(
+            (current.artist.as_deref(), current.title.as_deref()),
+            (Some("Air"), Some("Sexy Boy"))
+        );
     }
 }

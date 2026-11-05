@@ -223,13 +223,29 @@ impl WebTitles {
         cancel: Arc<Cancel>,
         runtime: &tokio::runtime::Handle,
     ) {
-        let session = Session { id: self.sessions.fetch_add(1, Ordering::SeqCst) + 1, station, stream };
+        let session = Session {
+            id: self.sessions.fetch_add(1, Ordering::SeqCst) + 1,
+            station,
+            stream,
+        };
         *lock(&self.current) = Some(session.clone());
         if !self.enabled.load(Ordering::SeqCst) {
-            self.set_status(&session, TitleStatus { state: SourceState::Off, ..self.expected(&session) });
+            self.set_status(
+                &session,
+                TitleStatus {
+                    state: SourceState::Off,
+                    ..self.expected(&session)
+                },
+            );
             return;
         }
-        self.set_status(&session, TitleStatus { state: SourceState::Searching, ..self.expected(&session) });
+        self.set_status(
+            &session,
+            TitleStatus {
+                state: SourceState::Searching,
+                ..self.expected(&session)
+            },
+        );
         let this = self.clone();
         runtime.spawn(async move { this.run(session, reporter, cancel).await });
     }
@@ -245,7 +261,9 @@ impl WebTitles {
     pub fn recipes_changed(&self, changes: &[Change]) {
         let current = lock(&self.current).clone();
         let set = self.recipes.current();
-        let playing = current.as_ref().and_then(|s| set.find(s.station.id.as_deref(), s.stream.as_str()));
+        let playing = current
+            .as_ref()
+            .and_then(|s| set.find(s.station.id.as_deref(), s.stream.as_str()));
         for change in changes {
             let file = file_name(&change.path);
             let message = match (&change.error, playing) {
@@ -254,11 +272,15 @@ impl WebTitles {
                     continue;
                 }
                 // The station playing uses it: told what it reads at the next fetch.
-                (None, Some(entry)) if entry.id == change.id && self.enabled.load(Ordering::SeqCst) => {
+                (None, Some(entry))
+                    if entry.id == change.id && self.enabled.load(Ordering::SeqCst) =>
+                {
                     lock(&self.saved).push(change.id.clone());
                     continue;
                 }
-                (None, _) if current.is_some() => "Loaded; it does not apply to the station playing".to_owned(),
+                (None, _) if current.is_some() => {
+                    "Loaded; it does not apply to the station playing".to_owned()
+                }
                 (None, _) => "Loaded".to_owned(),
             };
             self.notify(&file, true, message);
@@ -287,8 +309,15 @@ impl WebTitles {
         let local_error = entry
             .as_ref()
             .and_then(|e| set.error_for(&e.id))
-            .map(|e| LocalError { path: e.path.display().to_string(), error: e.error.clone() });
-        let mut report = RecipeTest { recipe: entry.as_ref().map(RecipeRef::from), local_error, ..Default::default() };
+            .map(|e| LocalError {
+                path: e.path.display().to_string(),
+                error: e.error.clone(),
+            });
+        let mut report = RecipeTest {
+            recipe: entry.as_ref().map(RecipeRef::from),
+            local_error,
+            ..Default::default()
+        };
         let Some(entry) = entry else {
             report.error = Some("No recipe matches this station.".into());
             return report;
@@ -346,7 +375,9 @@ impl WebTitles {
     fn expected(&self, session: &Session) -> TitleStatus {
         let set = self.recipes.current();
         TitleStatus {
-            recipe: set.find(session.station.id.as_deref(), session.stream.as_str()).map(RecipeRef::from),
+            recipe: set
+                .find(session.station.id.as_deref(), session.stream.as_str())
+                .map(RecipeRef::from),
             local_error: self.local_error(session),
             ..Default::default()
         }
@@ -360,22 +391,34 @@ impl WebTitles {
     /// recipe, or an invalid file naming this stream or station.
     pub fn local_error_for(&self, station: &StationRef, stream: &str) -> Option<LocalError> {
         let set = self.recipes.current();
-        let by_id = set.find(station.id.as_deref(), stream).and_then(|e| set.error_for(&e.id));
+        let by_id = set
+            .find(station.id.as_deref(), stream)
+            .and_then(|e| set.error_for(&e.id));
         let stream = soundfolk_nowplaying::recipe::stream_pattern(stream);
         let mentions = |text: &str| {
             let text = text.to_ascii_lowercase();
             stream.as_deref().is_some_and(|s| text.contains(s))
-                || station.id.as_deref().is_some_and(|id| text.contains(&id.to_ascii_lowercase()))
+                || station
+                    .id
+                    .as_deref()
+                    .is_some_and(|id| text.contains(&id.to_ascii_lowercase()))
         };
         by_id
             .or_else(|| {
-                set.errors().iter().find(|e| std::fs::read_to_string(&e.path).is_ok_and(|text| mentions(&text)))
+                set.errors()
+                    .iter()
+                    .find(|e| std::fs::read_to_string(&e.path).is_ok_and(|text| mentions(&text)))
             })
-            .map(|e| LocalError { path: e.path.display().to_string(), error: e.error.clone() })
+            .map(|e| LocalError {
+                path: e.path.display().to_string(),
+                error: e.error.clone(),
+            })
     }
 
     fn is_current(&self, session: &Session) -> bool {
-        lock(&self.current).as_ref().is_some_and(|s| s.id == session.id)
+        lock(&self.current)
+            .as_ref()
+            .is_some_and(|s| s.id == session.id)
     }
 
     fn set_status(&self, session: &Session, status: TitleStatus) {
@@ -397,7 +440,11 @@ impl WebTitles {
     }
 
     fn notify(&self, file: &str, ok: bool, message: String) {
-        (self.listener)(WebEvent::Notice(RecipeNotice { file: file.to_owned(), ok, message }));
+        (self.listener)(WebEvent::Notice(RecipeNotice {
+            file: file.to_owned(),
+            ok,
+            message,
+        }));
     }
 
     /// Tells the user what a recipe they just saved reads.
@@ -411,7 +458,11 @@ impl WebTitles {
         if !saved {
             return;
         }
-        let file = entry.path.as_deref().map(file_name).unwrap_or_else(|| format!("{}.toml", entry.id));
+        let file = entry
+            .path
+            .as_deref()
+            .map(file_name)
+            .unwrap_or_else(|| format!("{}.toml", entry.id));
         match outcome {
             Ok(on_air) => self.notify(&file, true, format!("Reads: {}", on_air.current.display())),
             Err(error) => self.notify(&file, false, error.to_owned()),
@@ -419,15 +470,24 @@ impl WebTitles {
     }
 
     async fn run(self: Arc<Self>, session: Session, reporter: Reporter, cancel: Arc<Cancel>) {
-        let Some(client) = self.client().cloned() else { return };
+        let Some(client) = self.client().cloned() else {
+            return;
+        };
         let mut server: Option<Option<Adapter>> = None;
         loop {
             if cancel.is_cancelled() {
                 return;
             }
             if reporter.stream_meta().has_inband_title() {
-                self.set_status(&session, TitleStatus { state: SourceState::Stream, ..self.expected(&session) });
-                self.icy_details(&session, &client, &reporter, &cancel).await;
+                self.set_status(
+                    &session,
+                    TitleStatus {
+                        state: SourceState::Stream,
+                        ..self.expected(&session)
+                    },
+                );
+                self.icy_details(&session, &client, &reporter, &cancel)
+                    .await;
                 return;
             }
             let generation = self.recipes.generation();
@@ -436,16 +496,28 @@ impl WebTitles {
                 Some(entry) => Some(Source::Recipe(entry.clone())),
                 None => {
                     if server.is_none() {
-                        server = Some(self.find_server(&client, &session.stream, &reporter, &cancel).await);
+                        server = Some(
+                            self.find_server(&client, &session.stream, &reporter, &cancel)
+                                .await,
+                        );
                     }
                     server.flatten().map(Source::Server)
                 }
             };
             match source {
-                Some(source) => self.follow(&session, &client, source, generation, &reporter, &cancel).await,
+                Some(source) => {
+                    self.follow(&session, &client, source, generation, &reporter, &cancel)
+                        .await
+                }
                 None => {
                     if !cancel.is_cancelled() && !reporter.stream_meta().has_inband_title() {
-                        self.set_status(&session, TitleStatus { state: SourceState::None, ..self.expected(&session) });
+                        self.set_status(
+                            &session,
+                            TitleStatus {
+                                state: SourceState::None,
+                                ..self.expected(&session)
+                            },
+                        );
                     }
                     // A recipe may still be written for the station.
                     while self.recipes.generation() == generation
@@ -474,11 +546,20 @@ impl WebTitles {
         let (url, every, kind) = match &source {
             Source::Recipe(entry) => {
                 tracing::info!(recipe = %entry.id, "title from the station's web page");
-                (entry.recipe.fetch.url.clone(), entry.recipe.every(), TitleSource::Recipe)
+                (
+                    entry.recipe.fetch.url.clone(),
+                    entry.recipe.every(),
+                    TitleSource::Recipe,
+                )
             }
             Source::Server(adapter) => {
-                tracing::info!(adapter = adapter.name(), "title from the server's status page");
-                let Some(probe) = adapter.probe(stream) else { return };
+                tracing::info!(
+                    adapter = adapter.name(),
+                    "title from the server's status page"
+                );
+                let Some(probe) = adapter.probe(stream) else {
+                    return;
+                };
                 (probe.url, None, TitleSource::Server)
             }
         };
@@ -500,9 +581,16 @@ impl WebTitles {
             },
         );
 
-        let key = session.station.id.clone().unwrap_or_else(|| stream.to_owned());
+        let key = session
+            .station
+            .id
+            .clone()
+            .unwrap_or_else(|| stream.to_owned());
         let remembered = lock(&self.offsets).get(&key).copied();
-        let policy = Policy { latency: AUDIO_LATENCY, ..Policy::default() };
+        let policy = Policy {
+            latency: AUDIO_LATENCY,
+            ..Policy::default()
+        };
         let mut tracker = Tracker::new(policy, every, remembered, seed(&key));
         let mut pending: VecDeque<Scheduled> = VecDeque::new();
         let floor = Policy::default().floor;
@@ -517,7 +605,9 @@ impl WebTitles {
                 // Keeps going when the recipes changed but not the one in use.
                 let set = self.recipes.current();
                 let same = match (&source, set.find(session.station.id.as_deref(), stream)) {
-                    (Source::Recipe(entry), Some(now)) => entry.id == now.id && entry.recipe == now.recipe,
+                    (Source::Recipe(entry), Some(now)) => {
+                        entry.id == now.id && entry.recipe == now.recipe
+                    }
                     (Source::Server(_), None) => true,
                     _ => false,
                 };
@@ -550,7 +640,10 @@ impl WebTitles {
                         if let Source::Recipe(entry) = &source {
                             match plan.publish.last() {
                                 Some(scheduled) => self.notify_saved(entry, Ok(&scheduled.on_air)),
-                                None => self.notify_saved(entry, Err(error.as_deref().unwrap_or("Nothing on air"))),
+                                None => self.notify_saved(
+                                    entry,
+                                    Err(error.as_deref().unwrap_or("Nothing on air")),
+                                ),
                             }
                         }
                         self.update_status(session, |s| s.error = error);
@@ -584,13 +677,23 @@ impl WebTitles {
     /// For AzuraCast streams: the details of each ICY title, from the server's API, until the
     /// playback ends. One request per title (one more if the API does not know it yet), never
     /// closer than the minimum interval. Stops for good if the API does not describe the stream.
-    async fn icy_details(&self, session: &Session, client: &Client, reporter: &Reporter, cancel: &Cancel) {
+    async fn icy_details(
+        &self,
+        session: &Session,
+        client: &Client,
+        reporter: &Reporter,
+        cancel: &Cancel,
+    ) {
         let adapter = Adapter::AzuraCast;
         let stream = session.stream.as_str();
-        if !adapters::candidates(stream, None).contains(&adapter) || lock(&self.no_details).contains(stream) {
+        if !adapters::candidates(stream, None).contains(&adapter)
+            || lock(&self.no_details).contains(stream)
+        {
             return;
         }
-        let Some(Probe { url, .. }) = adapter.probe(stream) else { return };
+        let Some(Probe { url, .. }) = adapter.probe(stream) else {
+            return;
+        };
         let floor = Policy::default().floor;
         // The ICY title being looked up, when to try, and the lookups left.
         let mut target: Option<(String, Timestamp, u8)> = None;
@@ -601,8 +704,12 @@ impl WebTitles {
             if heard.is_some() && heard.as_deref() != target.as_ref().map(|(t, ..)| t.as_str()) {
                 target = heard.map(|h| (h, now, 2));
             }
-            let earliest = lock(&self.last_fetch).get(&url).and_then(|last| last.checked_add(floor).ok());
-            let due = target.as_ref().is_some_and(|(_, at, left)| *left > 0 && *at <= now)
+            let earliest = lock(&self.last_fetch)
+                .get(&url)
+                .and_then(|last| last.checked_add(floor).ok());
+            let due = target
+                .as_ref()
+                .is_some_and(|(_, at, left)| *left > 0 && *at <= now)
                 && earliest.is_none_or(|e| e <= now);
             if let (true, Some((heard, at, left))) = (due, target.as_mut()) {
                 lock(&self.last_fetch).insert(url.clone(), now);
@@ -625,8 +732,13 @@ impl WebTitles {
                         *left = 0;
                         if !confirmed {
                             confirmed = true;
-                            tracing::info!(adapter = adapter.name(), "track details from the server's API");
-                            self.update_status(session, |s| s.adapter = Some(adapter.name().to_owned()));
+                            tracing::info!(
+                                adapter = adapter.name(),
+                                "track details from the server's API"
+                            );
+                            self.update_status(session, |s| {
+                                s.adapter = Some(adapter.name().to_owned())
+                            });
                         }
                     }
                     // Not known yet, or not a track (jingle, live show the API does not see).
@@ -648,7 +760,13 @@ impl WebTitles {
     }
 
     /// The streaming server's status adapter, once the stream turned out not to announce titles.
-    async fn find_server(&self, client: &Client, stream: &Url, reporter: &Reporter, cancel: &Cancel) -> Option<Adapter> {
+    async fn find_server(
+        &self,
+        client: &Client,
+        stream: &Url,
+        reporter: &Reporter,
+        cancel: &Cancel,
+    ) -> Option<Adapter> {
         let meta = reporter.stream_meta();
         let opened = loop {
             if cancel.is_cancelled() {
@@ -685,7 +803,9 @@ impl WebTitles {
             if cancel.is_cancelled() {
                 return None;
             }
-            let Some(probe) = adapter.probe(stream.as_str()) else { continue };
+            let Some(probe) = adapter.probe(stream.as_str()) else {
+                continue;
+            };
             // A matching URL is not proof: the document must have the adapter's shape.
             if let Ok((page, _)) = fetch(client, &probe.url).await {
                 if adapter.read(stream.as_str(), &page).is_ok() {
@@ -704,7 +824,9 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 }
 
 fn file_name(path: &std::path::Path) -> String {
-    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+    path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// A track as a source gave it, for the player (AzuraCast gives absolute starts only).
@@ -748,7 +870,11 @@ async fn fetch(client: &Client, url: &str) -> Result<(String, Option<Timestamp>)
         .headers()
         .get(header::DATE)
         .and_then(|d| d.to_str().ok())
-        .and_then(|d| jiff::fmt::rfc2822::DateTimeParser::new().parse_timestamp(d).ok());
+        .and_then(|d| {
+            jiff::fmt::rfc2822::DateTimeParser::new()
+                .parse_timestamp(d)
+                .ok()
+        });
     let mut body = Vec::new();
     while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
         if body.len() + chunk.len() > MAX_PAGE_BYTES {
@@ -760,7 +886,12 @@ async fn fetch(client: &Client, url: &str) -> Result<(String, Option<Timestamp>)
 }
 
 fn origin_key(url: &Url) -> String {
-    format!("{}://{}:{}", url.scheme(), url.host_str().unwrap_or_default(), url.port_or_known_default().unwrap_or(0))
+    format!(
+        "{}://{}:{}",
+        url.scheme(),
+        url.host_str().unwrap_or_default(),
+        url.port_or_known_default().unwrap_or(0)
+    )
 }
 
 /// Jitter seed: different for every playback and station.
@@ -803,7 +934,8 @@ mod tests {
 
     #[test]
     fn saving_a_recipe_tells_whether_it_applies() {
-        let dir = std::env::temp_dir().join(format!("soundfolk-web-notices-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("soundfolk-web-notices-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let (web, notices) = web(Some(dir.clone()));
@@ -835,7 +967,10 @@ mod tests {
         let notices = notices.lock().unwrap();
         let by_file = |f: &str| notices.iter().find(|n| n.file == f).cloned();
         assert!(!by_file("broken.toml").unwrap().ok);
-        assert!(by_file("other.toml").unwrap().message.contains("does not apply"));
+        assert!(by_file("other.toml")
+            .unwrap()
+            .message
+            .contains("does not apply"));
         // The station's own recipe: reported after the next reading of its page.
         assert_eq!(by_file("frequence7.toml"), None);
         assert_eq!(*lock(&web.saved), vec!["frequence7".to_owned()]);
@@ -844,12 +979,21 @@ mod tests {
 
     #[test]
     fn invalid_local_files_naming_the_stream_are_shown_for_the_station() {
-        let dir = std::env::temp_dir().join(format!("soundfolk-web-local-error-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("soundfolk-web-local-error-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("my-radio.toml"), "schema = 1\nmatch = { streams = [\"example.org/live\"] }\n").unwrap();
+        std::fs::write(
+            dir.join("my-radio.toml"),
+            "schema = 1\nmatch = { streams = [\"example.org/live\"] }\n",
+        )
+        .unwrap();
         let (web, _) = web(Some(dir.clone()));
-        let session = Session { id: 1, station: StationRef { id: None }, stream: "http://example.org/live".parse().unwrap() };
+        let session = Session {
+            id: 1,
+            station: StationRef { id: None },
+            stream: "http://example.org/live".parse().unwrap(),
+        };
         let error = web.local_error(&session).unwrap();
         assert!(error.path.ends_with("my-radio.toml"));
         std::fs::remove_dir_all(&dir).unwrap();

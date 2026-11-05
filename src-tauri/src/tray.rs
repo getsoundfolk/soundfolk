@@ -56,7 +56,10 @@ pub fn set_unavailable(app: &AppHandle) {
 
 /// Follows the player, so that the menu offers Pause while it plays and Play otherwise.
 pub fn show_state(app: &AppHandle, state: &PlayerState) {
-    let playing = matches!(state, PlayerState::Playing | PlayerState::Connecting | PlayerState::Reconnecting(_));
+    let playing = matches!(
+        state,
+        PlayerState::Playing | PlayerState::Connecting | PlayerState::Reconnecting(_)
+    );
     if PLAYING.swap(playing, Ordering::Relaxed) != playing {
         imp::set_playing(app, playing);
     }
@@ -71,11 +74,19 @@ pub fn show_window_state(app: &AppHandle, shown: bool) {
 }
 
 fn play_pause_label(playing: bool) -> &'static str {
-    if playing { "Pause" } else { "Play" }
+    if playing {
+        "Pause"
+    } else {
+        "Play"
+    }
 }
 
 fn toggle_label(window_shown: bool) -> &'static str {
-    if window_shown { "Hide Soundfolk" } else { "Show Soundfolk" }
+    if window_shown {
+        "Hide Soundfolk"
+    } else {
+        "Show Soundfolk"
+    }
 }
 
 /// Shared by both backends: the menu ids are the contract between them.
@@ -102,7 +113,9 @@ mod imp {
     use ksni::{Handle, Icon, OfflineReason, ToolTip, Tray, TrayMethods};
     use tauri::AppHandle;
 
-    use super::{handle_menu, play_pause_label, set_available, set_unavailable, toggle_label, WINDOW_SHOWN};
+    use super::{
+        handle_menu, play_pause_label, set_available, set_unavailable, toggle_label, WINDOW_SHOWN,
+    };
 
     /// Set once the icon is registered; `Handle` is not `Clone`, so it lives here.
     static HANDLE: OnceLock<Handle<SoundfolkTray>> = OnceLock::new();
@@ -124,7 +137,10 @@ mod imp {
         }
 
         fn tool_tip(&self) -> ToolTip {
-            ToolTip { title: "Soundfolk".into(), ..Default::default() }
+            ToolTip {
+                title: "Soundfolk".into(),
+                ..Default::default()
+            }
         }
 
         fn icon_pixmap(&self) -> Vec<Icon> {
@@ -157,7 +173,9 @@ mod imp {
         /// running, so that a watcher that starts later (a restarted panel, `snixembed`) still gets
         /// the icon, and `watcher_online` makes it available again.
         fn watcher_offline(&self, reason: OfflineReason) -> bool {
-            tracing::warn!("tray: no StatusNotifierWatcher ({reason:?}), closing the window will quit");
+            tracing::warn!(
+                "tray: no StatusNotifierWatcher ({reason:?}), closing the window will quit"
+            );
             set_unavailable(&self.app);
             true
         }
@@ -188,13 +206,22 @@ mod imp {
         for pixel in data.chunks_exact_mut(4) {
             pixel.rotate_right(1);
         }
-        vec![Icon { width: image.width() as i32, height: image.height() as i32, data }]
+        vec![Icon {
+            width: image.width() as i32,
+            height: image.height() as i32,
+            data,
+        }]
     }
 
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
         let icon = app.default_window_icon().map(pixmap).unwrap_or_default();
         let window_shown = WINDOW_SHOWN.load(Ordering::Relaxed);
-        let tray = SoundfolkTray { app: app.handle().clone(), playing: false, window_shown, icon };
+        let tray = SoundfolkTray {
+            app: app.handle().clone(),
+            playing: false,
+            window_shown,
+            icon,
+        };
         let handle = app.handle().clone();
         // Registering is asynchronous: a failure costs the icon, not the app, so it is logged.
         // `assume_sni_available`: no watcher yet becomes a `watcher_offline` call rather than an
@@ -245,7 +272,13 @@ mod imp {
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
         let shown = WINDOW_SHOWN.load(std::sync::atomic::Ordering::Relaxed);
         let toggle = MenuItem::with_id(app, "toggle", toggle_label(shown), true, None::<&str>)?;
-        let play_pause = MenuItem::with_id(app, "play_pause", play_pause_label(false), true, None::<&str>)?;
+        let play_pause = MenuItem::with_id(
+            app,
+            "play_pause",
+            play_pause_label(false),
+            true,
+            None::<&str>,
+        )?;
         let next = MenuItem::with_id(app, "next", "Next favorite", true, None::<&str>)?;
         let previous = MenuItem::with_id(app, "previous", "Previous favorite", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -268,8 +301,11 @@ mod imp {
             .show_menu_on_left_click(false)
             .on_menu_event(|app, event| handle_menu(app, event.id.as_ref()))
             .on_tray_icon_event(|tray, event| {
-                if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } =
-                    event
+                if let TrayIconEvent::Click {
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
+                    ..
+                } = event
                 {
                     crate::toggle_main_window(tray.app_handle());
                 }

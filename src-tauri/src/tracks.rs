@@ -22,12 +22,22 @@ const DASHES: [&str; 3] = [" - ", " – ", " — "];
 const TAIL_SEPARATORS: [&str; 4] = [" - ", " – ", " — ", " | "];
 /// Top-level domains recognised in a station signature (`… - Classic Vinyl on walmradio.com`).
 const TLDS: [&str; 24] = [
-    "com", "net", "org", "fm", "radio", "info", "io", "de", "fr", "uk", "co", "nl", "be", "ch", "it", "es",
-    "us", "ca", "au", "live", "online", "music", "am", "pl",
+    "com", "net", "org", "fm", "radio", "info", "io", "de", "fr", "uk", "co", "nl", "be", "ch",
+    "it", "es", "us", "ca", "au", "live", "online", "music", "am", "pl",
 ];
 /// Words that mark a bracketed group as noise for searching (`(Remastered 2011)`, `[Live]`…).
 const NOISE: [&str; 11] = [
-    "remaster", "live", "radio edit", "edit", "version", "mono", "stereo", "explicit", "clean", "bonus", "single",
+    "remaster",
+    "live",
+    "radio edit",
+    "edit",
+    "version",
+    "mono",
+    "stereo",
+    "explicit",
+    "clean",
+    "bonus",
+    "single",
 ];
 
 /// Splits a raw title into artist and title, after removing a trailing station signature.
@@ -36,7 +46,9 @@ pub fn parse(raw: &str, station_name: Option<&str>) -> ParsedTitle {
 
     // A signature may be stacked (`… - Station - site.com`): at most two are removed.
     for _ in 0..2 {
-        let Some((pos, sep)) = last_of(&text, &TAIL_SEPARATORS) else { break };
+        let Some((pos, sep)) = last_of(&text, &TAIL_SEPARATORS) else {
+            break;
+        };
         let (head, tail) = (&text[..pos], &text[pos + sep.len()..]);
         if head.trim().is_empty() || !is_signature(tail, station_name) {
             break;
@@ -47,17 +59,26 @@ pub fn parse(raw: &str, station_name: Option<&str>) -> ParsedTitle {
     if let Some((pos, sep)) = first_of(&text, &DASHES) {
         let (artist, title) = (text[..pos].trim(), text[pos + sep.len()..].trim());
         if !artist.is_empty() && !title.is_empty() {
-            return ParsedTitle { artist: Some(artist.to_owned()), title: title.to_owned() };
+            return ParsedTitle {
+                artist: Some(artist.to_owned()),
+                title: title.to_owned(),
+            };
         }
     }
     // `Title by Artist`: the last ` by ` keeps titles such as "Stand By Me by Ben E. King" whole.
     if let Some(pos) = last_by(&text) {
         let (title, artist) = (text[..pos].trim(), text[pos + 4..].trim());
         if !artist.is_empty() && !title.is_empty() {
-            return ParsedTitle { artist: Some(artist.to_owned()), title: title.to_owned() };
+            return ParsedTitle {
+                artist: Some(artist.to_owned()),
+                title: title.to_owned(),
+            };
         }
     }
-    ParsedTitle { artist: None, title: text }
+    ParsedTitle {
+        artist: None,
+        title: text,
+    }
 }
 
 /// What to type in a music service's search box: artist and title, without noise.
@@ -76,7 +97,16 @@ pub fn clean_for_search(text: &str) -> String {
     let without_noise = strip_noise(text);
     let replaced: String = without_noise
         .chars()
-        .map(|c| if matches!(c, '/' | ':' | '!' | '?' | '"' | '*' | '|' | ';' | '(' | ')' | '[' | ']') { ' ' } else { c })
+        .map(|c| {
+            if matches!(
+                c,
+                '/' | ':' | '!' | '?' | '"' | '*' | '|' | ';' | '(' | ')' | '[' | ']'
+            ) {
+                ' '
+            } else {
+                c
+            }
+        })
         .collect();
     collapse_spaces(&replaced)
 }
@@ -119,8 +149,14 @@ fn strip_noise(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
     while let Some(open) = rest.find(['(', '[']) {
-        let close_char = if rest[open..].starts_with('(') { ')' } else { ']' };
-        let Some(len) = rest[open..].find(close_char) else { break };
+        let close_char = if rest[open..].starts_with('(') {
+            ')'
+        } else {
+            ']'
+        };
+        let Some(len) = rest[open..].find(close_char) else {
+            break;
+        };
         let inner = rest[open + 1..open + len].to_lowercase();
         out.push_str(&rest[..open]);
         if !NOISE.iter().any(|n| inner.contains(n)) {
@@ -150,25 +186,36 @@ fn is_signature(tail: &str, station_name: Option<&str>) -> bool {
 
 fn is_domain(word: &str) -> bool {
     let word = word.trim_matches(|c: char| !c.is_alphanumeric());
-    let word = word.strip_prefix("https://").or_else(|| word.strip_prefix("http://")).unwrap_or(word);
+    let word = word
+        .strip_prefix("https://")
+        .or_else(|| word.strip_prefix("http://"))
+        .unwrap_or(word);
     let parts: Vec<&str> = word.split('.').collect();
     parts.len() >= 2
-        && parts.iter().all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
         && TLDS.contains(&parts[parts.len() - 1])
 }
 
 fn first_of<'a>(text: &str, seps: &[&'a str]) -> Option<(usize, &'a str)> {
-    seps.iter().filter_map(|s| text.find(s).map(|p| (p, *s))).min_by_key(|(p, _)| *p)
+    seps.iter()
+        .filter_map(|s| text.find(s).map(|p| (p, *s)))
+        .min_by_key(|(p, _)| *p)
 }
 
 fn last_of<'a>(text: &str, seps: &[&'a str]) -> Option<(usize, &'a str)> {
-    seps.iter().filter_map(|s| text.rfind(s).map(|p| (p, *s))).max_by_key(|(p, _)| *p)
+    seps.iter()
+        .filter_map(|s| text.rfind(s).map(|p| (p, *s)))
+        .max_by_key(|(p, _)| *p)
 }
 
 /// Byte position of the last ` by ` (any case). The pattern is ASCII, so a match is always on a
 /// character boundary.
 fn last_by(text: &str) -> Option<usize> {
-    text.as_bytes().windows(4).rposition(|w| w.eq_ignore_ascii_case(b" by "))
+    text.as_bytes()
+        .windows(4)
+        .rposition(|w| w.eq_ignore_ascii_case(b" by "))
 }
 
 #[cfg(test)]
@@ -222,18 +269,39 @@ mod tests {
     fn search_queries_drop_noise() {
         let parsed = parse("The Beatles - Help! (Remastered 2009) [Live]", None);
         assert_eq!(search_query(&parsed), "The Beatles Help");
-        let walm = parse("Overture / Food, Glorious Food by Original Broadway Cast of Oliver!", None);
-        assert_eq!(search_query(&walm), "Original Broadway Cast of Oliver Overture Food, Glorious Food");
+        let walm = parse(
+            "Overture / Food, Glorious Food by Original Broadway Cast of Oliver!",
+            None,
+        );
+        assert_eq!(
+            search_query(&walm),
+            "Original Broadway Cast of Oliver Overture Food, Glorious Food"
+        );
         // A bracketed group that is part of the title stays.
-        assert_eq!(search_query(&parse("Prince - Purple Rain (Extended)", None)), "Prince Purple Rain Extended");
+        assert_eq!(
+            search_query(&parse("Prince - Purple Rain (Extended)", None)),
+            "Prince Purple Rain Extended"
+        );
     }
 
     #[test]
     fn keys_ignore_spelling_differences() {
         let key = |raw: &str| track_key(&parse(raw, None));
-        assert_eq!(key("The Beatles - Help!"), key("beatles - HELP (Remastered 2009)"));
-        assert_eq!(key("Beyoncé feat. Jay-Z - Crazy in Love"), key("Beyonce - Crazy In Love"));
-        assert_ne!(key("Daft Punk - Around the World"), key("Daft Punk - One More Time"));
-        assert_eq!(artist_key("The Original Broadway Cast"), "original broadway cast");
+        assert_eq!(
+            key("The Beatles - Help!"),
+            key("beatles - HELP (Remastered 2009)")
+        );
+        assert_eq!(
+            key("Beyoncé feat. Jay-Z - Crazy in Love"),
+            key("Beyonce - Crazy In Love")
+        );
+        assert_ne!(
+            key("Daft Punk - Around the World"),
+            key("Daft Punk - One More Time")
+        );
+        assert_eq!(
+            artist_key("The Original Broadway Cast"),
+            "original broadway cast"
+        );
     }
 }

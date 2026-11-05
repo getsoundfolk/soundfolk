@@ -48,7 +48,13 @@ impl SystemMedia {
 
     pub fn show_state(&self, _state: &PlayerState) {}
 
-    pub fn show_now_playing(&self, _now_playing: &NowPlaying, _station: Option<&str>, _cover: Option<&str>) {}
+    pub fn show_now_playing(
+        &self,
+        _now_playing: &NowPlaying,
+        _station: Option<&str>,
+        _cover: Option<&str>,
+    ) {
+    }
 }
 
 /// What the desktop displays: the station as the title, the track on air as the artist.
@@ -63,7 +69,10 @@ struct Display {
 /// A title that is only the station name (sent by some radios between tracks) is not a track.
 /// The track is rebuilt as `Artist - Title`, without the station signature some radios append.
 fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
-    let station = station.or(now_playing.station.as_deref()).map(str::trim).filter(|s| !s.is_empty());
+    let station = station
+        .or(now_playing.station.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
     let track = now_playing
         .title
         .as_deref()
@@ -72,7 +81,10 @@ fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
         .map(|raw| {
             // Given apart by the source: shown as is; otherwise parsed from the ICY title.
             let parsed = match &now_playing.track {
-                Some(track) => crate::tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() },
+                Some(track) => crate::tracks::ParsedTitle {
+                    artist: track.artist.clone(),
+                    title: track.title.clone(),
+                },
                 None => crate::tracks::parse(raw, station),
             };
             match parsed.artist {
@@ -81,9 +93,17 @@ fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
             }
         });
     match station {
-        Some(station) => Display { title: Some(station.to_owned()), artist: track, album: Some(station.to_owned()) },
+        Some(station) => Display {
+            title: Some(station.to_owned()),
+            artist: track,
+            album: Some(station.to_owned()),
+        },
         // Station unknown: the track takes the first line
-        None => Display { title: track, artist: None, album: None },
+        None => Display {
+            title: track,
+            artist: None,
+            album: None,
+        },
     }
 }
 
@@ -91,7 +111,9 @@ fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
 mod linux {
     use std::sync::{Mutex, MutexGuard};
 
-    use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
+    use souvlaki::{
+        MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig,
+    };
 
     use super::{control, display, Command, NowPlaying, PlayerState};
 
@@ -102,8 +124,11 @@ mod linux {
 
     impl SystemMedia {
         pub fn new(app: tauri::AppHandle) -> Self {
-            let config =
-                PlatformConfig { display_name: "Soundfolk", dbus_name: "soundfolk", hwnd: None };
+            let config = PlatformConfig {
+                display_name: "Soundfolk",
+                dbus_name: "soundfolk",
+                hwnd: None,
+            };
             let controls = MediaControls::new(config).and_then(|mut controls| {
                 // Called on the D-Bus thread: the engine may block for a while, so it is
                 // driven from a worker thread instead.
@@ -114,7 +139,9 @@ mod linux {
                 Ok(controls)
             });
             match controls {
-                Ok(controls) => Self { controls: Some(Mutex::new(controls)) },
+                Ok(controls) => Self {
+                    controls: Some(Mutex::new(controls)),
+                },
                 Err(e) => {
                     tracing::warn!("system media controls unavailable: {e:?}");
                     Self { controls: None }
@@ -123,7 +150,9 @@ mod linux {
         }
 
         fn controls(&self) -> Option<MutexGuard<'_, MediaControls>> {
-            self.controls.as_ref().map(|c| c.lock().unwrap_or_else(|p| p.into_inner()))
+            self.controls
+                .as_ref()
+                .map(|c| c.lock().unwrap_or_else(|p| p.into_inner()))
         }
 
         pub fn show_state(&self, state: &PlayerState) {
@@ -140,7 +169,12 @@ mod linux {
         }
 
         /// `cover`: address of the picture (the station's logo, or the app icon), from `covers.rs`.
-        pub fn show_now_playing(&self, now_playing: &NowPlaying, station: Option<&str>, cover: Option<&str>) {
+        pub fn show_now_playing(
+            &self,
+            now_playing: &NowPlaying,
+            station: Option<&str>,
+            cover: Option<&str>,
+        ) {
             let shown = display(now_playing, station);
             let metadata = MediaMetadata {
                 title: shown.title.as_deref(),
@@ -198,11 +232,14 @@ pub fn control(app: &tauri::AppHandle, command: Command) {
 }
 
 fn drive(app: &tauri::AppHandle, command: Command) -> AppResult<()> {
-    let Some(audio) = app.try_state::<AudioState>() else { return Ok(()) };
+    let Some(audio) = app.try_state::<AudioState>() else {
+        return Ok(());
+    };
     let mut engine = audio.engine();
     match (command, engine.state()) {
         // Pausing while connecting is not possible yet: Toggle stops instead
-        (Command::Stop, _) | (Command::Toggle, PlayerState::Connecting | PlayerState::Reconnecting(_)) => {
+        (Command::Stop, _)
+        | (Command::Toggle, PlayerState::Connecting | PlayerState::Reconnecting(_)) => {
             engine.stop()?
         }
         (Command::Pause | Command::Toggle, PlayerState::Playing) => engine.pause()?,
@@ -222,12 +259,19 @@ fn drive(app: &tauri::AppHandle, command: Command) -> AppResult<()> {
 /// Plays the next (or previous) favorite, and tells the window which station is now on air.
 fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
     let favorites = app.state::<Database>().list_favorites()?;
-    let current = app.try_state::<AudioState>().and_then(|audio| audio.station()).map(|s| s.id);
+    let current = app
+        .try_state::<AudioState>()
+        .and_then(|audio| audio.station())
+        .map(|s| s.id);
     let Some(next) = neighbour(&favorites, current.as_deref(), forward).cloned() else {
         return Ok(());
     };
-    let outcome =
-        start_station(app, next.stream_url.clone(), Some(next.station_id.clone()), Some(next.name.clone()))?;
+    let outcome = start_station(
+        app,
+        next.stream_url.clone(),
+        Some(next.station_id.clone()),
+        Some(next.name.clone()),
+    )?;
     let change = StationChange {
         id: next.station_id,
         name: next.name,
@@ -243,7 +287,11 @@ fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
 
 /// The favorite before or after `current` in the list, wrapping around. From a station that is not
 /// a favorite, forward starts the first one and backward the last one.
-fn neighbour<'a>(favorites: &'a [Favorite], current: Option<&str>, forward: bool) -> Option<&'a Favorite> {
+fn neighbour<'a>(
+    favorites: &'a [Favorite],
+    current: Option<&str>,
+    forward: bool,
+) -> Option<&'a Favorite> {
     let len = favorites.len();
     if len == 0 {
         return None;
@@ -262,12 +310,19 @@ mod tests {
     use super::*;
 
     fn on_air(station: Option<&str>, title: Option<&str>) -> NowPlaying {
-        NowPlaying { station: station.map(str::to_owned), title: title.map(str::to_owned), ..Default::default() }
+        NowPlaying {
+            station: station.map(str::to_owned),
+            title: title.map(str::to_owned),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn station_comes_first_and_the_track_below() {
-        let shown = display(&on_air(Some("icy name"), Some("Daft Punk - One More Time - FIP")), Some("FIP"));
+        let shown = display(
+            &on_air(Some("icy name"), Some("Daft Punk - One More Time - FIP")),
+            Some("FIP"),
+        );
         assert_eq!(
             shown,
             Display {
@@ -295,7 +350,9 @@ mod tests {
     #[test]
     fn favorites_wrap_around() {
         let favorites = [favorite("a"), favorite("b"), favorite("c")];
-        let id = |current, forward| neighbour(&favorites, current, forward).map(|f| f.station_id.as_str());
+        let id = |current, forward| {
+            neighbour(&favorites, current, forward).map(|f| f.station_id.as_str())
+        };
         assert_eq!(id(Some("a"), true), Some("b"));
         assert_eq!(id(Some("c"), true), Some("a"));
         assert_eq!(id(Some("a"), false), Some("c"));
@@ -306,7 +363,11 @@ mod tests {
 
     #[test]
     fn station_is_shown_without_a_track() {
-        let expected = Display { title: Some("FIP".into()), artist: None, album: Some("FIP".into()) };
+        let expected = Display {
+            title: Some("FIP".into()),
+            artist: None,
+            album: Some("FIP".into()),
+        };
         assert_eq!(display(&on_air(None, None), Some("FIP")), expected);
         assert_eq!(display(&on_air(Some("FIP"), Some(" fip ")), None), expected);
         assert_eq!(display(&on_air(None, Some("  ")), Some("FIP")), expected);
@@ -315,6 +376,13 @@ mod tests {
     #[test]
     fn track_takes_the_first_line_without_a_station() {
         let shown = display(&on_air(None, Some("Daft Punk - One More Time")), None);
-        assert_eq!(shown, Display { title: Some("Daft Punk - One More Time".into()), artist: None, album: None });
+        assert_eq!(
+            shown,
+            Display {
+                title: Some("Daft Punk - One More Time".into()),
+                artist: None,
+                album: None
+            }
+        );
     }
 }

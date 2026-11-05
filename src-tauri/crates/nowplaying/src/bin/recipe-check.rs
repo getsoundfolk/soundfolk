@@ -34,7 +34,10 @@ fn main() -> ExitCode {
         Some("fixture") => fixture(&args[1..]),
         Some("compile") => compile(&args[1..]),
         Some("schema") => {
-            println!("{}", serde_json::to_string_pretty(&json_schema()).expect("schema serializes"));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json_schema()).expect("schema serializes")
+            );
             Ok(())
         }
         _ => Err(USAGE.into()),
@@ -107,7 +110,12 @@ fn test(paths: &[String]) -> Result<(), String> {
                 println!("ok    {} ({})", path.display(), t.page);
             } else {
                 failed += 1;
-                println!("FAIL  {} ({})\n      {}", path.display(), t.page, failures.join("\n      "));
+                println!(
+                    "FAIL  {} ({})\n      {}",
+                    path.display(),
+                    t.page,
+                    failures.join("\n      ")
+                );
             }
         }
     }
@@ -137,7 +145,10 @@ fn run(args: &[String]) -> Result<(), String> {
         println!("ends:    {end}");
     }
     if let Some(next) = &on_air.next {
-        let at = next.started_at.map(|s| format!(" at {s}")).unwrap_or_default();
+        let at = next
+            .started_at
+            .map(|s| format!(" at {s}"))
+            .unwrap_or_default();
         println!("next:    {}{at}", next.display());
     }
     if let Some(show) = &on_air.show {
@@ -149,10 +160,19 @@ fn run(args: &[String]) -> Result<(), String> {
 /// The page (`--page`, else fetched now) and when it was read (`--at`, else its HTTP `Date`,
 /// else now).
 fn page_and_time(recipe: &Recipe, args: &[String]) -> Result<(String, Timestamp), String> {
-    let option = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1));
-    let at = option("--at").map(|at| at.parse::<Timestamp>().map_err(|e| format!("--at: {e}"))).transpose()?;
+    let option = |name: &str| {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1))
+    };
+    let at = option("--at")
+        .map(|at| at.parse::<Timestamp>().map_err(|e| format!("--at: {e}")))
+        .transpose()?;
     let (page, date) = match option("--page") {
-        Some(page) => (std::fs::read_to_string(page).map_err(|e| format!("{page}: {e}"))?, None),
+        Some(page) => (
+            std::fs::read_to_string(page).map_err(|e| format!("{page}: {e}"))?,
+            None,
+        ),
         None => fetch(&recipe.fetch.url)?,
     };
     Ok((page, at.or(date).unwrap_or_else(Timestamp::now)))
@@ -162,18 +182,30 @@ fn fixture(args: &[String]) -> Result<(), String> {
     let path = Path::new(args.first().ok_or(USAGE)?);
     let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let recipe = load(path)?;
-    let id = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    let id = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default();
     if !check::is_valid_id(&id) {
-        return Err(format!("{}: file names are lowercase letters, digits, `-` and `_`", path.display()));
+        return Err(format!(
+            "{}: file names are lowercase letters, digits, `-` and `_`",
+            path.display()
+        ));
     }
     let (page, at) = page_and_time(&recipe, args)?;
-    let shared = soundfolk_nowplaying::fixture::prepare(&id, &text, &recipe, &recipe.fetch.url, &page, at)?;
+    let shared =
+        soundfolk_nowplaying::fixture::prepare(&id, &text, &recipe, &recipe.fetch.url, &page, at)?;
     let dir = path.parent().unwrap_or(Path::new(".")).join("../fixtures");
     std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let fixture_path = dir.join(&shared.fixture_file);
-    std::fs::write(&fixture_path, &shared.fixture).map_err(|e| format!("{}: {e}", fixture_path.display()))?;
+    std::fs::write(&fixture_path, &shared.fixture)
+        .map_err(|e| format!("{}: {e}", fixture_path.display()))?;
     std::fs::write(path, &shared.recipe).map_err(|e| format!("{}: {e}", path.display()))?;
-    println!("wrote   {} ({} bytes)", fixture_path.display(), shared.fixture.len());
+    println!(
+        "wrote   {} ({} bytes)",
+        fixture_path.display(),
+        shared.fixture.len()
+    );
     println!("updated {} ([[test]] at {at})", path.display());
     Ok(())
 }
@@ -195,19 +227,32 @@ fn fetch(url: &str) -> Result<(String, Option<Timestamp>), String> {
         .headers()
         .get("date")
         .and_then(|d| d.to_str().ok())
-        .and_then(|d| jiff::fmt::rfc2822::DateTimeParser::new().parse_timestamp(d).ok());
-    let body = response.body_mut().read_to_string().map_err(|e| e.to_string())?;
+        .and_then(|d| {
+            jiff::fmt::rfc2822::DateTimeParser::new()
+                .parse_timestamp(d)
+                .ok()
+        });
+    let body = response
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())?;
     Ok((body, date))
 }
 
 #[cfg(not(feature = "cli"))]
 fn fetch(_url: &str) -> Result<(String, Option<Timestamp>), String> {
-    Err("live fetching needs the `cli` feature (cargo run --features cli); or pass --page FILE".into())
+    Err(
+        "live fetching needs the `cli` feature (cargo run --features cli); or pass --page FILE"
+            .into(),
+    )
 }
 
 fn compile(args: &[String]) -> Result<(), String> {
     let dir = PathBuf::from(args.first().ok_or(USAGE)?);
-    let output = args.iter().position(|a| a == "-o").and_then(|i| args.get(i + 1));
+    let output = args
+        .iter()
+        .position(|a| a == "-o")
+        .and_then(|i| args.get(i + 1));
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -218,9 +263,15 @@ fn compile(args: &[String]) -> Result<(), String> {
     let recipes = paths
         .iter()
         .map(|p| {
-            let id = p.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            let id = p
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
             if !check::is_valid_id(&id) {
-                return Err(format!("{}: file names are lowercase letters, digits, `-` and `_`", p.display()));
+                return Err(format!(
+                    "{}: file names are lowercase letters, digits, `-` and `_`",
+                    p.display()
+                ));
             }
             load(p).map(|recipe| (id, recipe))
         })

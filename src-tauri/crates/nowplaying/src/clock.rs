@@ -86,7 +86,12 @@ mod tests {
     #[test]
     fn long_windows_are_ambiguous() {
         let start = Time::constant(22, 0, 0, 0);
-        let found = candidate_offsets(start, ts("2026-11-04T21:39:08Z"), SignedDuration::from_hours(1), TOLERANCE);
+        let found = candidate_offsets(
+            start,
+            ts("2026-11-04T21:39:08Z"),
+            SignedDuration::from_hours(1),
+            TOLERANCE,
+        );
         assert!(found.len() > 1, "{found:?}");
     }
 
@@ -101,7 +106,12 @@ mod tests {
         assert_eq!(to_instant(start, found[0], now), ts("2026-11-04T10:58:00Z"));
         // Nepal is +05:45.
         let start = Time::constant(3, 30, 0, 0);
-        let found = candidate_offsets(start, ts("2026-11-04T21:46:00Z"), SignedDuration::from_mins(3), TOLERANCE);
+        let found = candidate_offsets(
+            start,
+            ts("2026-11-04T21:46:00Z"),
+            SignedDuration::from_mins(3),
+            TOLERANCE,
+        );
         assert_eq!(found, vec![5 * 3600 + 45 * 60]);
     }
 
@@ -109,8 +119,17 @@ mod tests {
     fn instants_land_on_the_nearest_day() {
         let reference = ts("2026-11-04T23:10:00Z");
         // 00:05 local at +1:00 is 23:05 UTC the same evening, not 24 hours later.
-        assert_eq!(to_instant(Time::constant(0, 5, 0, 0), 3600, reference), ts("2026-11-04T23:05:00Z"));
-        assert_eq!(to_instant(Time::constant(0, 25, 0, 0), 3600, reference), ts("2026-11-04T23:25:00Z"));
-        assert_eq!(forward_gap(Time::constant(23, 58, 0, 0), Time::constant(0, 3, 0, 0)), SignedDuration::from_mins(5));
+        assert_eq!(
+            to_instant(Time::constant(0, 5, 0, 0), 3600, reference),
+            ts("2026-11-04T23:05:00Z")
+        );
+        assert_eq!(
+            to_instant(Time::constant(0, 25, 0, 0), 3600, reference),
+            ts("2026-11-04T23:25:00Z")
+        );
+        assert_eq!(
+            forward_gap(Time::constant(23, 58, 0, 0), Time::constant(0, 3, 0, 0)),
+            SignedDuration::from_mins(5)
+        );
     }
 }

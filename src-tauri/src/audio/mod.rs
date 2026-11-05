@@ -27,10 +27,10 @@ mod playlist;
 mod web_source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::{Duration, Instant};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 pub use stream_download::http::reqwest::Url;
@@ -300,11 +300,17 @@ impl StreamMeta {
     }
 
     pub(crate) fn icy_title(&self) -> Option<String> {
-        self.icy_title.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        self.icy_title
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     pub(crate) fn opened(&self) -> Option<OpenedInfo> {
-        self.opened.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        self.opened
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 }
 
@@ -324,7 +330,11 @@ impl Reporter {
 
     pub(crate) fn audible(&self) {
         let paused = self.controls.is_paused();
-        self.publish(if paused { PlayerState::Paused } else { PlayerState::Playing });
+        self.publish(if paused {
+            PlayerState::Paused
+        } else {
+            PlayerState::Playing
+        });
     }
 
     pub(crate) fn failed(&self, message: String) {
@@ -338,16 +348,31 @@ impl Reporter {
     /// ICY `StreamTitle`.
     pub(crate) fn title(&self, title: String) {
         self.stream.inband_title.store(true, Ordering::SeqCst);
-        *self.stream.icy_title.lock().unwrap_or_else(|p| p.into_inner()) = Some(title.clone());
+        *self
+            .stream
+            .icy_title
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = Some(title.clone());
         self.update_now_playing(|np| {
-            *np = NowPlaying { station: np.station.take(), title: Some(title), source: Some(TitleSource::Icy), ..Default::default() };
+            *np = NowPlaying {
+                station: np.station.take(),
+                title: Some(title),
+                source: Some(TitleSource::Icy),
+                ..Default::default()
+            };
         });
     }
 
     /// Artist and title from the stream's own tags (Vorbis comments).
     pub(crate) fn stream_tags(&self, artist: Option<String>, title: String) {
         self.stream.inband_title.store(true, Ordering::SeqCst);
-        let track = TrackInfo { artist, title, started_at: None, duration_secs: None, cover: None };
+        let track = TrackInfo {
+            artist,
+            title,
+            started_at: None,
+            duration_secs: None,
+            cover: None,
+        };
         self.update_now_playing(|np| {
             *np = NowPlaying {
                 station: np.station.take(),
@@ -360,7 +385,11 @@ impl Reporter {
     }
 
     /// What a web source says is on air. Ignored once the stream announced a title itself.
-    pub(crate) fn web_title(&self, on_air: &soundfolk_nowplaying::tracker::OnAir, source: TitleSource) {
+    pub(crate) fn web_title(
+        &self,
+        on_air: &soundfolk_nowplaying::tracker::OnAir,
+        source: TitleSource,
+    ) {
         if self.stream.has_inband_title() {
             return;
         }
@@ -398,8 +427,11 @@ impl Reporter {
 
     /// The stream is open: whether it carries metadata, and which server sends it.
     pub(crate) fn stream_opened(&self, inband: bool, server: Option<String>) {
-        *self.stream.opened.lock().unwrap_or_else(|p| p.into_inner()) =
-            Some(OpenedInfo { at: Instant::now(), inband, server });
+        *self.stream.opened.lock().unwrap_or_else(|p| p.into_inner()) = Some(OpenedInfo {
+            at: Instant::now(),
+            inband,
+            server,
+        });
     }
 
     pub(crate) fn stream_meta(&self) -> &StreamMeta {
@@ -421,7 +453,11 @@ impl Reporter {
 }
 
 enum Command {
-    Play { url: Url, station: StationRef, reply: Sender<Result<(), String>> },
+    Play {
+        url: Url,
+        station: StationRef,
+        reply: Sender<Result<(), String>>,
+    },
     Stop,
 }
 
@@ -463,7 +499,11 @@ type Levels = Arc<OnceLock<Arc<dyn LevelMemory>>>;
 
 impl DesktopAudioEngine {
     /// `web`: where to look for the title of streams that do not announce it.
-    pub fn new(listener: StateListener, now_playing_listener: NowPlayingListener, web: Arc<WebTitles>) -> Self {
+    pub fn new(
+        listener: StateListener,
+        now_playing_listener: NowPlayingListener,
+        web: Arc<WebTitles>,
+    ) -> Self {
         let controls = Arc::new(Controls::new());
         let status = Arc::new(Status {
             state: Mutex::new(PlayerState::Idle),
@@ -480,7 +520,12 @@ impl DesktopAudioEngine {
             .spawn(move || engine_loop(rx, c, s, web, l))
             .expect("failed to start the audio-engine thread");
 
-        Self { commands, controls, status, levels }
+        Self {
+            commands,
+            controls,
+            status,
+            levels,
+        }
     }
 
     /// Where station levels are remembered, for *Constant volume*. Without it, every station
@@ -523,16 +568,24 @@ impl DesktopAudioEngine {
 
 impl AudioEngine for DesktopAudioEngine {
     fn play(&mut self, url: &str, station: StationRef) -> Result<(), String> {
-        let url: Url = url.trim().parse().map_err(|e| format!("Invalid URL: {e}"))?;
+        let url: Url = url
+            .trim()
+            .parse()
+            .map_err(|e| format!("Invalid URL: {e}"))?;
         if !matches!(url.scheme(), "http" | "https") {
             return Err(format!("Unsupported protocol: {}", url.scheme()));
         }
 
         let (reply, wait) = mpsc::channel();
         self.commands
-            .send(Command::Play { url, station, reply })
+            .send(Command::Play {
+                url,
+                station,
+                reply,
+            })
             .map_err(|_| "The audio engine is stopped".to_string())?;
-        wait.recv().map_err(|_| "The audio engine is stopped".to_string())?
+        wait.recv()
+            .map_err(|_| "The audio engine is stopped".to_string())?
     }
 
     fn pause(&mut self) -> Result<(), String> {
@@ -553,14 +606,18 @@ impl AudioEngine for DesktopAudioEngine {
     }
 
     fn stop(&mut self) -> Result<(), String> {
-        self.commands.send(Command::Stop).map_err(|_| "The audio engine is stopped".to_string())
+        self.commands
+            .send(Command::Stop)
+            .map_err(|_| "The audio engine is stopped".to_string())
     }
 
     fn set_volume(&mut self, volume: f32) -> Result<(), String> {
         if !volume.is_finite() {
             return Err("Invalid volume".into());
         }
-        self.controls.volume.store(gain(volume).to_bits(), Ordering::Relaxed);
+        self.controls
+            .volume
+            .store(gain(volume).to_bits(), Ordering::Relaxed);
         Ok(())
     }
 }
@@ -594,7 +651,15 @@ fn engine_loop(
         let command = match rx.recv_timeout(OUTPUT_CHECK) {
             Ok(command) => command,
             Err(RecvTimeoutError::Timeout) => {
-                reopen_lost_output(&mut session, &mut playback, &controls, &status, &web, &levels, runtime.handle());
+                reopen_lost_output(
+                    &mut session,
+                    &mut playback,
+                    &controls,
+                    &status,
+                    &web,
+                    &levels,
+                    runtime.handle(),
+                );
                 continue;
             }
             // The engine was dropped.
@@ -611,14 +676,30 @@ fn engine_loop(
                 status.clear_now_playing();
                 status.set(PlayerState::Idle);
             }
-            Command::Play { url, station, reply } => {
+            Command::Play {
+                url,
+                station,
+                reply,
+            } => {
                 controls.paused.store(false, Ordering::Relaxed);
                 status.clear_now_playing();
                 status.set(PlayerState::Connecting);
-                match start_session(url.clone(), station.clone(), &controls, &status, &web, &levels, runtime.handle()) {
+                match start_session(
+                    url.clone(),
+                    station.clone(),
+                    &controls,
+                    &status,
+                    &web,
+                    &levels,
+                    runtime.handle(),
+                ) {
                     Ok(new) => {
                         session = Some(new);
-                        playback = Some(Playback { url, station, output_lost: None });
+                        playback = Some(Playback {
+                            url,
+                            station,
+                            output_lost: None,
+                        });
                         let _ = reply.send(Ok(()));
                     }
                     Err(message) => {
@@ -654,14 +735,28 @@ fn reopen_lost_output(
     if session.take().is_some() {
         tracing::warn!("sound output lost: reopening it");
         play.output_lost = Some(Instant::now());
-        status.set(PlayerState::Reconnecting("Reconnecting the sound output…".into()));
+        status.set(PlayerState::Reconnecting(
+            "Reconnecting the sound output…".into(),
+        ));
     }
-    match start_session(play.url.clone(), play.station.clone(), controls, status, web, levels, runtime) {
+    match start_session(
+        play.url.clone(),
+        play.station.clone(),
+        controls,
+        status,
+        web,
+        levels,
+        runtime,
+    ) {
         Ok(new) => {
             *session = Some(new);
             play.output_lost = None;
         }
-        Err(message) if play.output_lost.is_some_and(|since| since.elapsed() > OUTPUT_RETRY) => {
+        Err(message)
+            if play
+                .output_lost
+                .is_some_and(|since| since.elapsed() > OUTPUT_RETRY) =>
+        {
             tracing::warn!("sound output not reopened: {message}");
             *playback = None;
             status.set(PlayerState::Error(message));
@@ -699,7 +794,13 @@ fn start_session(
     };
 
     // Streams that do not announce their title: look for it on the web.
-    web.spawn(url.clone(), station, reporter.clone(), cancel.clone(), runtime);
+    web.spawn(
+        url.clone(),
+        station,
+        reporter.clone(),
+        cancel.clone(),
+        runtime,
+    );
 
     decoder::spawn(decoder::Job {
         url,
@@ -767,8 +868,7 @@ mod tests {
             now_playing_listener: Arc::new(|_| {}),
         });
         let cancel = Arc::new(Cancel::default());
-        let reporter =
-            Reporter {
+        let reporter = Reporter {
             status,
             controls: Arc::new(Controls::new()),
             cancel: cancel.clone(),
@@ -779,7 +879,10 @@ mod tests {
         reporter.reconnecting("Reconnecting…"); // repeated while waiting: published once
         cancel.cancel();
         reporter.audible();
-        assert_eq!(*seen.lock().unwrap(), vec![PlayerState::Reconnecting("Reconnecting…".into())]);
+        assert_eq!(
+            *seen.lock().unwrap(),
+            vec![PlayerState::Reconnecting("Reconnecting…".into())]
+        );
     }
 
     #[test]
@@ -791,7 +894,9 @@ mod tests {
             r#"{"status":"error","message":"boom"}"#
         );
         assert_eq!(
-            json(&PlayerState::Reconnecting("Waiting for the network…".into())),
+            json(&PlayerState::Reconnecting(
+                "Waiting for the network…".into()
+            )),
             r#"{"status":"reconnecting","message":"Waiting for the network…"}"#
         );
     }
@@ -856,7 +961,10 @@ mod tests {
             cover: None,
         };
         reporter.title("082 - Dru Down - Pimp of the Year".into());
-        assert_eq!(reporter.stream_meta().icy_title().as_deref(), Some("082 - Dru Down - Pimp of the Year"));
+        assert_eq!(
+            reporter.stream_meta().icy_title().as_deref(),
+            Some("082 - Dru Down - Pimp of the Year")
+        );
         reporter.icy_details(
             "082 - Dru Down - Pimp of the Year",
             track("Dru Down", "Pimp of the Year"),
@@ -864,16 +972,27 @@ mod tests {
             None,
         );
         let np = status.now_playing().clone();
-        assert_eq!(np.title.as_deref(), Some("082 - Dru Down - Pimp of the Year")); // the stream's
+        assert_eq!(
+            np.title.as_deref(),
+            Some("082 - Dru Down - Pimp of the Year")
+        ); // the stream's
         assert_eq!(np.track.unwrap().artist.as_deref(), Some("Dru Down"));
         assert_eq!(np.next.unwrap().title, "We Can Freak It");
         assert_eq!(np.source, Some(TitleSource::Icy));
 
         // Details arriving after the stream moved on are dropped.
         reporter.title("Air - Sexy Boy".into());
-        reporter.icy_details("082 - Dru Down - Pimp of the Year", track("Dru Down", "Pimp of the Year"), None, None);
+        reporter.icy_details(
+            "082 - Dru Down - Pimp of the Year",
+            track("Dru Down", "Pimp of the Year"),
+            None,
+            None,
+        );
         let np = status.now_playing().clone();
-        assert_eq!((np.title.as_deref(), np.track), (Some("Air - Sexy Boy"), None));
+        assert_eq!(
+            (np.title.as_deref(), np.track),
+            (Some("Air - Sexy Boy"), None)
+        );
     }
 
     /// Plays Fréquence 7 muted: its stream has no metadata, the title comes from its web page.
@@ -884,22 +1003,43 @@ mod tests {
         let sink = seen.clone();
         let recipes = Arc::new(crate::recipes::Recipes::new(None));
         let web = Arc::new(WebTitles::new(recipes, true, Box::new(|_| {})));
-        let mut engine = DesktopAudioEngine::new(Arc::new(|_| {}), Arc::new(move |np| sink.lock().unwrap().push(np)), web);
+        let mut engine = DesktopAudioEngine::new(
+            Arc::new(|_| {}),
+            Arc::new(move |np| sink.lock().unwrap().push(np)),
+            web,
+        );
         engine.set_volume(0.0).unwrap();
-        engine.play("https://live.aurafm.org/Frequence7", StationRef { id: None }).unwrap();
+        engine
+            .play(
+                "https://live.aurafm.org/Frequence7",
+                StationRef { id: None },
+            )
+            .unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while std::time::Instant::now() < deadline {
-            if seen.lock().unwrap().iter().any(|np| np.source == Some(TitleSource::Recipe)) {
+            if seen
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|np| np.source == Some(TitleSource::Recipe))
+            {
                 break;
             }
             thread::sleep(std::time::Duration::from_millis(200));
         }
         engine.stop().unwrap();
         let seen = seen.lock().unwrap();
-        let np = seen.iter().rev().find(|np| np.source == Some(TitleSource::Recipe)).expect("a title from the recipe");
+        let np = seen
+            .iter()
+            .rev()
+            .find(|np| np.source == Some(TitleSource::Recipe))
+            .expect("a title from the recipe");
         println!("{np:#?}");
         let track = np.track.as_ref().unwrap();
-        assert!(track.started_at.is_some(), "start resolved from the page's local time");
+        assert!(
+            track.started_at.is_some(),
+            "start resolved from the page's local time"
+        );
     }
 
     /// Plays Fréquence 7 muted, then saves a local copy of its recipe: the playback switches to
@@ -907,7 +1047,8 @@ mod tests {
     #[test]
     #[ignore = "network and sound card"]
     fn live_saved_recipe_applies_while_playing() {
-        let dir = std::env::temp_dir().join(format!("soundfolk-live-recipes-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("soundfolk-live-recipes-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let events = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -918,7 +1059,12 @@ mod tests {
             true,
             Box::new(move |event| {
                 let line = match event {
-                    WebEvent::Status(s) => format!("status {:?} {:?} {:?}", s.state, s.recipe.map(|r| (r.id, r.origin)), s.error),
+                    WebEvent::Status(s) => format!(
+                        "status {:?} {:?} {:?}",
+                        s.state,
+                        s.recipe.map(|r| (r.id, r.origin)),
+                        s.error
+                    ),
                     WebEvent::Notice(n) => format!("notice {} ok={} {}", n.file, n.ok, n.message),
                 };
                 sink.lock().unwrap().push(line);
@@ -934,14 +1080,28 @@ mod tests {
             web.clone(),
         );
         engine.set_volume(0.0).unwrap();
-        engine.play("https://live.aurafm.org/Frequence7", StationRef { id: None }).unwrap();
+        engine
+            .play(
+                "https://live.aurafm.org/Frequence7",
+                StationRef { id: None },
+            )
+            .unwrap();
         let wait_for = |what: &dyn Fn() -> bool, secs: u64| {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
             while std::time::Instant::now() < deadline && !what() {
                 thread::sleep(std::time::Duration::from_millis(200));
             }
         };
-        wait_for(&|| titles.lock().unwrap().iter().any(|np| np.source == Some(TitleSource::Recipe)), 20);
+        wait_for(
+            &|| {
+                titles
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|np| np.source == Some(TitleSource::Recipe))
+            },
+            20,
+        );
 
         // Broken first: reported, the shipped recipe stays in use.
         std::fs::write(dir.join("frequence7.toml"), "schema = 1\nname = ").unwrap();
@@ -950,17 +1110,44 @@ mod tests {
         let copy = crate::recipes::local_copy(recipes.bundled_text("frequence7").unwrap());
         std::fs::write(dir.join("frequence7.toml"), copy).unwrap();
         web.recipes_changed(&recipes.reload_if_changed().unwrap());
-        wait_for(&|| events.lock().unwrap().iter().any(|e| e.starts_with("notice frequence7.toml ok=true")), 25);
+        wait_for(
+            &|| {
+                events
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|e| e.starts_with("notice frequence7.toml ok=true"))
+            },
+            25,
+        );
         engine.stop().unwrap();
         std::fs::remove_dir_all(&dir).unwrap();
 
         let events = events.lock().unwrap();
         println!("{events:#?}\nstates: {:?}", states.lock().unwrap());
-        assert!(events.iter().any(|e| e.starts_with("notice frequence7.toml ok=false")), "{events:?}");
-        assert!(events.iter().any(|e| e.starts_with("notice frequence7.toml ok=true Reads: ")), "{events:?}");
-        assert!(events.iter().any(|e| e.contains("Some((\"frequence7\", Local))")), "{events:?}");
+        assert!(
+            events
+                .iter()
+                .any(|e| e.starts_with("notice frequence7.toml ok=false")),
+            "{events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.starts_with("notice frequence7.toml ok=true Reads: ")),
+            "{events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| e.contains("Some((\"frequence7\", Local))")),
+            "{events:?}"
+        );
         // Switching recipes never touches the stream: no reconnection.
-        assert_eq!(*states.lock().unwrap(), vec![PlayerState::Connecting, PlayerState::Playing]);
+        assert_eq!(
+            *states.lock().unwrap(),
+            vec![PlayerState::Connecting, PlayerState::Playing]
+        );
     }
 
     /// Plays an Ogg Vorbis stream muted: the title comes from its Vorbis comments. Set
@@ -971,21 +1158,47 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::<NowPlaying>::new()));
         let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
         let (sink, state_sink) = (seen.clone(), states.clone());
-        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
+        let web = Arc::new(WebTitles::new(
+            Arc::new(crate::recipes::Recipes::new(None)),
+            false,
+            Box::new(|_| {}),
+        ));
         let mut engine = DesktopAudioEngine::new(
             Arc::new(move |s| state_sink.lock().unwrap().push(s)),
             Arc::new(move |np| sink.lock().unwrap().push(np)),
             web,
         );
         engine.set_volume(0.0).unwrap();
-        engine.play("http://stream.metacast.eu/radio1rock.ogg", StationRef { id: None }).unwrap();
-        let secs = std::env::var("SOUNDFOLK_OGG_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(10);
+        engine
+            .play(
+                "http://stream.metacast.eu/radio1rock.ogg",
+                StationRef { id: None },
+            )
+            .unwrap();
+        let secs = std::env::var("SOUNDFOLK_OGG_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(10);
         thread::sleep(std::time::Duration::from_secs(secs));
         engine.stop().unwrap();
-        let titles: Vec<_> = seen.lock().unwrap().iter().filter_map(|np| np.title.clone().zip(np.source)).collect();
+        let titles: Vec<_> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|np| np.title.clone().zip(np.source))
+            .collect();
         println!("titles: {titles:#?}\nstates: {:?}", states.lock().unwrap());
-        assert!(titles.iter().any(|(_, source)| *source == TitleSource::StreamTags), "{titles:?}");
-        assert!(!states.lock().unwrap().iter().any(|s| matches!(s, PlayerState::Error(_))));
+        assert!(
+            titles
+                .iter()
+                .any(|(_, source)| *source == TitleSource::StreamTags),
+            "{titles:?}"
+        );
+        assert!(!states
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|s| matches!(s, PlayerState::Error(_))));
     }
 
     /// A local server sends 1 s of a WAV stream then hangs up, every time: the engine
@@ -1015,7 +1228,9 @@ mod tests {
                 wav.extend_from_slice(&16u16.to_le_bytes());
                 wav.extend_from_slice(b"data\x00\x00\xf0\x7f");
                 wav.resize(wav.len() + rate as usize * 2, 0); // 1 s of silence
-                let _ = client.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nConnection: close\r\n\r\n");
+                let _ = client.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nConnection: close\r\n\r\n",
+                );
                 let _ = client.write_all(&wav);
                 // Hangs up: the stream ends.
             }
@@ -1023,8 +1238,16 @@ mod tests {
 
         let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
         let sink = states.clone();
-        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
-        let mut engine = DesktopAudioEngine::new(Arc::new(move |s| sink.lock().unwrap().push(s)), Arc::new(|_| {}), web);
+        let web = Arc::new(WebTitles::new(
+            Arc::new(crate::recipes::Recipes::new(None)),
+            false,
+            Box::new(|_| {}),
+        ));
+        let mut engine = DesktopAudioEngine::new(
+            Arc::new(move |s| sink.lock().unwrap().push(s)),
+            Arc::new(|_| {}),
+            web,
+        );
         engine.set_volume(0.0).unwrap();
         engine.play(&url, StationRef { id: None }).unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
@@ -1034,10 +1257,24 @@ mod tests {
         thread::sleep(std::time::Duration::from_millis(1500));
         let seen = states.lock().unwrap().clone();
         engine.stop().unwrap();
-        println!("connections: {}\nstates: {seen:?}", served.load(Ordering::SeqCst));
-        assert!(served.load(Ordering::SeqCst) >= 8, "more than the old 5-attempt limit");
-        assert!(!seen.iter().any(|s| matches!(s, PlayerState::Error(_))), "{seen:?}");
-        let replays = seen.windows(2).filter(|w| matches!(w[0], PlayerState::Reconnecting(_)) && w[1] == PlayerState::Playing).count();
+        println!(
+            "connections: {}\nstates: {seen:?}",
+            served.load(Ordering::SeqCst)
+        );
+        assert!(
+            served.load(Ordering::SeqCst) >= 8,
+            "more than the old 5-attempt limit"
+        );
+        assert!(
+            !seen.iter().any(|s| matches!(s, PlayerState::Error(_))),
+            "{seen:?}"
+        );
+        let replays = seen
+            .windows(2)
+            .filter(|w| {
+                matches!(w[0], PlayerState::Reconnecting(_)) && w[1] == PlayerState::Playing
+            })
+            .count();
         assert!(replays >= 6, "{seen:?}");
     }
 
@@ -1064,8 +1301,16 @@ mod tests {
 
         let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
         let sink = states.clone();
-        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
-        let mut engine = DesktopAudioEngine::new(Arc::new(move |s| sink.lock().unwrap().push(s)), Arc::new(|_| {}), web);
+        let web = Arc::new(WebTitles::new(
+            Arc::new(crate::recipes::Recipes::new(None)),
+            false,
+            Box::new(|_| {}),
+        ));
+        let mut engine = DesktopAudioEngine::new(
+            Arc::new(move |s| sink.lock().unwrap().push(s)),
+            Arc::new(|_| {}),
+            web,
+        );
         engine.set_volume(0.0).unwrap();
         engine.play(&url, StationRef { id: None }).unwrap();
         thread::sleep(std::time::Duration::from_secs(15));
@@ -1073,12 +1318,18 @@ mod tests {
         engine.stop().unwrap();
         println!("states: {seen:#?}");
         let expected = match std::env::var("SOUNDFOLK_EXPECT").as_deref() {
-            Ok("unknown") => "Cannot play the station (its server refuses connections) — retrying…".to_owned(),
+            Ok("unknown") => {
+                "Cannot play the station (its server refuses connections) — retrying…".to_owned()
+            }
             Ok("no-network") => "No network — waiting…".to_owned(),
-            _ => "The station is not broadcasting (its server refuses connections) — retrying…".to_owned(),
+            _ => "The station is not broadcasting (its server refuses connections) — retrying…"
+                .to_owned(),
         };
         assert!(seen.contains(&PlayerState::Playing), "{seen:?}");
-        assert!(seen.contains(&PlayerState::Reconnecting(expected.clone())), "expected {expected:?} in {seen:?}");
+        assert!(
+            seen.contains(&PlayerState::Reconnecting(expected.clone())),
+            "expected {expected:?} in {seen:?}"
+        );
     }
 
     /// Against the real network: `cargo test -- --ignored live_`.
@@ -1104,7 +1355,9 @@ mod tests {
         for url in ["https://example.com/", "http://127.0.0.1:9/"] {
             let url: Url = url.parse().unwrap();
             let h = handle.clone();
-            let result = tokio::task::spawn_blocking(move || probe_stream(&url, &h)).await.unwrap();
+            let result = tokio::task::spawn_blocking(move || probe_stream(&url, &h))
+                .await
+                .unwrap();
             assert!(result.is_err(), "{result:?}");
         }
     }
@@ -1134,9 +1387,16 @@ mod tests {
              http://stream.metacast.eu/radio1rock.ogg https://live.aurafm.org/Frequence7"
                 .into()
         });
-        let seconds = std::env::var("SOUNDFOLK_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(20);
+        let seconds = std::env::var("SOUNDFOLK_SECONDS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
         let memory = Arc::new(Memory::default());
-        let web = Arc::new(WebTitles::new(Arc::new(crate::recipes::Recipes::new(None)), false, Box::new(|_| {})));
+        let web = Arc::new(WebTitles::new(
+            Arc::new(crate::recipes::Recipes::new(None)),
+            false,
+            Box::new(|_| {}),
+        ));
         let mut engine = DesktopAudioEngine::new(Arc::new(|_| {}), Arc::new(|_| {}), web);
         engine.set_level_memory(memory.clone());
         engine.set_volume(0.0).unwrap();
@@ -1145,7 +1405,11 @@ mod tests {
             let mut gains = Vec::new();
             for _ in 0..seconds {
                 thread::sleep(Duration::from_secs(1));
-                gains.push(engine.level_adjustment().map_or("-".into(), |g| format!("{g:+.1}")));
+                gains.push(
+                    engine
+                        .level_adjustment()
+                        .map_or("-".into(), |g| format!("{g:+.1}")),
+                );
             }
             engine.stop().unwrap();
             thread::sleep(Duration::from_millis(500));
@@ -1153,7 +1417,10 @@ mod tests {
         }
         let learned = memory.0.lock().unwrap();
         for (url, level) in learned.iter() {
-            println!("{:>6.1} LUFS  peak {:>5.1} dBFS  {url}", level.loudness_lufs, level.peak_dbfs);
+            println!(
+                "{:>6.1} LUFS  peak {:>5.1} dBFS  {url}",
+                level.loudness_lufs, level.peak_dbfs
+            );
             assert!((-60.0..0.0).contains(&level.loudness_lufs), "{level:?}");
         }
         assert!(!learned.is_empty(), "no station learned");

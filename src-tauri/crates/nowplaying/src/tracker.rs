@@ -114,7 +114,12 @@ pub struct Tracker {
 
 impl Tracker {
     /// `every`: the recipe's hint. `offset`: a UTC offset learned earlier for this station.
-    pub fn new(policy: Policy, every: Option<SignedDuration>, offset: Option<Offset>, seed: u64) -> Self {
+    pub fn new(
+        policy: Policy,
+        every: Option<SignedDuration>,
+        offset: Option<Offset>,
+        seed: u64,
+    ) -> Self {
         let policy = policy.clamp();
         let every = every.unwrap_or(policy.default_every).max(policy.floor);
         Self {
@@ -137,7 +142,12 @@ impl Tracker {
     }
 
     /// The page was read at `fetched_at`; `server_date` is its HTTP `Date` header.
-    pub fn on_snapshot(&mut self, snapshot: Snapshot, fetched_at: Timestamp, server_date: Option<Timestamp>) -> Plan {
+    pub fn on_snapshot(
+        &mut self,
+        snapshot: Snapshot,
+        fetched_at: Timestamp,
+        server_date: Option<Timestamp>,
+    ) -> Plan {
         let previous_fetch = self.last_fetch;
         self.note_fetch(fetched_at);
         self.failures = 0;
@@ -147,14 +157,23 @@ impl Tracker {
             self.last_key = None;
             self.overrun_steps = 0;
             let next = self.idle_wait(false);
-            return Plan { publish: Vec::new(), next_fetch: self.limit(fetched_at, fetched_at + next) };
+            return Plan {
+                publish: Vec::new(),
+                next_fetch: self.limit(fetched_at, fetched_at + next),
+            };
         };
         let key = key_of(&current_raw);
         let changed = self.last_key.as_deref() != Some(key.as_str());
         self.last_key = Some(key);
 
         let seen_change_since = previous_fetch.filter(|_| changed);
-        self.resolve_offset(&current_raw, snapshot.next.first(), fetched_at, server_date, seen_change_since);
+        self.resolve_offset(
+            &current_raw,
+            snapshot.next.first(),
+            fetched_at,
+            server_date,
+            seen_change_since,
+        );
 
         let Some(current) = self.resolve(current_raw, fetched_at, None) else {
             unreachable!("title checked above")
@@ -170,8 +189,14 @@ impl Tracker {
 
         let latency = self.policy.latency;
         let mut publish = vec![Scheduled {
-            at: current.started_at.map_or(fetched_at, |s| (s + latency).max(fetched_at)),
-            on_air: OnAir { current: current.clone(), next: upcoming.first().cloned(), show: snapshot.show.clone() },
+            at: current
+                .started_at
+                .map_or(fetched_at, |s| (s + latency).max(fetched_at)),
+            on_air: OnAir {
+                current: current.clone(),
+                next: upcoming.first().cloned(),
+                show: snapshot.show.clone(),
+            },
         }];
         for (i, track) in upcoming.iter().enumerate() {
             let Some(start) = track.started_at else { break };
@@ -181,7 +206,11 @@ impl Tracker {
             }
             publish.push(Scheduled {
                 at,
-                on_air: OnAir { current: track.clone(), next: upcoming.get(i + 1).cloned(), show: snapshot.show.clone() },
+                on_air: OnAir {
+                    current: track.clone(),
+                    next: upcoming.get(i + 1).cloned(),
+                    show: snapshot.show.clone(),
+                },
             });
         }
 
@@ -195,7 +224,8 @@ impl Tracker {
             Some(boundary) if boundary > fetched_at => {
                 self.overrun_steps = 0;
                 self.idle_steps = 0;
-                (boundary.duration_since(fetched_at) + self.policy.confirm_delay).min(self.policy.max_wait)
+                (boundary.duration_since(fetched_at) + self.policy.confirm_delay)
+                    .min(self.policy.max_wait)
             }
             Some(_) if !changed => {
                 // Should have changed already: the track runs over, or the page is late.
@@ -207,21 +237,29 @@ impl Tracker {
                 self.idle_wait(changed)
             }
         };
-        Plan { publish, next_fetch: self.limit(fetched_at, fetched_at + wait) }
+        Plan {
+            publish,
+            next_fetch: self.limit(fetched_at, fetched_at + wait),
+        }
     }
 
     /// The request at `at` failed: when to try again.
     pub fn on_failure(&mut self, at: Timestamp) -> Timestamp {
         self.note_fetch(at);
         self.failures += 1;
-        let backoff = (self.policy.default_every * (1 << (self.failures - 1).min(8))).min(self.policy.max_failure_backoff);
+        let backoff = (self.policy.default_every * (1 << (self.failures - 1).min(8)))
+            .min(self.policy.max_failure_backoff);
         self.limit(at, at + backoff)
     }
 
     fn note_fetch(&mut self, at: Timestamp) {
         self.last_fetch = Some(at);
         self.recent.push_back(at);
-        while self.recent.front().is_some_and(|&t| at.duration_since(t) >= SignedDuration::from_hours(1)) {
+        while self
+            .recent
+            .front()
+            .is_some_and(|&t| at.duration_since(t) >= SignedDuration::from_hours(1))
+        {
             self.recent.pop_front();
         }
     }
@@ -258,7 +296,9 @@ impl Tracker {
         server_date: Option<Timestamp>,
         change_seen_since: Option<Timestamp>,
     ) {
-        let Some(Start::Local(start)) = current.start else { return };
+        let Some(Start::Local(start)) = current.start else {
+            return;
+        };
         let tolerance = self.policy.tolerance;
         // How long the track lasts, from the page.
         let length = match next.and_then(|n| n.start) {
@@ -288,10 +328,20 @@ impl Tracker {
             });
         };
         if let Some(length) = length {
-            narrow(clock::candidate_offsets(start, server_date.unwrap_or(fetched_at), length, tolerance));
+            narrow(clock::candidate_offsets(
+                start,
+                server_date.unwrap_or(fetched_at),
+                length,
+                tolerance,
+            ));
         }
         if let Some(since) = change_seen_since {
-            narrow(clock::candidate_offsets(start, fetched_at, fetched_at.duration_since(since), tolerance));
+            narrow(clock::candidate_offsets(
+                start,
+                fetched_at,
+                fetched_at.duration_since(since),
+                tolerance,
+            ));
         }
         if let Some([only]) = candidates.as_deref() {
             self.offset = Some(*only);
@@ -299,20 +349,38 @@ impl Tracker {
     }
 
     /// A track with its start as an instant. `previous_end` stands in for a missing start.
-    fn resolve(&self, raw: RawTrack, reference: Timestamp, previous_end: Option<Timestamp>) -> Option<Track> {
+    fn resolve(
+        &self,
+        raw: RawTrack,
+        reference: Timestamp,
+        previous_end: Option<Timestamp>,
+    ) -> Option<Track> {
         let title = raw.title?;
         let started_at = match raw.start {
             Some(Start::At(at)) => Some(at),
-            Some(Start::Local(local)) => self.offset.map(|o| clock::to_instant(local, o, reference)),
+            Some(Start::Local(local)) => {
+                self.offset.map(|o| clock::to_instant(local, o, reference))
+            }
             None => None,
         }
         .or(previous_end);
-        Some(Track { artist: raw.artist, title, started_at, duration: raw.duration, cover: raw.cover })
+        Some(Track {
+            artist: raw.artist,
+            title,
+            started_at,
+            duration: raw.duration,
+            cover: raw.cover,
+        })
     }
 }
 
 fn key_of(track: &RawTrack) -> String {
-    format!("{}|{}", track.artist.as_deref().unwrap_or(""), track.title.as_deref().unwrap_or("")).to_lowercase()
+    format!(
+        "{}|{}",
+        track.artist.as_deref().unwrap_or(""),
+        track.title.as_deref().unwrap_or("")
+    )
+    .to_lowercase()
 }
 
 #[cfg(test)]
@@ -327,7 +395,11 @@ mod tests {
         SignedDuration::from_secs(s)
     }
     fn policy() -> Policy {
-        Policy { jitter: SignedDuration::ZERO, latency: secs(2), ..Policy::default() }
+        Policy {
+            jitter: SignedDuration::ZERO,
+            latency: secs(2),
+            ..Policy::default()
+        }
     }
     fn local(title: &str, h: i8, m: i8, s: i8, duration: Option<i64>) -> RawTrack {
         RawTrack {
@@ -339,14 +411,26 @@ mod tests {
         }
     }
     fn plain(title: &str) -> RawTrack {
-        RawTrack { title: Some(title.into()), ..RawTrack::default() }
+        RawTrack {
+            title: Some(title.into()),
+            ..RawTrack::default()
+        }
     }
 
     /// The Fréquence 7 page as seen at 22:39:08 local (CET).
     fn frequence7() -> Snapshot {
         Snapshot {
-            current: Some(local("Children Of Fire And Sacrifices", 22, 36, 51, Some(276))),
-            next: vec![local("Nino", 22, 41, 27, Some(103)), local("Abduction", 22, 43, 10, Some(106))],
+            current: Some(local(
+                "Children Of Fire And Sacrifices",
+                22,
+                36,
+                51,
+                Some(276),
+            )),
+            next: vec![
+                local("Nino", 22, 41, 27, Some(103)),
+                local("Abduction", 22, 43, 10, Some(106)),
+            ],
             show: None,
         }
     }
@@ -358,7 +442,11 @@ mod tests {
         let plan = tracker.on_snapshot(frequence7(), now, Some(now));
 
         assert_eq!(tracker.offset(), Some(3600));
-        let titles: Vec<_> = plan.publish.iter().map(|p| (p.at, p.on_air.current.title.as_str())).collect();
+        let titles: Vec<_> = plan
+            .publish
+            .iter()
+            .map(|p| (p.at, p.on_air.current.title.as_str()))
+            .collect();
         assert_eq!(
             titles,
             [
@@ -367,8 +455,18 @@ mod tests {
                 (ts("2026-11-04T21:43:12Z"), "Abduction"),
             ]
         );
-        assert_eq!(plan.publish[0].on_air.current.started_at, Some(ts("2026-11-04T21:36:51Z")));
-        assert_eq!(plan.publish[0].on_air.next.as_ref().map(|t| t.title.as_str()), Some("Nino"));
+        assert_eq!(
+            plan.publish[0].on_air.current.started_at,
+            Some(ts("2026-11-04T21:36:51Z"))
+        );
+        assert_eq!(
+            plan.publish[0]
+                .on_air
+                .next
+                .as_ref()
+                .map(|t| t.title.as_str()),
+            Some("Nino")
+        );
         // Checked just after the next track starts (start + latency + 5 s).
         assert_eq!(plan.next_fetch, ts("2026-11-04T21:41:34Z"));
     }
@@ -379,7 +477,10 @@ mod tests {
         // The page switched one second ago; with 2 s of latency the listener still hears the end
         // of the previous track.
         let now = ts("2026-11-04T21:41:28Z");
-        let snapshot = Snapshot { current: Some(local("Nino", 22, 41, 27, Some(103))), ..Snapshot::default() };
+        let snapshot = Snapshot {
+            current: Some(local("Nino", 22, 41, 27, Some(103))),
+            ..Snapshot::default()
+        };
         let plan = tracker.on_snapshot(snapshot, now, None);
         assert_eq!(plan.publish[0].at, ts("2026-11-04T21:41:29Z"));
     }
@@ -404,12 +505,26 @@ mod tests {
         let mut at = ts("2026-11-04T12:00:00Z");
         let mut waits = Vec::new();
         for _ in 0..4 {
-            let plan = tracker.on_snapshot(Snapshot { current: Some(plain("Same")), ..Snapshot::default() }, at, None);
+            let plan = tracker.on_snapshot(
+                Snapshot {
+                    current: Some(plain("Same")),
+                    ..Snapshot::default()
+                },
+                at,
+                None,
+            );
             waits.push(plan.next_fetch.duration_since(at).as_secs());
             at = plan.next_fetch;
         }
         assert_eq!(waits, [30, 45, 60, 60]);
-        let plan = tracker.on_snapshot(Snapshot { current: Some(plain("Other")), ..Snapshot::default() }, at, None);
+        let plan = tracker.on_snapshot(
+            Snapshot {
+                current: Some(plain("Other")),
+                ..Snapshot::default()
+            },
+            at,
+            None,
+        );
         assert_eq!(plan.next_fetch.duration_since(at), secs(30));
     }
 
@@ -417,12 +532,30 @@ mod tests {
     fn recipe_hint_cannot_go_below_the_floor() {
         let mut tracker = Tracker::new(policy(), Some(secs(1)), None, 1);
         let at = ts("2026-11-04T12:00:00Z");
-        let plan = tracker.on_snapshot(Snapshot { current: Some(plain("A")), ..Snapshot::default() }, at, None);
+        let plan = tracker.on_snapshot(
+            Snapshot {
+                current: Some(plain("A")),
+                ..Snapshot::default()
+            },
+            at,
+            None,
+        );
         assert_eq!(plan.next_fetch.duration_since(at), secs(15));
         // Nor can the host's policy.
-        let lax = Policy { floor: secs(1), hourly_cap: 10_000, ..policy() };
+        let lax = Policy {
+            floor: secs(1),
+            hourly_cap: 10_000,
+            ..policy()
+        };
         let mut tracker = Tracker::new(lax, Some(secs(1)), None, 1);
-        let plan = tracker.on_snapshot(Snapshot { current: Some(plain("A")), ..Snapshot::default() }, at, None);
+        let plan = tracker.on_snapshot(
+            Snapshot {
+                current: Some(plain("A")),
+                ..Snapshot::default()
+            },
+            at,
+            None,
+        );
         assert_eq!(plan.next_fetch.duration_since(at), secs(15));
     }
 
@@ -435,7 +568,10 @@ mod tests {
         while at < start + SignedDuration::from_hours(1) {
             requests += 1;
             // A page that changes every time: the tracker would like to read it every 30 s.
-            let snapshot = Snapshot { current: Some(plain(&requests.to_string())), ..Snapshot::default() };
+            let snapshot = Snapshot {
+                current: Some(plain(&requests.to_string())),
+                ..Snapshot::default()
+            };
             at = tracker.on_snapshot(snapshot, at, None).next_fetch;
         }
         assert!(requests <= 120, "{requests}");
@@ -458,11 +594,17 @@ mod tests {
     fn learns_the_offset_from_a_change_then_relearns_it() {
         let mut tracker = Tracker::new(policy(), None, None, 1);
         // No duration, no next track: the first page says nothing about the time zone.
-        let a = Snapshot { current: Some(local("A", 22, 30, 0, None)), ..Snapshot::default() };
+        let a = Snapshot {
+            current: Some(local("A", 22, 30, 0, None)),
+            ..Snapshot::default()
+        };
         tracker.on_snapshot(a, ts("2026-11-04T21:30:40Z"), None);
         assert_eq!(tracker.offset(), None);
         // B appears between two requests 30 s apart, announced as started at 22:31:00 local.
-        let b = Snapshot { current: Some(local("B", 22, 31, 0, None)), ..Snapshot::default() };
+        let b = Snapshot {
+            current: Some(local("B", 22, 31, 0, None)),
+            ..Snapshot::default()
+        };
         tracker.on_snapshot(b, ts("2026-11-04T21:31:10Z"), None);
         assert_eq!(tracker.offset(), Some(3600));
 
@@ -495,7 +637,15 @@ mod tests {
             duration: Some(secs(180)),
             ..RawTrack::default()
         };
-        let plan = tracker.on_snapshot(Snapshot { current: Some(current), next: vec![plain("B")], show: None }, now, None);
+        let plan = tracker.on_snapshot(
+            Snapshot {
+                current: Some(current),
+                next: vec![plain("B")],
+                show: None,
+            },
+            now,
+            None,
+        );
         // B has no start: it follows A's end.
         assert_eq!(plan.publish[1].at, ts("2026-11-04T12:03:02Z"));
         assert_eq!(plan.next_fetch, ts("2026-11-04T12:03:07Z"));

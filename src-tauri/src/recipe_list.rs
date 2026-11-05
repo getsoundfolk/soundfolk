@@ -49,7 +49,11 @@ pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
     let url = std::env::var("SOUNDFOLK_RECIPES_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     tauri::async_runtime::spawn(async move {
         let client = match Client::builder()
-            .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION"), " (+https://github.com/getsoundfolk/soundfolk)"))
+            .user_agent(concat!(
+                "Soundfolk/",
+                env!("CARGO_PKG_VERSION"),
+                " (+https://github.com/getsoundfolk/soundfolk)"
+            ))
             .timeout(TIMEOUT)
             .build()
         {
@@ -75,13 +79,20 @@ pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
 
 fn read_cached(dir: &Path) -> Option<Vec<(String, Recipe)>> {
     let text = std::fs::read_to_string(dir.join(LIST_FILE)).ok()?;
-    load_compiled(&text).inspect_err(|e| tracing::warn!("cached shared recipes: {e}")).ok()
+    load_compiled(&text)
+        .inspect_err(|e| tracing::warn!("cached shared recipes: {e}"))
+        .ok()
 }
 
 fn is_due(dir: &Path) -> bool {
-    let checked = std::fs::metadata(dir.join(ETAG_FILE)).and_then(|m| m.modified()).ok();
+    let checked = std::fs::metadata(dir.join(ETAG_FILE))
+        .and_then(|m| m.modified())
+        .ok();
     let cached = dir.join(LIST_FILE).is_file();
-    !cached || checked.and_then(|t| SystemTime::now().duration_since(t).ok()).is_none_or(|age| age >= MAX_AGE)
+    !cached
+        || checked
+            .and_then(|t| SystemTime::now().duration_since(t).ok())
+            .is_none_or(|age| age >= MAX_AGE)
 }
 
 /// Downloads the list if it changed. `Ok(None)`: unchanged.
@@ -91,7 +102,9 @@ async fn refresh(
     dir: &Path,
 ) -> Result<Option<Vec<(String, Recipe)>>, String> {
     let etag_path = dir.join(ETAG_FILE);
-    let etag = std::fs::read_to_string(&etag_path).ok().filter(|_| dir.join(LIST_FILE).is_file());
+    let etag = std::fs::read_to_string(&etag_path)
+        .ok()
+        .filter(|_| dir.join(LIST_FILE).is_file());
     let mut request = client.get(url);
     if let Some(etag) = etag.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
         request = request.header(header::IF_NONE_MATCH, etag);
@@ -106,8 +119,15 @@ async fn refresh(
     if !status.is_success() {
         return Err(format!("{url}: HTTP {status}"));
     }
-    let new_etag = response.headers().get(header::ETAG).and_then(|v| v.to_str().ok()).map(str::to_owned);
-    if response.content_length().is_some_and(|n| n > MAX_SIZE as u64) {
+    let new_etag = response
+        .headers()
+        .get(header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    if response
+        .content_length()
+        .is_some_and(|n| n > MAX_SIZE as u64)
+    {
         return Err(format!("{url}: too large"));
     }
     let body = response.bytes().await.map_err(|e| e.to_string())?;
@@ -119,7 +139,9 @@ async fn refresh(
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     // The list first: an ETag must never describe a list that was not saved.
     let tmp = dir.join(format!("{LIST_FILE}.tmp"));
-    std::fs::write(&tmp, text).and_then(|()| std::fs::rename(&tmp, dir.join(LIST_FILE))).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, text)
+        .and_then(|()| std::fs::rename(&tmp, dir.join(LIST_FILE)))
+        .map_err(|e| e.to_string())?;
     std::fs::write(&etag_path, new_etag.unwrap_or_default()).map_err(|e| e.to_string())?;
     Ok(Some(recipes))
 }
@@ -129,7 +151,10 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("soundfolk-recipe-list-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "soundfolk-recipe-list-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -170,8 +195,12 @@ mod tests {
     #[tokio::test]
     async fn downloads_then_revalidates_with_the_etag() {
         let dir = temp_dir("refresh");
-        let recipe = soundfolk_nowplaying::recipe::Recipe::from_toml(include_str!("../recipes/stations/frequence7.toml")).unwrap();
-        let list = soundfolk_nowplaying::check::compile(&[("frequence7".into(), recipe)]).to_string();
+        let recipe = soundfolk_nowplaying::recipe::Recipe::from_toml(include_str!(
+            "../recipes/stations/frequence7.toml"
+        ))
+        .unwrap();
+        let list =
+            soundfolk_nowplaying::check::compile(&[("frequence7".into(), recipe)]).to_string();
         let (url, server) = serve(vec![
             format!("HTTP/1.1 200 OK\r\nETag: \"v1\"\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{list}", list.len()),
             "HTTP/1.1 304 Not Modified\r\nConnection: close\r\n\r\n".into(),
@@ -187,8 +216,16 @@ mod tests {
         assert_eq!(read_cached(&dir).unwrap().len(), 1);
         let requests = server.join().unwrap();
         assert!(!requests[0].contains("if-none-match"));
-        assert!(requests[0].contains("accept-encoding: gzip"), "{}", requests[0]);
-        assert!(requests[1].contains("if-none-match: \"v1\""), "{}", requests[1]);
+        assert!(
+            requests[0].contains("accept-encoding: gzip"),
+            "{}",
+            requests[0]
+        );
+        assert!(
+            requests[1].contains("if-none-match: \"v1\""),
+            "{}",
+            requests[1]
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

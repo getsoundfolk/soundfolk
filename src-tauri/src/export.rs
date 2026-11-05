@@ -64,8 +64,23 @@ struct LikedRow<'a> {
     station_id: &'a str,
 }
 
-const HISTORY_COLUMNS: [&str; 7] = ["played_at", "artist", "title", "raw_title", "station_name", "station_id", "liked"];
-const LIKED_COLUMNS: [&str; 6] = ["liked_at", "artist", "title", "raw_title", "station_name", "station_id"];
+const HISTORY_COLUMNS: [&str; 7] = [
+    "played_at",
+    "artist",
+    "title",
+    "raw_title",
+    "station_name",
+    "station_id",
+    "liked",
+];
+const LIKED_COLUMNS: [&str; 6] = [
+    "liked_at",
+    "artist",
+    "title",
+    "raw_title",
+    "station_name",
+    "station_id",
+];
 
 pub fn history(entries: &[HistoryEntry], format: Format) -> String {
     let rows: Vec<HistoryRow> = entries
@@ -82,17 +97,20 @@ pub fn history(entries: &[HistoryEntry], format: Format) -> String {
         .collect();
     match format {
         Format::Json => json(&rows),
-        Format::Csv => csv(&HISTORY_COLUMNS, rows.iter().map(|r| {
-            vec![
-                r.played_at.clone(),
-                r.artist.unwrap_or_default().to_owned(),
-                r.title.to_owned(),
-                r.raw_title.to_owned(),
-                r.station_name.unwrap_or_default().to_owned(),
-                r.station_id.to_owned(),
-                r.liked.to_string(),
-            ]
-        })),
+        Format::Csv => csv(
+            &HISTORY_COLUMNS,
+            rows.iter().map(|r| {
+                vec![
+                    r.played_at.clone(),
+                    r.artist.unwrap_or_default().to_owned(),
+                    r.title.to_owned(),
+                    r.raw_title.to_owned(),
+                    r.station_name.unwrap_or_default().to_owned(),
+                    r.station_id.to_owned(),
+                    r.liked.to_string(),
+                ]
+            }),
+        ),
     }
 }
 
@@ -110,16 +128,19 @@ pub fn likes(tracks: &[LikedTrack], format: Format) -> String {
         .collect();
     match format {
         Format::Json => json(&rows),
-        Format::Csv => csv(&LIKED_COLUMNS, rows.iter().map(|r| {
-            vec![
-                r.liked_at.clone(),
-                r.artist.unwrap_or_default().to_owned(),
-                r.title.to_owned(),
-                r.raw_title.to_owned(),
-                r.station_name.unwrap_or_default().to_owned(),
-                r.station_id.to_owned(),
-            ]
-        })),
+        Format::Csv => csv(
+            &LIKED_COLUMNS,
+            rows.iter().map(|r| {
+                vec![
+                    r.liked_at.clone(),
+                    r.artist.unwrap_or_default().to_owned(),
+                    r.title.to_owned(),
+                    r.raw_title.to_owned(),
+                    r.station_name.unwrap_or_default().to_owned(),
+                    r.station_id.to_owned(),
+                ]
+            }),
+        ),
     }
 }
 
@@ -188,12 +209,18 @@ mod tests {
     #[test]
     fn csv_quotes_what_needs_it() {
         let out = history(
-            &[entry("Home, \"Abroad\"", Some("Mellow Mood"), Some("Fréquence 7")), entry("Jingle", None, None)],
+            &[
+                entry("Home, \"Abroad\"", Some("Mellow Mood"), Some("Fréquence 7")),
+                entry("Jingle", None, None),
+            ],
             Format::Csv,
         );
         let lines: Vec<&str> = out.trim_start_matches('\u{feff}').split("\r\n").collect();
         assert!(out.starts_with('\u{feff}'));
-        assert_eq!(lines[0], "played_at,artist,title,raw_title,station_name,station_id,liked");
+        assert_eq!(
+            lines[0],
+            "played_at,artist,title,raw_title,station_name,station_id,liked"
+        );
         assert_eq!(
             lines[1],
             r#"2026-11-04T21:36:51Z,Mellow Mood,"Home, ""Abroad""","Mellow Mood - Home, ""Abroad""",Fréquence 7,f7,true"#

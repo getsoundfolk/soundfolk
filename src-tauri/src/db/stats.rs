@@ -206,11 +206,21 @@ impl Database {
 
 fn counts(conn: &Connection, sql: &str, days: Option<u32>) -> rusqlite::Result<Vec<Count>> {
     let mut stmt = conn.prepare(sql)?;
-    let rows = stmt.query_map(params![days], |r| Ok(Count { label: r.get(0)?, detail: r.get(1)?, count: r.get(2)? }))?;
+    let rows = stmt.query_map(params![days], |r| {
+        Ok(Count {
+            label: r.get(0)?,
+            detail: r.get(1)?,
+            count: r.get(2)?,
+        })
+    })?;
     rows.collect()
 }
 
-fn identification(conn: &Connection, days: Option<u32>, enabled: bool) -> rusqlite::Result<Identification> {
+fn identification(
+    conn: &Connection,
+    days: Option<u32>,
+    enabled: bool,
+) -> rusqlite::Result<Identification> {
     conn.query_row(
         &format!(
             "SELECT COALESCE(SUM(t.status = 'matched'), 0), COALESCE(SUM(t.status = 'not_found'), 0),
@@ -275,7 +285,11 @@ fn station_stats(conn: &Connection, days: Option<u32>) -> rusqlite::Result<Vec<S
             tracks_heard: plays,
             listening_hours: hours,
             // Under a minute of listening, a rate per hour means nothing.
-            likes_per_hour: if hours >= 1.0 / 60.0 { Some(likes as f64 / hours) } else { None },
+            likes_per_hour: if hours >= 1.0 / 60.0 {
+                Some(likes as f64 / hours)
+            } else {
+                None
+            },
             like_rate: ratio(likes as f64, plays as f64),
             repetition: ratio(plays as f64, tracks as f64),
             diversity: ratio(artists as f64 * 100.0, (plays - unparsed) as f64),
@@ -284,13 +298,19 @@ fn station_stats(conn: &Connection, days: Option<u32>) -> rusqlite::Result<Vec<S
     })?;
     let mut stations = rows.collect::<rusqlite::Result<Vec<_>>>()?;
     stations.sort_by(|a, b| {
-        b.likes.cmp(&a.likes).then(b.listening_hours.total_cmp(&a.listening_hours)).then(a.name.cmp(&b.name))
+        b.likes
+            .cmp(&a.likes)
+            .then(b.listening_hours.total_cmp(&a.listening_hours))
+            .then(a.name.cmp(&b.name))
     });
     Ok(stations)
 }
 
 /// Listening hours per weekday and per hour of the day, in local time.
-fn listening_profile(conn: &Connection, days: Option<u32>) -> rusqlite::Result<([f64; 7], [f64; 24])> {
+fn listening_profile(
+    conn: &Connection,
+    days: Option<u32>,
+) -> rusqlite::Result<([f64; 7], [f64; 24])> {
     // Offset of local time from UTC now (changes of daylight-saving time are ignored).
     let offset: i64 = conn.query_row(
         "SELECT strftime('%s', 'now', 'localtime') - strftime('%s', 'now')",
@@ -305,7 +325,10 @@ fn listening_profile(conn: &Connection, days: Option<u32>) -> rusqlite::Result<(
     let mut by_weekday = [0.0; 7];
     let mut by_hour = [0.0; 24];
     let rows = stmt.query_map(params![days], |r| {
-        Ok((r.get::<_, String>(0)?.parse().unwrap_or(0), r.get::<_, String>(1)?.parse().unwrap_or(0)))
+        Ok((
+            r.get::<_, String>(0)?.parse().unwrap_or(0),
+            r.get::<_, String>(1)?.parse().unwrap_or(0),
+        ))
     })?;
     for row in rows {
         let (start, end): (i64, i64) = row?;
@@ -347,7 +370,8 @@ mod tests {
     }
 
     fn like(db: &Database, station: &str, raw: &str) -> String {
-        db.log_track(station, Some(&station.to_uppercase()), raw, true).unwrap();
+        db.log_track(station, Some(&station.to_uppercase()), raw, true)
+            .unwrap();
         let entry = db.recent_history(1, None).unwrap().remove(0);
         db.like_track(entry.id).unwrap();
         entry.track_key
@@ -361,7 +385,11 @@ mod tests {
                 title: key.into(),
                 artist_mbid: artist.into(),
                 artist_name: artist.to_uppercase(),
-                album: Some(Album { mbid: format!("al-{artist}"), title: format!("{artist} album"), primary_type: None }),
+                album: Some(Album {
+                    mbid: format!("al-{artist}"),
+                    title: format!("{artist} album"),
+                    primary_type: None,
+                }),
                 first_release_date: Some(date.into()),
                 tags: vec!["rock".into()],
             },
@@ -376,13 +404,20 @@ mod tests {
         let air2 = like(&db, "nova", "Air - Kelly Watch the Stars");
         let moby = like(&db, "fip", "Moby - Porcelain");
         let _unidentified = like(&db, "fip", "Unknown - Song");
-        db.log_track("nova", Some("NOVA"), "Air - Sexy Boy", true).unwrap();
-        db.log_track("nova", Some("NOVA"), "Station jingle", true).unwrap();
+        db.log_track("nova", Some("NOVA"), "Air - Sexy Boy", true)
+            .unwrap();
+        db.log_track("nova", Some("NOVA"), "Station jingle", true)
+            .unwrap();
         matched(&db, &air1, "air", "1998-01-16");
         matched(&db, &air2, "air", "1998");
         matched(&db, &moby, "moby", "1999");
-        db.save_artist(&ArtistInfo { mbid: "air".into(), name: "AIR".into(), country: Some("FR".into()), genres: vec!["electronic".into()] })
-            .unwrap();
+        db.save_artist(&ArtistInfo {
+            mbid: "air".into(),
+            name: "AIR".into(),
+            country: Some("FR".into()),
+            genres: vec!["electronic".into()],
+        })
+        .unwrap();
 
         let stats = db.stats(None).unwrap();
         assert_eq!(stats.totals.likes, 4);
@@ -399,10 +434,21 @@ mod tests {
         assert_eq!(stats.artists[0].label, "AIR");
         assert_eq!(stats.artists[0].count, 2);
         assert_eq!(stats.albums[0].detail.as_deref(), Some("AIR"));
-        assert_eq!(stats.decades, [Count { label: "1990s".into(), detail: None, count: 3 }]);
+        assert_eq!(
+            stats.decades,
+            [Count {
+                label: "1990s".into(),
+                detail: None,
+                count: 3
+            }]
+        );
         assert_eq!(stats.countries[0].label, "FR");
         // Air's genres replace the recording tags; Moby has none, so its tags count.
-        let genres: Vec<_> = stats.genres.iter().map(|g| (g.label.as_str(), g.count)).collect();
+        let genres: Vec<_> = stats
+            .genres
+            .iter()
+            .map(|g| (g.label.as_str(), g.count))
+            .collect();
         assert_eq!(genres, [("electronic", 2), ("rock", 1)]);
         // Air was first liked on FIP, Moby too.
         assert_eq!(stats.discovery_stations[0].label, "FIP");

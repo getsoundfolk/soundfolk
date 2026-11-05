@@ -38,7 +38,9 @@ pub fn validate(s: CustomService) -> Result<CustomService, String> {
     let id_ok = s.id.len() > "custom:".len()
         && s.id.len() <= 64
         && s.id.starts_with("custom:")
-        && s.id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b':' || b == b'-');
+        && s.id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b':' || b == b'-');
     if !id_ok {
         return Err("Invalid site id".into());
     }
@@ -57,14 +59,22 @@ pub fn validate(s: CustomService) -> Result<CustomService, String> {
     if rest.starts_with('/') {
         return Err("The address needs a site name, without login".into());
     }
-    let url = url::Url::parse(&template.replace(PLACEHOLDER, "test")).map_err(|_| "This address is not valid".to_string())?;
+    let url = url::Url::parse(&template.replace(PLACEHOLDER, "test"))
+        .map_err(|_| "This address is not valid".to_string())?;
     if url.scheme() != "https" {
         return Err("The address must start with https://".into());
     }
-    if url.host_str().is_none_or(str::is_empty) || !url.username().is_empty() || url.password().is_some() {
+    if url.host_str().is_none_or(str::is_empty)
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
         return Err("The address needs a site name, without login".into());
     }
-    Ok(CustomService { id: s.id, name: name.to_owned(), template: template.to_owned() })
+    Ok(CustomService {
+        id: s.id,
+        name: name.to_owned(),
+        template: template.to_owned(),
+    })
 }
 
 #[cfg(test)]
@@ -72,7 +82,11 @@ mod tests {
     use super::*;
 
     fn site(name: &str, template: &str) -> CustomService {
-        CustomService { id: "custom:abc123".into(), name: name.into(), template: template.into() }
+        CustomService {
+            id: "custom:abc123".into(),
+            name: name.into(),
+            template: template.into(),
+        }
     }
 
     #[test]
@@ -91,7 +105,12 @@ mod tests {
 
     #[test]
     fn refuses_other_schemes() {
-        for t in ["http://nas.local/search?q={query}", "file:///etc/{query}", "javascript:alert('{query}')", "steam://run/{query}"] {
+        for t in [
+            "http://nas.local/search?q={query}",
+            "file:///etc/{query}",
+            "javascript:alert('{query}')",
+            "steam://run/{query}",
+        ] {
             assert!(validate(site("x", t)).is_err(), "{t}");
         }
     }

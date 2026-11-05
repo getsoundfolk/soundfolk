@@ -213,7 +213,9 @@ impl Database {
         conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
         conn.execute_batch(INDEXES)?;
-        let db = Self { conn: Mutex::new(conn) };
+        let db = Self {
+            conn: Mutex::new(conn),
+        };
         db.reparse_history_if_outdated()?;
         db.close_abandoned_sessions()?;
         Ok(db)
@@ -221,7 +223,9 @@ impl Database {
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
         // A panic during a query does not corrupt SQLite: we take the connection back.
-        self.conn.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.conn
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     // ── favorites ────────────────────────────────────────────────────────────
@@ -241,9 +245,10 @@ impl Database {
     }
 
     pub fn remove_favorite(&self, station_id: &str) -> rusqlite::Result<bool> {
-        let deleted = self
-            .conn()
-            .execute("DELETE FROM favorites WHERE station_id = ?1", params![station_id])?;
+        let deleted = self.conn().execute(
+            "DELETE FROM favorites WHERE station_id = ?1",
+            params![station_id],
+        )?;
         Ok(deleted > 0)
     }
 
@@ -277,7 +282,12 @@ impl Database {
 
     /// A list of short ids (no commas), or `None` until it is first set. An empty list is a choice.
     pub fn get_list(&self, key: &str) -> rusqlite::Result<Option<Vec<String>>> {
-        Ok(self.get_str(key)?.map(|v| v.split(',').filter(|s| !s.is_empty()).map(str::to_owned).collect()))
+        Ok(self.get_str(key)?.map(|v| {
+            v.split(',')
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
+                .collect()
+        }))
     }
 
     pub fn set_list(&self, key: &str, values: &[String]) -> rusqlite::Result<()> {
@@ -286,7 +296,11 @@ impl Database {
 
     pub fn get_str(&self, key: &str) -> rusqlite::Result<Option<String>> {
         self.conn()
-            .query_row("SELECT value FROM settings WHERE key = ?1", params![key], |r| r.get(0))
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                params![key],
+                |r| r.get(0),
+            )
             .optional()
     }
 
@@ -342,9 +356,10 @@ impl Database {
     }
 
     pub fn remove_personal_station(&self, station_id: &str) -> rusqlite::Result<bool> {
-        let deleted = self
-            .conn()
-            .execute("DELETE FROM personal_stations WHERE station_id = ?1", params![station_id])?;
+        let deleted = self.conn().execute(
+            "DELETE FROM personal_stations WHERE station_id = ?1",
+            params![station_id],
+        )?;
         Ok(deleted > 0)
     }
 
@@ -369,7 +384,13 @@ impl Database {
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // `title_source`: NULL = parsed from `track_title`; 'source' = artist and title as the
     // source gave them (never re-parsed).
-    for column in ["station_name TEXT", "artist TEXT", "title TEXT", "track_key TEXT", "title_source TEXT"] {
+    for column in [
+        "station_name TEXT",
+        "artist TEXT",
+        "title TEXT",
+        "track_key TEXT",
+        "title_source TEXT",
+    ] {
         add_column(conn, "listening_history", column)?;
     }
     Ok(())
@@ -416,7 +437,11 @@ pub(super) mod tests {
     fn favorites_roundtrip_and_upsert() {
         let db = Database::open_in_memory().unwrap();
         db.add_favorite(&fav("a")).unwrap();
-        db.add_favorite(&Favorite { name: "Renamed".into(), ..fav("a") }).unwrap();
+        db.add_favorite(&Favorite {
+            name: "Renamed".into(),
+            ..fav("a")
+        })
+        .unwrap();
         let list = db.list_favorites().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].name, "Renamed");
@@ -428,7 +453,11 @@ pub(super) mod tests {
     #[test]
     fn reports_validate_type() {
         let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.add_report("a", ReportType::DeadLink, Some("404")).unwrap(), 1);
+        assert_eq!(
+            db.add_report("a", ReportType::DeadLink, Some("404"))
+                .unwrap(),
+            1
+        );
         let bad = db.conn().execute(
             "INSERT INTO station_reports (station_id, report_type) VALUES ('a', 'nope')",
             [],
@@ -440,8 +469,10 @@ pub(super) mod tests {
     fn file_database_uses_wal() {
         let path = std::env::temp_dir().join(format!("soundfolk-test-{}.db", std::process::id()));
         let db = Database::open(&path).unwrap();
-        let mode: String =
-            db.conn().query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
+        let mode: String = db
+            .conn()
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(mode, "wal");
         drop(db);
         for ext in ["", "-wal", "-shm"] {
@@ -465,16 +496,24 @@ pub(super) mod tests {
         assert_eq!(db.get_list("track_services").unwrap(), None);
         db.set_list("track_services", &[]).unwrap();
         assert_eq!(db.get_list("track_services").unwrap(), Some(vec![]));
-        db.set_list("track_services", &["bandcamp".into(), "genius".into()]).unwrap();
-        assert_eq!(db.get_list("track_services").unwrap(), Some(vec!["bandcamp".into(), "genius".into()]));
+        db.set_list("track_services", &["bandcamp".into(), "genius".into()])
+            .unwrap();
+        assert_eq!(
+            db.get_list("track_services").unwrap(),
+            Some(vec!["bandcamp".into(), "genius".into()])
+        );
     }
 
     #[test]
     fn personal_stations_get_private_ids_and_dedupe_by_url() {
         let db = Database::open_in_memory().unwrap();
-        let a = db.add_personal_station("My radio", "http://192.168.1.10:8000/live", None).unwrap();
+        let a = db
+            .add_personal_station("My radio", "http://192.168.1.10:8000/live", None)
+            .unwrap();
         assert!(a.station_id.starts_with("user:"));
-        let again = db.add_personal_station("Other name", "http://192.168.1.10:8000/live", None).unwrap();
+        let again = db
+            .add_personal_station("Other name", "http://192.168.1.10:8000/live", None)
+            .unwrap();
         assert_eq!(again.station_id, a.station_id);
         assert_eq!(db.list_personal_stations().unwrap().len(), 1);
         assert!(db.remove_personal_station(&a.station_id).unwrap());

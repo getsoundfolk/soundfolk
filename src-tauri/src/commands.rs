@@ -12,15 +12,19 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::audio::{
-    self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, RecipeTest, StationRef, TitleStatus, WebTitles,
+    self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, RecipeTest, StationRef,
+    TitleStatus, WebTitles,
 };
-use crate::recipes::{self, Origin};
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
-use crate::db::{Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType, Stats};
-use crate::export;
-use crate::error::AppResult;
 use crate::covers::{self, Cover, CoverSource, Covers};
+use crate::db::{
+    Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType,
+    Stats,
+};
+use crate::error::AppResult;
+use crate::export;
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
+use crate::recipes::{self, Origin};
 use crate::track_services::{self, CustomService};
 
 /// Station being played, as the history records it.
@@ -45,7 +49,12 @@ pub struct AudioState {
 
 impl AudioState {
     pub fn new(engine: DesktopAudioEngine, station: Arc<Mutex<Option<OnAir>>>) -> Self {
-        Self { engine: Mutex::new(engine), station, plays: AtomicU64::new(0), pending_click: Mutex::new(None) }
+        Self {
+            engine: Mutex::new(engine),
+            station,
+            plays: AtomicU64::new(0),
+            pending_click: Mutex::new(None),
+        }
     }
 
     pub(crate) fn engine(&self) -> std::sync::MutexGuard<'_, DesktopAudioEngine> {
@@ -54,7 +63,10 @@ impl AudioState {
 
     /// Last station played (kept after a stop).
     pub(crate) fn station(&self) -> Option<OnAir> {
-        self.station.lock().unwrap_or_else(|p| p.into_inner()).clone()
+        self.station
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 }
 
@@ -79,14 +91,22 @@ const SETTING_LAST_STATION: &str = "last_station";
 
 /// Last station played in a previous run, loaded in the player at launch.
 pub(crate) fn saved_station(db: &Database) -> Option<OnAir> {
-    let json = db.get_str(SETTING_LAST_STATION).inspect_err(|e| tracing::warn!("last station not read: {e}")).ok()??;
-    serde_json::from_str(&json).inspect_err(|e| tracing::warn!("last station not restored: {e}")).ok()
+    let json = db
+        .get_str(SETTING_LAST_STATION)
+        .inspect_err(|e| tracing::warn!("last station not read: {e}"))
+        .ok()??;
+    serde_json::from_str(&json)
+        .inspect_err(|e| tracing::warn!("last station not restored: {e}"))
+        .ok()
 }
 
 fn save_station(db: &Database, station: &OnAir) {
     let saved = serde_json::to_string(station)
         .map_err(|e| e.to_string())
-        .and_then(|json| db.set_str(SETTING_LAST_STATION, &json).map_err(|e| e.to_string()));
+        .and_then(|json| {
+            db.set_str(SETTING_LAST_STATION, &json)
+                .map_err(|e| e.to_string())
+        });
     if let Err(e) = saved {
         tracing::warn!("last station not saved: {e}");
     }
@@ -127,10 +147,18 @@ pub(crate) fn start_station(
     let db = app.state::<Database>();
     // Without a catalog ID, the URL identifies the station in the history.
     let id = station_id.clone().unwrap_or_else(|| url.clone());
-    let name = station_name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+    let name = station_name
+        .map(|n| n.trim().to_owned())
+        .filter(|n| !n.is_empty());
     // Lets a recipe recognise the station by its Radio-Browser UUID.
-    let station = StationRef { id: station_id.clone().filter(|id| is_catalog_id(id)) };
-    let on_air = OnAir { id, name, url: url.clone() };
+    let station = StationRef {
+        id: station_id.clone().filter(|id| is_catalog_id(id)),
+    };
+    let on_air = OnAir {
+        id,
+        name,
+        url: url.clone(),
+    };
     save_station(&db, &on_air);
     *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(on_air);
     app.state::<CoversState>().0.set_station(station.id.clone());
@@ -152,7 +180,10 @@ pub(crate) fn start_station(
             }
         }
     }
-    *audio.pending_click.lock().unwrap_or_else(|p| p.into_inner()) = pending_click;
+    *audio
+        .pending_click
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = pending_click;
     // A recipe saved since the last check applies from this playback.
     app.state::<WebTitlesState>().0.reload_recipes();
     audio.engine().play(&url, station)?;
@@ -166,8 +197,15 @@ pub(crate) fn schedule_click(app: &AppHandle, state: &PlayerState) {
     if *state != PlayerState::Playing {
         return;
     }
-    let Some(audio) = app.try_state::<AudioState>() else { return };
-    let Some((play, station_id)) = audio.pending_click.lock().unwrap_or_else(|p| p.into_inner()).take() else {
+    let Some(audio) = app.try_state::<AudioState>() else {
+        return;
+    };
+    let Some((play, station_id)) = audio
+        .pending_click
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .take()
+    else {
         return;
     };
     let app = app.clone();
@@ -181,11 +219,18 @@ pub(crate) fn schedule_click(app: &AppHandle, state: &PlayerState) {
 /// the user), and if counting has not been turned off in the meantime.
 async fn count_click_if_still_on_air(app: &AppHandle, play: u64, station_id: &str) {
     let audio = app.state::<AudioState>();
-    let listening = matches!(audio.engine().state(), PlayerState::Playing | PlayerState::Paused);
+    let listening = matches!(
+        audio.engine().state(),
+        PlayerState::Playing | PlayerState::Paused
+    );
     if audio.plays.load(Ordering::SeqCst) != play || !listening {
         return;
     }
-    if !app.state::<Database>().get_bool(SETTING_CLICK_COUNTING, true).unwrap_or(false) {
+    if !app
+        .state::<Database>()
+        .get_bool(SETTING_CLICK_COUNTING, true)
+        .unwrap_or(false)
+    {
         return;
     }
     let catalog = app.state::<CatalogState>().0.clone();
@@ -222,7 +267,9 @@ pub async fn set_volume(audio: State<'_, AudioState>, volume: f32) -> AppResult<
 /// Volume saved by `save_volume`, or `None` if the user never moved the slider.
 #[tauri::command]
 pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
-    let saved = db.get_str(SETTING_VOLUME)?.and_then(|v| v.parse::<f32>().ok());
+    let saved = db
+        .get_str(SETTING_VOLUME)?
+        .and_then(|v| v.parse::<f32>().ok());
     Ok(saved.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0)))
 }
 
@@ -243,7 +290,9 @@ pub async fn get_player_state(audio: State<'_, AudioState>) -> AppResult<PlayerS
 
 /// Last station played (in this run or the previous one), for the player to show it ready to play.
 #[tauri::command]
-pub async fn get_current_station(audio: State<'_, AudioState>) -> AppResult<Option<ResolvedStation>> {
+pub async fn get_current_station(
+    audio: State<'_, AudioState>,
+) -> AppResult<Option<ResolvedStation>> {
     Ok(audio.station().map(|s| ResolvedStation {
         name: s.name.unwrap_or_else(|| s.url.clone()),
         id: s.id,
@@ -276,7 +325,11 @@ pub async fn get_web_titles(db: State<'_, Database>) -> AppResult<bool> {
 
 /// Applies from the next station played.
 #[tauri::command]
-pub async fn set_web_titles(db: State<'_, Database>, web: State<'_, WebTitlesState>, enabled: bool) -> AppResult<()> {
+pub async fn set_web_titles(
+    db: State<'_, Database>,
+    web: State<'_, WebTitlesState>,
+    enabled: bool,
+) -> AppResult<()> {
     db.set_bool(SETTING_WEB_TITLES, enabled)?;
     web.0.set_enabled(enabled);
     Ok(())
@@ -287,14 +340,21 @@ pub async fn set_web_titles(db: State<'_, Database>, web: State<'_, WebTitlesSta
 #[tauri::command]
 pub async fn get_autostart(app: AppHandle) -> AppResult<bool> {
     use tauri_plugin_autostart::ManagerExt;
-    Ok(app.autolaunch().is_enabled().map_err(|e| format!("Launch at login unknown: {e}"))?)
+    Ok(app
+        .autolaunch()
+        .is_enabled()
+        .map_err(|e| format!("Launch at login unknown: {e}"))?)
 }
 
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> AppResult<()> {
     use tauri_plugin_autostart::ManagerExt;
     let launch = app.autolaunch();
-    let changed = if enabled { launch.enable() } else { launch.disable() };
+    let changed = if enabled {
+        launch.enable()
+    } else {
+        launch.disable()
+    };
     Ok(changed.map_err(|e| format!("Launch at login not changed: {e}"))?)
 }
 
@@ -316,9 +376,15 @@ pub async fn reload_recipes(web: State<'_, WebTitlesState>) -> AppResult<()> {
 
 /// Reads the station's recipe page now and says what it finds.
 #[tauri::command]
-pub async fn test_recipe(web: State<'_, WebTitlesState>, url: String, station_id: Option<String>) -> AppResult<RecipeTest> {
+pub async fn test_recipe(
+    web: State<'_, WebTitlesState>,
+    url: String,
+    station_id: Option<String>,
+) -> AppResult<RecipeTest> {
     web.0.reload_recipes();
-    let station = StationRef { id: station_id.filter(|id| is_catalog_id(id)) };
+    let station = StationRef {
+        id: station_id.filter(|id| is_catalog_id(id)),
+    };
     Ok(web.0.test(&station, &url).await)
 }
 
@@ -336,7 +402,9 @@ pub async fn edit_recipe(
 ) -> AppResult<String> {
     let recipes = web.0.recipes().clone();
     let dir = recipes_folder(&recipes)?;
-    let station = StationRef { id: station_id.filter(|id| is_catalog_id(id)) };
+    let station = StationRef {
+        id: station_id.filter(|id| is_catalog_id(id)),
+    };
     let set = recipes.current();
     let existing = set.find(station.id.as_deref(), &url).cloned();
     let path = match existing {
@@ -344,7 +412,9 @@ pub async fn edit_recipe(
         Some(entry) => {
             let path = dir.join(format!("{}.toml", entry.id));
             if !path.exists() {
-                let text = recipes.local_copy_of(&entry).ok_or_else(|| "recipe not found".to_owned())?;
+                let text = recipes
+                    .local_copy_of(&entry)
+                    .ok_or_else(|| "recipe not found".to_owned())?;
                 std::fs::write(&path, text)?;
             }
             path
@@ -353,10 +423,18 @@ pub async fn edit_recipe(
             Some(broken) => broken.path.into(),
             None => {
                 let name = name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
-                let host = audio::Url::parse(&url).ok().and_then(|u| u.host_str().map(str::to_owned));
+                let host = audio::Url::parse(&url)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_owned));
                 let base = recipes::slug(name.as_deref().or(host.as_deref()).unwrap_or("station"));
                 let path = (1..)
-                    .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
+                    .map(|n| {
+                        if n == 1 {
+                            base.clone()
+                        } else {
+                            format!("{base}-{n}")
+                        }
+                    })
                     .filter(|id| !recipes.is_known_id(id))
                     .map(|id| dir.join(format!("{id}.toml")))
                     .find(|path| !path.exists())
@@ -403,25 +481,54 @@ pub async fn share_recipe(
 
     web.0.reload_recipes();
     let recipes = web.0.recipes().clone();
-    let station = StationRef { id: station_id.filter(|id| is_catalog_id(id)) };
-    let entry = recipes.current().find(station.id.as_deref(), &url).cloned().ok_or_else(|| "No recipe matches this station.".to_owned())?;
+    let station = StationRef {
+        id: station_id.filter(|id| is_catalog_id(id)),
+    };
+    let entry = recipes
+        .current()
+        .find(station.id.as_deref(), &url)
+        .cloned()
+        .ok_or_else(|| "No recipe matches this station.".to_owned())?;
     let path = match (&entry.origin, &entry.path) {
         (Origin::Local, Some(path)) => path.clone(),
-        _ => return Err("Only your own recipes can be shared: edit this one locally first.".to_owned().into()),
+        _ => {
+            return Err(
+                "Only your own recipes can be shared: edit this one locally first."
+                    .to_owned()
+                    .into(),
+            )
+        }
     };
     let text = std::fs::read_to_string(&path)?;
     let page_url = entry.recipe.fetch.url.clone();
-    let (page, date) = web.0.read_page(&page_url).await.map_err(|e| format!("Could not read the page: {e}."))?;
+    let (page, date) = web
+        .0
+        .read_page(&page_url)
+        .await
+        .map_err(|e| format!("Could not read the page: {e}."))?;
     let at = date.unwrap_or_else(soundfolk_nowplaying::Timestamp::now);
-    let shared = soundfolk_nowplaying::fixture::prepare(&entry.id, &text, &entry.recipe, &page_url, &page, at)
-        .map_err(|e| format!("Not ready to share: {e}."))?;
+    let shared = soundfolk_nowplaying::fixture::prepare(
+        &entry.id,
+        &text,
+        &entry.recipe,
+        &page_url,
+        &page,
+        at,
+    )
+    .map_err(|e| format!("Not ready to share: {e}."))?;
 
     // A copy laid out as in the repository, for a pull request by hand.
     let folder = recipes_folder(&recipes)?.join("to-share");
     std::fs::create_dir_all(folder.join("stations"))?;
     std::fs::create_dir_all(folder.join("fixtures"))?;
-    std::fs::write(folder.join("stations").join(format!("{}.toml", entry.id)), &shared.recipe)?;
-    std::fs::write(folder.join("fixtures").join(&shared.fixture_file), &shared.fixture)?;
+    std::fs::write(
+        folder.join("stations").join(format!("{}.toml", entry.id)),
+        &shared.recipe,
+    )?;
+    std::fs::write(
+        folder.join("fixtures").join(&shared.fixture_file),
+        &shared.fixture,
+    )?;
 
     let name = &entry.recipe.name;
     let mut link = recipes::share_link(&entry.id, name, &shared.recipe, Some(&shared.fixture));
@@ -432,8 +539,14 @@ pub async fn share_recipe(
             .map_err(|e| format!("could not copy the excerpt: {e}"))?;
         link = recipes::share_link(&entry.id, name, &shared.recipe, None);
     }
-    app.opener().open_url(&link, None::<&str>).map_err(|e| format!("could not open the browser: {e}"))?;
-    Ok(SharedRecipe { id: entry.id, folder: folder.display().to_string(), fixture_in_clipboard })
+    app.opener()
+        .open_url(&link, None::<&str>)
+        .map_err(|e| format!("could not open the browser: {e}"))?;
+    Ok(SharedRecipe {
+        id: entry.id,
+        folder: folder.display().to_string(),
+        fixture_in_clipboard,
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -462,7 +575,11 @@ pub async fn get_local_recipes(web: State<'_, WebTitlesState>) -> AppResult<Loca
             .errors()
             .iter()
             .map(|e| LocalRecipeError {
-                file: e.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+                file: e
+                    .path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
                 error: e.error.clone(),
             })
             .collect(),
@@ -479,9 +596,13 @@ pub async fn open_recipes_folder(app: AppHandle, web: State<'_, WebTitlesState>)
 /// The local recipes folder, created with the JSON Schema next to the recipes (completion and
 /// checks in editors that read the `#:schema` line).
 fn recipes_folder(recipes: &recipes::Recipes) -> AppResult<std::path::PathBuf> {
-    let dir = recipes.local_dir().ok_or_else(|| "no configuration folder on this system".to_owned())?.to_path_buf();
+    let dir = recipes
+        .local_dir()
+        .ok_or_else(|| "no configuration folder on this system".to_owned())?
+        .to_path_buf();
     std::fs::create_dir_all(&dir)?;
-    let schema = serde_json::to_string_pretty(&soundfolk_nowplaying::recipe::json_schema()).expect("schema serializes");
+    let schema = serde_json::to_string_pretty(&soundfolk_nowplaying::recipe::json_schema())
+        .expect("schema serializes");
     let schema_path = dir.join(recipes::SCHEMA_FILE);
     if std::fs::read_to_string(&schema_path).ok().as_deref() != Some(schema.as_str()) {
         std::fs::write(schema_path, schema)?;
@@ -493,7 +614,9 @@ fn open_path(app: &AppHandle, path: &std::path::Path) -> AppResult<()> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(path.display().to_string(), None::<&str>)
-        .map_err(|e| crate::error::AppError::from(format!("could not open {}: {e}", path.display())))
+        .map_err(|e| {
+            crate::error::AppError::from(format!("could not open {}: {e}", path.display()))
+        })
 }
 
 /// Ids of the services shown in a track's menu, or `None` if the user never chose.
@@ -504,21 +627,32 @@ pub async fn get_track_services(db: State<'_, Database>) -> AppResult<Option<Vec
 
 #[tauri::command]
 pub async fn set_track_services(db: State<'_, Database>, ids: Vec<String>) -> AppResult<()> {
-    let ids: Vec<String> = ids.into_iter().filter(|id| !id.is_empty() && !id.contains(',')).collect();
+    let ids: Vec<String> = ids
+        .into_iter()
+        .filter(|id| !id.is_empty() && !id.contains(','))
+        .collect();
     Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?)
 }
 
 /// Sites the user added. A stored list that no longer passes the checks is dropped, not trusted.
 #[tauri::command]
 pub async fn get_custom_track_services(db: State<'_, Database>) -> AppResult<Vec<CustomService>> {
-    let Some(json) = db.get_str(SETTING_CUSTOM_TRACK_SERVICES)? else { return Ok(Vec::new()) };
+    let Some(json) = db.get_str(SETTING_CUSTOM_TRACK_SERVICES)? else {
+        return Ok(Vec::new());
+    };
     let stored: Vec<CustomService> = serde_json::from_str(&json).unwrap_or_default();
-    Ok(stored.into_iter().filter_map(|s| track_services::validate(s).ok()).collect())
+    Ok(stored
+        .into_iter()
+        .filter_map(|s| track_services::validate(s).ok())
+        .collect())
 }
 
 /// Replaces the whole list. Nothing is saved if one site fails the checks.
 #[tauri::command]
-pub async fn set_custom_track_services(db: State<'_, Database>, services: Vec<CustomService>) -> AppResult<()> {
+pub async fn set_custom_track_services(
+    db: State<'_, Database>,
+    services: Vec<CustomService>,
+) -> AppResult<()> {
     let services = track_services::validate_all(services)?;
     let json = serde_json::to_string(&services).map_err(|e| e.to_string())?;
     Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
@@ -532,7 +666,11 @@ pub async fn search_stations(
     db: State<'_, Database>,
     mut query: SearchQuery,
 ) -> AppResult<SearchPage> {
-    query.favorites = db.list_favorites()?.into_iter().map(|f| f.station_id).collect();
+    query.favorites = db
+        .list_favorites()?
+        .into_iter()
+        .map(|f| f.station_id)
+        .collect();
     Ok(catalog.0.search(&query).await?)
 }
 
@@ -556,10 +694,24 @@ pub async fn resolve_station(
     name: Option<String>,
 ) -> AppResult<ResolvedStation> {
     if let Some(p) = db.personal_station(&station_id)? {
-        return Ok(ResolvedStation { id: p.station_id, name: p.name, url: p.stream_url, genre: p.genre });
+        return Ok(ResolvedStation {
+            id: p.station_id,
+            name: p.name,
+            url: p.stream_url,
+            genre: p.genre,
+        });
     }
-    if let Some(f) = db.list_favorites()?.into_iter().find(|f| f.station_id == station_id) {
-        return Ok(ResolvedStation { id: f.station_id, name: f.name, url: f.stream_url, genre: f.genre });
+    if let Some(f) = db
+        .list_favorites()?
+        .into_iter()
+        .find(|f| f.station_id == station_id)
+    {
+        return Ok(ResolvedStation {
+            id: f.station_id,
+            name: f.name,
+            url: f.stream_url,
+            genre: f.genre,
+        });
     }
     if is_catalog_id(&station_id) {
         let station = catalog
@@ -576,7 +728,12 @@ pub async fn resolve_station(
     }
     if station_id.starts_with("http://") || station_id.starts_with("https://") {
         let name = name.unwrap_or_else(|| station_id.clone());
-        return Ok(ResolvedStation { id: station_id.clone(), name, url: station_id, genre: None });
+        return Ok(ResolvedStation {
+            id: station_id.clone(),
+            name,
+            url: station_id,
+            genre: None,
+        });
     }
     Err(format!("Unknown station: {station_id}").into())
 }
@@ -703,7 +860,13 @@ pub async fn export_history(
     let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
     let base = format!("{}-{date}", list.file_stem());
     let path = (1..)
-        .map(|n| if n == 1 { base.clone() } else { format!("{base}-{n}") })
+        .map(|n| {
+            if n == 1 {
+                base.clone()
+            } else {
+                format!("{base}-{n}")
+            }
+        })
         .map(|name| dir.join(format!("{name}.{}", format.extension())))
         .find(|path| !path.exists())
         .expect("an unused name");
@@ -716,7 +879,10 @@ pub async fn export_history(
         }
     }
     Ok(ExportedFile {
-        file_name: path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+        file_name: path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         path: path.display().to_string(),
         count,
     })
@@ -816,7 +982,11 @@ mod last_station_tests {
     fn last_station_survives_a_restart() {
         let db = Database::open_in_memory().unwrap();
         assert!(saved_station(&db).is_none());
-        let fip = OnAir { id: "uuid-fip".into(), name: Some("FIP".into()), url: "https://example.org/fip.mp3".into() };
+        let fip = OnAir {
+            id: "uuid-fip".into(),
+            name: Some("FIP".into()),
+            url: "https://example.org/fip.mp3".into(),
+        };
         save_station(&db, &fip);
         let back = saved_station(&db).unwrap();
         assert_eq!((back.id, back.name, back.url), (fip.id, fip.name, fip.url));

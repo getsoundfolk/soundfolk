@@ -68,7 +68,10 @@ impl Adapter {
             Self::ShoutcastV1 => shoutcast_v1_title(document)?,
             Self::AzuraCast => return azuracast(stream, document),
         };
-        Ok(Snapshot { current: title, ..Snapshot::default() })
+        Ok(Snapshot {
+            current: title,
+            ..Snapshot::default()
+        })
     }
 
     /// Whether the adapter knows more than the stream's own title (artist and title apart,
@@ -80,7 +83,12 @@ impl Adapter {
     /// The details of the track the stream announces as `heard` (its ICY title), from the
     /// document fetched from [`Adapter::probe`]. `None` when the document does not know that
     /// track, or for adapters that do not [enrich](Adapter::enriches).
-    pub fn details(self, stream: &str, document: &str, heard: &str) -> Result<Option<Snapshot>, ExtractError> {
+    pub fn details(
+        self,
+        stream: &str,
+        document: &str,
+        heard: &str,
+    ) -> Result<Option<Snapshot>, ExtractError> {
         match self {
             Self::AzuraCast => azuracast_details(stream, document, heard),
             _ => Ok(None),
@@ -112,7 +120,10 @@ fn origin(stream: &str) -> Option<String> {
     if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
         return None;
     }
-    let authority = rest.split(['/', '?', '#']).next().filter(|a| !a.is_empty())?;
+    let authority = rest
+        .split(['/', '?', '#'])
+        .next()
+        .filter(|a| !a.is_empty())?;
     let authority = authority.rsplit('@').next()?; // drop credentials
     Some(format!("{}://{authority}", scheme.to_ascii_lowercase()))
 }
@@ -120,7 +131,11 @@ fn origin(stream: &str) -> Option<String> {
 fn path_of(url: &str) -> String {
     let rest = url.split_once("://").map_or(url, |(_, r)| r);
     let path = rest.find('/').map_or("", |i| &rest[i..]);
-    path.split(['?', '#']).next().unwrap_or("").trim_end_matches('/').to_ascii_lowercase()
+    path.split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('/')
+        .to_ascii_lowercase()
 }
 
 /// How an AzuraCast web server proxies a stream: `/listen/{station}/{mount}` or
@@ -140,7 +155,11 @@ fn azuracast_proxy(stream: &str) -> Option<(Proxy, String)> {
         return None;
     }
     let proxy = match kind {
-        "listen" if key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') => {
+        "listen"
+            if key
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-') =>
+        {
             Proxy::Station(key.to_owned())
         }
         "radio" => Proxy::Port(key.parse().ok()?),
@@ -153,17 +172,22 @@ fn azuracast_proxy(stream: &str) -> Option<(Proxy, String)> {
 fn port_of(url: &str) -> Option<u16> {
     let rest = url.split_once("://")?.1;
     let authority = rest.split(['/', '?', '#']).next()?.rsplit('@').next()?;
-    let (_, port) = authority.rsplit_once(':').filter(|(host, _)| !host.ends_with('['))?;
+    let (_, port) = authority
+        .rsplit_once(':')
+        .filter(|(host, _)| !host.ends_with('['))?;
     port.parse().ok()
 }
 
 /// A station entry of `/api/nowplaying`, with the fields only AzuraCast puts together.
 fn is_azuracast_station(entry: &Value) -> bool {
     let station = entry.get("station");
-    let text = |v: Option<&Value>, key: &str| v.and_then(|v| v.get(key)).is_some_and(Value::is_string);
+    let text =
+        |v: Option<&Value>, key: &str| v.and_then(|v| v.get(key)).is_some_and(Value::is_string);
     text(station, "shortcode")
         && text(station, "listen_url")
-        && station.and_then(|s| s.get("mounts")).is_some_and(Value::is_array)
+        && station
+            .and_then(|s| s.get("mounts"))
+            .is_some_and(Value::is_array)
         && text(entry.get("now_playing").and_then(|n| n.get("song")), "text")
 }
 
@@ -171,18 +195,33 @@ fn is_azuracast_station(entry: &Value) -> bool {
 /// relays, HLS), or one of its mount points behind the web server's proxy.
 fn azuracast_serves(entry: &Value, stream: &str) -> bool {
     let station = &entry["station"];
-    let list = |key: &str| station.get(key).and_then(Value::as_array).into_iter().flatten();
+    let list = |key: &str| {
+        station
+            .get(key)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+    };
     let urls = ["listen_url", "hls_url"]
         .into_iter()
         .filter_map(|k| station.get(k)?.as_str())
-        .chain(list("mounts").chain(list("remotes")).filter_map(|m| m.get("url")?.as_str()));
+        .chain(
+            list("mounts")
+                .chain(list("remotes"))
+                .filter_map(|m| m.get("url")?.as_str()),
+        );
     let wanted = path_of(stream);
     if urls.clone().any(|u| path_of(u) == wanted) {
         return true;
     }
-    let Some((proxy, mount)) = azuracast_proxy(stream) else { return false };
+    let Some((proxy, mount)) = azuracast_proxy(stream) else {
+        return false;
+    };
     let mounts = list("mounts").filter(|m| {
-        let path = m.get("path").and_then(Value::as_str).map(str::to_ascii_lowercase);
+        let path = m
+            .get("path")
+            .and_then(Value::as_str)
+            .map(str::to_ascii_lowercase);
         let url = m.get("url").and_then(Value::as_str);
         path.as_deref() == Some(mount.as_str()) || url.is_some_and(|u| path_of(u) == mount)
     });
@@ -237,7 +276,11 @@ fn azuracast(stream: &str, document: &str) -> Result<Snapshot, ExtractError> {
         .and_then(clean_text);
     let next = match live {
         Some(_) => Vec::new(),
-        None => entry.get("playing_next").and_then(azuracast_track).into_iter().collect(),
+        None => entry
+            .get("playing_next")
+            .and_then(azuracast_track)
+            .into_iter()
+            .collect(),
     };
     Ok(Snapshot {
         current: entry.get("now_playing").and_then(azuracast_track),
@@ -251,7 +294,11 @@ fn azuracast(stream: &str, document: &str) -> Result<Snapshot, ExtractError> {
 const HISTORY_SEARCHED: usize = 5;
 
 /// The track the stream announces as `heard`, found on air or among the last ones played.
-fn azuracast_details(stream: &str, document: &str, heard: &str) -> Result<Option<Snapshot>, ExtractError> {
+fn azuracast_details(
+    stream: &str,
+    document: &str,
+    heard: &str,
+) -> Result<Option<Snapshot>, ExtractError> {
     let json = azuracast_json(document)?;
     let entry = azuracast_entry(stream, &json)?;
     let heard = normalized(heard);
@@ -259,30 +306,51 @@ fn azuracast_details(stream: &str, document: &str, heard: &str) -> Result<Option
         return Ok(None);
     }
     let on_air = azuracast(stream, document)?;
-    if entry.get("now_playing").is_some_and(|t| azuracast_is(t, &heard)) {
+    if entry
+        .get("now_playing")
+        .is_some_and(|t| azuracast_is(t, &heard))
+    {
         return Ok(Some(on_air));
     }
-    let played = entry.get("song_history").and_then(Value::as_array).into_iter().flatten();
-    Ok(played.take(HISTORY_SEARCHED).find(|t| azuracast_is(t, &heard)).map(|t| Snapshot {
-        current: azuracast_track(t),
-        next: Vec::new(), // what comes after it has already started on the server
-        show: on_air.show.clone(),
-    }))
+    let played = entry
+        .get("song_history")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
+    Ok(played
+        .take(HISTORY_SEARCHED)
+        .find(|t| azuracast_is(t, &heard))
+        .map(|t| Snapshot {
+            current: azuracast_track(t),
+            next: Vec::new(), // what comes after it has already started on the server
+            show: on_air.show.clone(),
+        }))
 }
 
 /// Whether an API track is the one the stream announced (AzuraCast writes its `text`, or
 /// `Artist - Title`, as the ICY title).
 fn azuracast_is(item: &Value, heard: &str) -> bool {
-    let Some(song) = item.get("song") else { return false };
-    let text = |key: &str| song.get(key).and_then(Value::as_str).map(normalized).unwrap_or_default();
+    let Some(song) = item.get("song") else {
+        return false;
+    };
+    let text = |key: &str| {
+        song.get(key)
+            .and_then(Value::as_str)
+            .map(normalized)
+            .unwrap_or_default()
+    };
     let (artist, title) = (text("artist"), text("title"));
     let joined = format!("{artist} - {title}");
-    text("text") == heard || (!title.is_empty() && (joined == heard || (artist.is_empty() && title == heard)))
+    text("text") == heard
+        || (!title.is_empty() && (joined == heard || (artist.is_empty() && title == heard)))
 }
 
 /// Case and spacing ignored.
 fn normalized(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 /// Texts AzuraCast puts in place of a track: a remote playlist or stream queued (a news
@@ -330,25 +398,45 @@ fn icecast_title(stream: &str, document: &str) -> Result<Option<RawTrack>, Extra
     let wanted = path_of(stream);
     let source = sources
         .iter()
-        .find(|s| s.get("listenurl").and_then(Value::as_str).is_some_and(|u| path_of(u) == wanted))
-        .or(if sources.len() == 1 { sources.first() } else { None });
-    let Some(source) = source else { return Ok(None) };
+        .find(|s| {
+            s.get("listenurl")
+                .and_then(Value::as_str)
+                .is_some_and(|u| path_of(u) == wanted)
+        })
+        .or(if sources.len() == 1 {
+            sources.first()
+        } else {
+            None
+        });
+    let Some(source) = source else {
+        return Ok(None);
+    };
 
     let text = |key: &str| source.get(key).and_then(Value::as_str).and_then(clean_text);
     Ok(match (text("artist"), text("title")) {
-        (artist, Some(title)) => Some(RawTrack { artist, title: Some(title), ..RawTrack::default() }),
-        (Some(artist), None) => Some(RawTrack { title: Some(artist), ..RawTrack::default() }),
+        (artist, Some(title)) => Some(RawTrack {
+            artist,
+            title: Some(title),
+            ..RawTrack::default()
+        }),
+        (Some(artist), None) => Some(RawTrack {
+            title: Some(artist),
+            ..RawTrack::default()
+        }),
         (None, None) => None,
     })
 }
 
 fn shoutcast_v2_title(document: &str) -> Result<Option<RawTrack>, ExtractError> {
-    let json: Value =
-        serde_json::from_str(document).map_err(|_| ExtractError::Shape("not a Shoutcast v2 status".into()))?;
+    let json: Value = serde_json::from_str(document)
+        .map_err(|_| ExtractError::Shape("not a Shoutcast v2 status".into()))?;
     let Some(song) = json.get("songtitle") else {
         return Err(ExtractError::Shape("not a Shoutcast v2 status".into()));
     };
-    Ok(song.as_str().and_then(clean_text).map(|t| RawTrack { title: Some(t), ..RawTrack::default() }))
+    Ok(song.as_str().and_then(clean_text).map(|t| RawTrack {
+        title: Some(t),
+        ..RawTrack::default()
+    }))
 }
 
 /// `<body>listeners,status,peak,max,unique,bitrate,Song title</body>` (the title may contain commas).
@@ -356,12 +444,17 @@ fn shoutcast_v1_title(document: &str) -> Result<Option<RawTrack>, ExtractError> 
     let shape = || ExtractError::Shape("not a Shoutcast v1 status".into());
     let lower = document.to_ascii_lowercase();
     let start = lower.find("<body>").ok_or_else(shape)? + "<body>".len();
-    let end = lower[start..].find("</body>").map_or(document.len(), |e| start + e);
+    let end = lower[start..]
+        .find("</body>")
+        .map_or(document.len(), |e| start + e);
     let fields: Vec<&str> = document[start..end].splitn(7, ',').collect();
     if fields.len() < 7 || !fields[..6].iter().all(|f| f.trim().parse::<i64>().is_ok()) {
         return Err(shape());
     }
-    Ok(clean_text(fields[6]).map(|t| RawTrack { title: Some(t), ..RawTrack::default() }))
+    Ok(clean_text(fields[6]).map(|t| RawTrack {
+        title: Some(t),
+        ..RawTrack::default()
+    }))
 }
 
 #[cfg(test)]
@@ -374,14 +467,22 @@ mod tests {
 
     #[test]
     fn probes_derive_from_the_stream() {
-        let probe = Adapter::IcecastStatus.probe("https://radio.example.org:8443/live.mp3?x=1").unwrap();
+        let probe = Adapter::IcecastStatus
+            .probe("https://radio.example.org:8443/live.mp3?x=1")
+            .unwrap();
         assert_eq!(probe.url, "https://radio.example.org:8443/status-json.xsl");
         assert_eq!(
-            Adapter::ShoutcastV2.probe("http://1.2.3.4:8000/;").unwrap().url,
+            Adapter::ShoutcastV2
+                .probe("http://1.2.3.4:8000/;")
+                .unwrap()
+                .url,
             "http://1.2.3.4:8000/stats?sid=1&json=1"
         );
         assert_eq!(Adapter::IcecastStatus.probe("ftp://x/y"), None);
-        assert_eq!(candidates("http://x:8000/live", Some("Icecast 2.4.4")), vec![Adapter::IcecastStatus]);
+        assert_eq!(
+            candidates("http://x:8000/live", Some("Icecast 2.4.4")),
+            vec![Adapter::IcecastStatus]
+        );
     }
 
     #[test]
@@ -389,31 +490,54 @@ mod tests {
         let status = r#"{"icestats": {"source": [
             {"listenurl": "http://radio.example.org:8000/hd", "title": "Other"},
             {"listenurl": "http://radio.example.org:8000/live", "artist": "Air", "title": "Sexy Boy"}]}}"#;
-        let snapshot = Adapter::IcecastStatus.read("https://radio.example.org/live/", status).unwrap();
-        assert_eq!(title(snapshot), Some((Some("Air".into()), "Sexy Boy".into())));
+        let snapshot = Adapter::IcecastStatus
+            .read("https://radio.example.org/live/", status)
+            .unwrap();
+        assert_eq!(
+            title(snapshot),
+            Some((Some("Air".into()), "Sexy Boy".into()))
+        );
 
         let single = r#"{"icestats": {"source": {"listenurl": "http://x:8000/stream", "title": "Moby - Porcelain"}}}"#;
-        let snapshot = Adapter::IcecastStatus.read("https://cdn.example/other", single).unwrap();
+        let snapshot = Adapter::IcecastStatus
+            .read("https://cdn.example/other", single)
+            .unwrap();
         assert_eq!(title(snapshot), Some((None, "Moby - Porcelain".into())));
 
         let silent = r#"{"icestats": {"source": {"listenurl": "http://x:8000/stream"}}}"#;
-        assert_eq!(Adapter::IcecastStatus.read("http://x:8000/stream", silent).unwrap(), Snapshot::default());
-        assert!(Adapter::IcecastStatus.read("http://x/", "<html>404</html>").is_err());
-        assert!(Adapter::IcecastStatus.read("http://x/", r#"{"status": "ok"}"#).is_err());
+        assert_eq!(
+            Adapter::IcecastStatus
+                .read("http://x:8000/stream", silent)
+                .unwrap(),
+            Snapshot::default()
+        );
+        assert!(Adapter::IcecastStatus
+            .read("http://x/", "<html>404</html>")
+            .is_err());
+        assert!(Adapter::IcecastStatus
+            .read("http://x/", r#"{"status": "ok"}"#)
+            .is_err());
     }
 
     #[test]
     fn shoutcast_documents() {
         let v2 = r#"{"currentlisteners": 3, "songtitle": "Air - Sexy Boy", "nextsongtitle": ""}"#;
-        assert_eq!(title(Adapter::ShoutcastV2.read("", v2).unwrap()), Some((None, "Air - Sexy Boy".into())));
-        assert!(Adapter::ShoutcastV2.read("", r#"{"icestats": {}}"#).is_err());
+        assert_eq!(
+            title(Adapter::ShoutcastV2.read("", v2).unwrap()),
+            Some((None, "Air - Sexy Boy".into()))
+        );
+        assert!(Adapter::ShoutcastV2
+            .read("", r#"{"icestats": {}}"#)
+            .is_err());
 
         let v1 = "<HTML><meta http-equiv=\"Pragma\" content=\"no-cache\"></head><body>12,1,40,100,11,128,Simon, Garfunkel - Mrs. Robinson</body></html>";
         assert_eq!(
             title(Adapter::ShoutcastV1.read("", v1).unwrap()),
             Some((None, "Simon, Garfunkel - Mrs. Robinson".into()))
         );
-        assert!(Adapter::ShoutcastV1.read("", "<html><body>Not found</body></html>").is_err());
+        assert!(Adapter::ShoutcastV1
+            .read("", "<html><body>Not found</body></html>")
+            .is_err());
     }
 
     /// Shaped like a real `/api/nowplaying/{station}` (fields Soundfolk does not read left out).
@@ -442,21 +566,33 @@ mod tests {
     fn azuracast_probes() {
         let probe = Adapter::AzuraCast.probe(STREAM).unwrap();
         assert_eq!(probe.url, "https://radio.example.org/api/nowplaying/jazz");
-        let probe = Adapter::AzuraCast.probe("https://radio.example.org/radio/8000/radio.mp3").unwrap();
+        let probe = Adapter::AzuraCast
+            .probe("https://radio.example.org/radio/8000/radio.mp3")
+            .unwrap();
         assert_eq!(probe.url, "https://radio.example.org/api/nowplaying");
 
         assert_eq!(
             candidates(STREAM, Some("nginx")),
-            vec![Adapter::AzuraCast, Adapter::IcecastStatus, Adapter::ShoutcastV2]
+            vec![
+                Adapter::AzuraCast,
+                Adapter::IcecastStatus,
+                Adapter::ShoutcastV2
+            ]
         );
-        assert_eq!(candidates("https://radio.example.org/radio/8010/live", None)[0], Adapter::AzuraCast);
+        assert_eq!(
+            candidates("https://radio.example.org/radio/8010/live", None)[0],
+            Adapter::AzuraCast
+        );
         for other in [
             "https://radio.example.org/radio/live.mp3",
             "https://radio.example.org/radio/port/live.mp3",
             "https://radio.example.org/listen/",
             "https://radio.example.org/listen/jazz",
         ] {
-            assert!(!candidates(other, None).contains(&Adapter::AzuraCast), "{other}");
+            assert!(
+                !candidates(other, None).contains(&Adapter::AzuraCast),
+                "{other}"
+            );
         }
         assert!(Adapter::AzuraCast.enriches() && !Adapter::IcecastStatus.enriches());
     }
@@ -465,32 +601,47 @@ mod tests {
     fn azuracast_reads_the_station() {
         let snapshot = Adapter::AzuraCast.read(STREAM, AZURACAST).unwrap();
         let current = snapshot.current.unwrap();
-        assert_eq!((current.artist.as_deref(), current.title.as_deref()), (Some("Air"), Some("Sexy Boy")));
+        assert_eq!(
+            (current.artist.as_deref(), current.title.as_deref()),
+            (Some("Air"), Some("Sexy Boy"))
+        );
         let start = crate::Timestamp::from_second(1_793_828_211).unwrap();
         assert_eq!(current.start, Some(crate::Start::At(start)));
         assert_eq!(current.duration, Some(SignedDuration::from_secs(245)));
-        assert_eq!(current.cover.as_deref(), Some("https://radio.example.org/api/station/jazz/art/abc.jpg"));
+        assert_eq!(
+            current.cover.as_deref(),
+            Some("https://radio.example.org/api/station/jazz/art/abc.jpg")
+        );
         // No artist and title apart: the whole text.
         assert_eq!(snapshot.next[0].artist, None);
         assert_eq!(snapshot.next[0].title.as_deref(), Some("Moby - Porcelain"));
         assert_eq!(snapshot.show, None);
 
         // Live: the DJ is the show, and the AutoDJ's next track is not announced.
-        let live = AZURACAST
-            .replace(r#""is_live": false, "streamer_name": """#, r#""is_live": true, "streamer_name": "DJ Nova""#);
+        let live = AZURACAST.replace(
+            r#""is_live": false, "streamer_name": """#,
+            r#""is_live": true, "streamer_name": "DJ Nova""#,
+        );
         let snapshot = Adapter::AzuraCast.read(STREAM, &live).unwrap();
         assert_eq!(snapshot.show.as_deref(), Some("DJ Nova"));
         assert!(snapshot.next.is_empty());
 
         let offline = AZURACAST.replace(r#""is_online": true"#, r#""is_online": false"#);
-        assert_eq!(Adapter::AzuraCast.read(STREAM, &offline).unwrap(), Snapshot::default());
+        assert_eq!(
+            Adapter::AzuraCast.read(STREAM, &offline).unwrap(),
+            Snapshot::default()
+        );
 
         // A remote playlist queued next (stereo anime's news): not a track.
         let remote = AZURACAST.replace(
             r#"{"text": "Moby - Porcelain", "artist": "", "title": "", "art": ""}"#,
             r#"{"text": "Remote Playlist URL", "artist": "", "title": "Remote Playlist URL", "art": ""}"#,
         );
-        assert!(Adapter::AzuraCast.read(STREAM, &remote).unwrap().next.is_empty());
+        assert!(Adapter::AzuraCast
+            .read(STREAM, &remote)
+            .unwrap()
+            .next
+            .is_empty());
     }
 
     #[test]
@@ -503,7 +654,10 @@ mod tests {
             // Something with a `station` and a `now_playing`, but not AzuraCast's.
             r#"{"station": {"name": "Jazz"}, "now_playing": {"title": "Air - Sexy Boy"}}"#,
         ] {
-            assert!(Adapter::AzuraCast.read(STREAM, document).is_err(), "{document}");
+            assert!(
+                Adapter::AzuraCast.read(STREAM, document).is_err(),
+                "{document}"
+            );
         }
         let no_mounts = AZURACAST.replacen(r#""mounts": ["#, r#""mount_list": ["#, 1);
         assert!(Adapter::AzuraCast.read(STREAM, &no_mounts).is_err());
@@ -511,7 +665,11 @@ mod tests {
 
     #[test]
     fn azuracast_checks_the_stream_is_the_stations() {
-        let read = |stream: &str, document: &str| Adapter::AzuraCast.read(stream, document).map(|s| s.current.is_some());
+        let read = |stream: &str, document: &str| {
+            Adapter::AzuraCast
+                .read(stream, document)
+                .map(|s| s.current.is_some())
+        };
         // Listed URLs: main, mount point, relay, HLS (any host, the path decides).
         for stream in [
             STREAM,
@@ -522,8 +680,14 @@ mod tests {
             assert_eq!(read(stream, AZURACAST), Ok(true), "{stream}");
         }
         // Behind the proxy: a mount point of the station named, or of the server on that port.
-        assert_eq!(read("https://radio.example.org/listen/JAZZ/hd.aac", AZURACAST), Ok(true));
-        assert_eq!(read("https://radio.example.org/radio/8000/hd.aac", AZURACAST), Ok(true));
+        assert_eq!(
+            read("https://radio.example.org/listen/JAZZ/hd.aac", AZURACAST),
+            Ok(true)
+        );
+        assert_eq!(
+            read("https://radio.example.org/radio/8000/hd.aac", AZURACAST),
+            Ok(true)
+        );
         // Another station, a mount point it does not have, another port.
         for stream in [
             "https://radio.example.org/listen/rock/radio.mp3",
@@ -537,37 +701,68 @@ mod tests {
 
     #[test]
     fn azuracast_finds_the_stream_among_stations() {
-        let other = AZURACAST.replace("jazz", "rock").replace("8000", "8010").replace("Sexy Boy", "Other");
+        let other = AZURACAST
+            .replace("jazz", "rock")
+            .replace("8000", "8010")
+            .replace("Sexy Boy", "Other");
         let all = format!("[{other}, {AZURACAST}]");
-        let snapshot = Adapter::AzuraCast.read("https://radio.example.org/radio/8000/hd.aac", &all).unwrap();
+        let snapshot = Adapter::AzuraCast
+            .read("https://radio.example.org/radio/8000/hd.aac", &all)
+            .unwrap();
         assert_eq!(snapshot.current.unwrap().title.as_deref(), Some("Sexy Boy"));
-        let snapshot = Adapter::AzuraCast.read("https://radio.example.org/radio/8010/hd.aac", &all).unwrap();
+        let snapshot = Adapter::AzuraCast
+            .read("https://radio.example.org/radio/8010/hd.aac", &all)
+            .unwrap();
         assert_eq!(snapshot.current.unwrap().title.as_deref(), Some("Other"));
         // A single station is not taken for granted.
-        assert!(Adapter::AzuraCast.read("https://radio.example.org/radio/9000/x", &all).is_err());
-        assert!(Adapter::AzuraCast.read("https://radio.example.org/radio/9000/x", &format!("[{AZURACAST}]")).is_err());
+        assert!(Adapter::AzuraCast
+            .read("https://radio.example.org/radio/9000/x", &all)
+            .is_err());
+        assert!(Adapter::AzuraCast
+            .read(
+                "https://radio.example.org/radio/9000/x",
+                &format!("[{AZURACAST}]")
+            )
+            .is_err());
     }
 
     #[test]
     fn azuracast_details_of_the_track_heard() {
-        let details = |heard: &str| Adapter::AzuraCast.details(STREAM, AZURACAST, heard).unwrap();
+        let details = |heard: &str| {
+            Adapter::AzuraCast
+                .details(STREAM, AZURACAST, heard)
+                .unwrap()
+        };
         // On air: everything, next track included; case and spaces do not matter.
         let on_air = details("air  -  SEXY boy").unwrap();
-        assert_eq!(on_air.current.as_ref().unwrap().artist.as_deref(), Some("Air"));
+        assert_eq!(
+            on_air.current.as_ref().unwrap().artist.as_deref(),
+            Some("Air")
+        );
         assert_eq!(on_air.next.len(), 1);
         // The API runs ahead: the track heard is one already played on the server.
         let behind = details("Massive Attack - Teardrop").unwrap();
         let current = behind.current.unwrap();
-        assert_eq!((current.artist.as_deref(), current.title.as_deref()), (Some("Massive Attack"), Some("Teardrop")));
+        assert_eq!(
+            (current.artist.as_deref(), current.title.as_deref()),
+            (Some("Massive Attack"), Some("Teardrop"))
+        );
         assert_eq!(current.duration, Some(SignedDuration::from_secs(251)));
         assert!(behind.next.is_empty());
         // Unknown to the API (a jingle, a live show it does not see): nothing.
         assert_eq!(details("Jingle"), None);
         assert_eq!(details(""), None);
         // Not AzuraCast, or not this stream: an error, as for `read`.
-        assert!(Adapter::AzuraCast.details(STREAM, r#"{"icestats": {}}"#, "Air - Sexy Boy").is_err());
-        assert!(Adapter::AzuraCast.details("https://x/listen/rock/a.mp3", AZURACAST, "Air - Sexy Boy").is_err());
-        assert_eq!(Adapter::IcecastStatus.details(STREAM, "{}", "Air - Sexy Boy"), Ok(None));
+        assert!(Adapter::AzuraCast
+            .details(STREAM, r#"{"icestats": {}}"#, "Air - Sexy Boy")
+            .is_err());
+        assert!(Adapter::AzuraCast
+            .details("https://x/listen/rock/a.mp3", AZURACAST, "Air - Sexy Boy")
+            .is_err());
+        assert_eq!(
+            Adapter::IcecastStatus.details(STREAM, "{}", "Air - Sexy Boy"),
+            Ok(None)
+        );
     }
 
     #[test]

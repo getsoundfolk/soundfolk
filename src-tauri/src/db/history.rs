@@ -56,7 +56,11 @@ const STATION_JOINS: &str = "LEFT JOIN favorites f ON f.station_id = h.station_i
 
 /// `LIKE` pattern matching `text` anywhere, with the wildcards in `text` escaped (`ESCAPE '\'`).
 fn contains_pattern(text: &str) -> String {
-    let escaped = text.trim().replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    let escaped = text
+        .trim()
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
     format!("%{escaped}%")
 }
 
@@ -100,7 +104,10 @@ fn take_parts(
         )?;
         if moved == 0 {
             // The new track was already liked: one like is enough.
-            tx.execute("DELETE FROM likes WHERE history_id = ?1 AND track_key != ?2", params![id, new_key])?;
+            tx.execute(
+                "DELETE FROM likes WHERE history_id = ?1 AND track_key != ?2",
+                params![id, new_key],
+            )?;
         }
     }
     Ok(())
@@ -155,7 +162,11 @@ impl Database {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let key = tracks::track_key(parsed);
-        let last = if continuing { same_as_last(&tx, station_id, track_title, &key)? } else { None };
+        let last = if continuing {
+            same_as_last(&tx, station_id, track_title, &key)?
+        } else {
+            None
+        };
         if let Some((id, old_key, structured)) = last {
             if !structured {
                 take_parts(&tx, id, old_key.as_deref(), parsed)?;
@@ -184,7 +195,12 @@ impl Database {
     /// The source gave artist and title apart after the row was logged from the raw title (a
     /// server API confirming an ICY title): the latest row of that title on that station takes
     /// them and is no longer re-parsed. A like given in the meantime follows the new track key.
-    pub fn set_track_parts(&self, station_id: &str, track_title: &str, parsed: &ParsedTitle) -> rusqlite::Result<()> {
+    pub fn set_track_parts(
+        &self,
+        station_id: &str,
+        track_title: &str,
+        parsed: &ParsedTitle,
+    ) -> rusqlite::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         let row: Option<(i64, Option<String>)> = tx
@@ -196,13 +212,19 @@ impl Database {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .optional()?;
-        let Some((id, old_key)) = row else { return Ok(()) };
+        let Some((id, old_key)) = row else {
+            return Ok(());
+        };
         take_parts(&tx, id, old_key.as_deref(), parsed)?;
         tx.commit()
     }
 
     /// Newest first; `query` filters on the title, artist or station name.
-    pub fn recent_history(&self, limit: u32, query: Option<&str>) -> rusqlite::Result<Vec<HistoryEntry>> {
+    pub fn recent_history(
+        &self,
+        limit: u32,
+        query: Option<&str>,
+    ) -> rusqlite::Result<Vec<HistoryEntry>> {
         let pattern = query.filter(|q| !q.trim().is_empty()).map(contains_pattern);
         let conn = self.conn();
         let mut stmt = conn.prepare(&format!(
@@ -236,9 +258,16 @@ impl Database {
     }
 
     pub fn history_summary(&self) -> rusqlite::Result<HistorySummary> {
-        self.conn().query_row("SELECT COUNT(*), MIN(played_at) FROM listening_history", [], |row| {
-            Ok(HistorySummary { count: row.get(0)?, since: row.get(1)? })
-        })
+        self.conn().query_row(
+            "SELECT COUNT(*), MIN(played_at) FROM listening_history",
+            [],
+            |row| {
+                Ok(HistorySummary {
+                    count: row.get(0)?,
+                    since: row.get(1)?,
+                })
+            },
+        )
     }
 
     /// Deletes the whole listening history (likes are kept); returns the number of rows removed.
@@ -264,7 +293,9 @@ impl Database {
     }
 
     pub fn unlike_track(&self, track_key: &str) -> rusqlite::Result<bool> {
-        let deleted = self.conn().execute("DELETE FROM likes WHERE track_key = ?1", params![track_key])?;
+        let deleted = self
+            .conn()
+            .execute("DELETE FROM likes WHERE track_key = ?1", params![track_key])?;
         Ok(deleted > 0)
     }
 
@@ -282,7 +313,10 @@ impl Database {
              ORDER BY liked_at DESC, rowid DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit, pattern], |row| {
-            let parsed = ParsedTitle { artist: row.get(1)?, title: row.get(2)? };
+            let parsed = ParsedTitle {
+                artist: row.get(1)?,
+                title: row.get(2)?,
+            };
             Ok(LikedTrack {
                 track_key: row.get(0)?,
                 search_query: tracks::search_query(&parsed),
@@ -318,7 +352,12 @@ impl Database {
             )?;
             for (id, raw, station) in rows {
                 let parsed = tracks::parse(&raw, station.as_deref());
-                update.execute(params![id, parsed.artist, parsed.title, tracks::track_key(&parsed)])?;
+                update.execute(params![
+                    id,
+                    parsed.artist,
+                    parsed.title,
+                    tracks::track_key(&parsed)
+                ])?;
             }
 
             // Likes follow the new keys; two likes that now mean the same track become one.
@@ -351,10 +390,21 @@ impl Database {
 }
 
 /// Parsed title from stored columns; rows not parsed yet fall back to the raw title.
-fn parsed_from(row: &Row<'_>, artist: usize, title: usize, raw: usize) -> rusqlite::Result<ParsedTitle> {
+fn parsed_from(
+    row: &Row<'_>,
+    artist: usize,
+    title: usize,
+    raw: usize,
+) -> rusqlite::Result<ParsedTitle> {
     Ok(match row.get::<_, Option<String>>(title)? {
-        Some(title) => ParsedTitle { artist: row.get(artist)?, title },
-        None => ParsedTitle { artist: None, title: row.get(raw)? },
+        Some(title) => ParsedTitle {
+            artist: row.get(artist)?,
+            title,
+        },
+        None => ParsedTitle {
+            artist: None,
+            title: row.get(raw)?,
+        },
     })
 }
 
@@ -365,16 +415,34 @@ mod structured_tests {
     #[test]
     fn structured_tracks_keep_their_fields_and_start() {
         let db = Database::open_in_memory().unwrap();
-        let parsed = ParsedTitle { artist: Some("MELLOW MOOD / ANTHONY B".into()), title: "Home - Abroad".into() };
-        db.log_structured_track("f7", Some("Fréquence 7"), "MELLOW MOOD / ANTHONY B - Home - Abroad", &parsed, Some("2026-11-04 21:36:51"), true).unwrap();
-        db.log_track("f7", Some("Fréquence 7"), "Air - Sexy Boy", true).unwrap();
+        let parsed = ParsedTitle {
+            artist: Some("MELLOW MOOD / ANTHONY B".into()),
+            title: "Home - Abroad".into(),
+        };
+        db.log_structured_track(
+            "f7",
+            Some("Fréquence 7"),
+            "MELLOW MOOD / ANTHONY B - Home - Abroad",
+            &parsed,
+            Some("2026-11-04 21:36:51"),
+            true,
+        )
+        .unwrap();
+        db.log_track("f7", Some("Fréquence 7"), "Air - Sexy Boy", true)
+            .unwrap();
         // A parser change re-parses ICY titles only.
         db.set_str(SETTING_PARSER_VERSION, "0").unwrap();
         db.reparse_history_if_outdated().unwrap();
 
         let history = db.recent_history(10, None).unwrap();
-        let structured = history.iter().find(|e| e.station_id == "f7" && e.title == "Home - Abroad").unwrap();
-        assert_eq!(structured.artist.as_deref(), Some("MELLOW MOOD / ANTHONY B"));
+        let structured = history
+            .iter()
+            .find(|e| e.station_id == "f7" && e.title == "Home - Abroad")
+            .unwrap();
+        assert_eq!(
+            structured.artist.as_deref(),
+            Some("MELLOW MOOD / ANTHONY B")
+        );
         assert_eq!(structured.played_at, "2026-11-04 21:36:51");
         assert!(history.iter().any(|e| e.title == "Sexy Boy"));
     }
@@ -383,24 +451,42 @@ mod structured_tests {
     fn icy_rows_take_the_parts_a_server_api_gives() {
         let db = Database::open_in_memory().unwrap();
         // Parsed from the raw title: the track number is taken for the artist.
-        db.log_track("wc", Some("West Coast"), "082 - Dru Down - Pimp of the Year", true).unwrap();
+        db.log_track(
+            "wc",
+            Some("West Coast"),
+            "082 - Dru Down - Pimp of the Year",
+            true,
+        )
+        .unwrap();
         let id = db.recent_history(1, None).unwrap()[0].id;
         assert!(db.like_track(id).unwrap());
 
-        let parsed = ParsedTitle { artist: Some("Dru Down".into()), title: "Pimp of the Year".into() };
-        db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed).unwrap();
+        let parsed = ParsedTitle {
+            artist: Some("Dru Down".into()),
+            title: "Pimp of the Year".into(),
+        };
+        db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed)
+            .unwrap();
         let entry = &db.recent_history(1, None).unwrap()[0];
-        assert_eq!((entry.artist.as_deref(), entry.title.as_str()), (Some("Dru Down"), "Pimp of the Year"));
+        assert_eq!(
+            (entry.artist.as_deref(), entry.title.as_str()),
+            (Some("Dru Down"), "Pimp of the Year")
+        );
         assert_eq!(entry.track_title, "082 - Dru Down - Pimp of the Year"); // the raw title stays
         assert!(entry.liked, "the like follows the new track key");
 
         // Kept through a parser change, and a second call changes nothing.
         db.set_str(SETTING_PARSER_VERSION, "0").unwrap();
         db.reparse_history_if_outdated().unwrap();
-        db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed).unwrap();
-        assert_eq!(db.recent_history(1, None).unwrap()[0].artist.as_deref(), Some("Dru Down"));
+        db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed)
+            .unwrap();
+        assert_eq!(
+            db.recent_history(1, None).unwrap()[0].artist.as_deref(),
+            Some("Dru Down")
+        );
         // Another station's row is not touched.
-        db.set_track_parts("other", "082 - Dru Down - Pimp of the Year", &parsed).unwrap();
+        db.set_track_parts("other", "082 - Dru Down - Pimp of the Year", &parsed)
+            .unwrap();
         assert_eq!(db.history_summary().unwrap().count, 1);
     }
 }
@@ -415,8 +501,10 @@ mod tests {
     #[test]
     fn history_is_newest_first_and_parsed() {
         let db = Database::open_in_memory().unwrap();
-        db.log_track("a", Some("Radio A"), "Air - Sexy Boy", true).unwrap();
-        db.log_track("a", Some("Radio A"), "Moby - Porcelain - Radio A", true).unwrap();
+        db.log_track("a", Some("Radio A"), "Air - Sexy Boy", true)
+            .unwrap();
+        db.log_track("a", Some("Radio A"), "Moby - Porcelain - Radio A", true)
+            .unwrap();
         let history = db.recent_history(10, None).unwrap();
         assert_eq!(history[0].artist.as_deref(), Some("Moby"));
         assert_eq!(history[0].title, "Porcelain");
@@ -425,53 +513,116 @@ mod tests {
         assert_eq!(db.recent_history(1, None).unwrap().len(), 1);
         assert_eq!(db.history_summary().unwrap().count, 2);
         assert_eq!(db.clear_history().unwrap(), 2);
-        assert_eq!(db.history_summary().unwrap(), HistorySummary { count: 0, since: None });
+        assert_eq!(
+            db.history_summary().unwrap(),
+            HistorySummary {
+                count: 0,
+                since: None
+            }
+        );
         assert!(db.recent_history(10, None).unwrap().is_empty());
     }
 
     #[test]
     fn a_track_repeated_in_a_row_is_logged_once() {
         let db = Database::open_in_memory().unwrap();
-        assert!(db.log_track("a", Some("Radio A"), "Air - Sexy Boy", true).unwrap());
+        assert!(db
+            .log_track("a", Some("Radio A"), "Air - Sexy Boy", true)
+            .unwrap());
         // Repeated in a row, spelled differently or with the station suffix.
-        assert!(!db.log_track("a", Some("Radio A"), "Air - Sexy Boy", true).unwrap());
-        assert!(!db.log_track("a", Some("Radio A"), "AIR - Sexy Boy", true).unwrap());
-        assert!(!db.log_track("a", Some("Radio A"), "Air - Sexy Boy - Radio A", true).unwrap());
+        assert!(!db
+            .log_track("a", Some("Radio A"), "Air - Sexy Boy", true)
+            .unwrap());
+        assert!(!db
+            .log_track("a", Some("Radio A"), "AIR - Sexy Boy", true)
+            .unwrap());
+        assert!(!db
+            .log_track("a", Some("Radio A"), "Air - Sexy Boy - Radio A", true)
+            .unwrap());
         // Not in a row: something else came in between, on this station or another one.
-        assert!(db.log_track("a", Some("Radio A"), "Écoutez Radio A tous les matins", true).unwrap());
-        assert!(db.log_track("a", Some("Radio A"), "Air - Sexy Boy", true).unwrap());
-        assert!(db.log_track("b", Some("Radio B"), "Air - Sexy Boy", true).unwrap());
-        assert!(db.log_track("a", Some("Radio A"), "Air - Sexy Boy", true).unwrap());
+        assert!(db
+            .log_track(
+                "a",
+                Some("Radio A"),
+                "Écoutez Radio A tous les matins",
+                true
+            )
+            .unwrap());
+        assert!(db
+            .log_track("a", Some("Radio A"), "Air - Sexy Boy", true)
+            .unwrap());
+        assert!(db
+            .log_track("b", Some("Radio B"), "Air - Sexy Boy", true)
+            .unwrap());
+        assert!(db
+            .log_track("a", Some("Radio A"), "Air - Sexy Boy", true)
+            .unwrap());
         // Listening stopped, then came back to the same track: heard again.
-        assert!(db.log_track("a", Some("Radio A"), "Air - Sexy Boy", false).unwrap());
+        assert!(db
+            .log_track("a", Some("Radio A"), "Air - Sexy Boy", false)
+            .unwrap());
         assert_eq!(db.history_summary().unwrap().count, 6);
     }
 
     #[test]
     fn a_structured_title_completes_the_entry_logged_from_icy() {
         let db = Database::open_in_memory().unwrap();
-        db.log_track("wc", Some("West Coast"), "082 - Dru Down - Pimp of the Year", true).unwrap();
-        let parsed = ParsedTitle { artist: Some("Dru Down".into()), title: "Pimp of the Year".into() };
+        db.log_track(
+            "wc",
+            Some("West Coast"),
+            "082 - Dru Down - Pimp of the Year",
+            true,
+        )
+        .unwrap();
+        let parsed = ParsedTitle {
+            artist: Some("Dru Down".into()),
+            title: "Pimp of the Year".into(),
+        };
         // The API confirms it under another spelling of the raw title.
         let raw = "082 - Dru Down - Pimp of the Year";
-        assert!(!db.log_structured_track("wc", Some("West Coast"), raw, &parsed, None, true).unwrap());
+        assert!(!db
+            .log_structured_track("wc", Some("West Coast"), raw, &parsed, None, true)
+            .unwrap());
         let history = db.recent_history(10, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].artist.as_deref(), Some("Dru Down"));
         // Then the raw ICY title again, or the source's own spelling: still the same entry.
-        assert!(!db.log_track("wc", Some("West Coast"), "082 - Dru Down - Pimp of the Year", true).unwrap());
-        assert!(!db.log_structured_track("wc", None, "Dru Down - Pimp of the Year", &parsed, None, true).unwrap());
+        assert!(!db
+            .log_track(
+                "wc",
+                Some("West Coast"),
+                "082 - Dru Down - Pimp of the Year",
+                true
+            )
+            .unwrap());
+        assert!(!db
+            .log_structured_track(
+                "wc",
+                None,
+                "Dru Down - Pimp of the Year",
+                &parsed,
+                None,
+                true
+            )
+            .unwrap());
         assert_eq!(db.history_summary().unwrap().count, 1);
     }
 
     #[test]
     fn history_can_be_searched() {
         let db = Database::open_in_memory().unwrap();
-        db.log_track("a", Some("FIP"), "Air - Sexy Boy", true).unwrap();
-        db.log_track("b", Some("Nova"), "Moby - Porcelain", true).unwrap();
-        db.log_track("b", Some("Nova"), "100% Pure_Love", true).unwrap();
+        db.log_track("a", Some("FIP"), "Air - Sexy Boy", true)
+            .unwrap();
+        db.log_track("b", Some("Nova"), "Moby - Porcelain", true)
+            .unwrap();
+        db.log_track("b", Some("Nova"), "100% Pure_Love", true)
+            .unwrap();
         let titles = |q: &str| {
-            db.recent_history(10, Some(q)).unwrap().into_iter().map(|e| e.title).collect::<Vec<_>>()
+            db.recent_history(10, Some(q))
+                .unwrap()
+                .into_iter()
+                .map(|e| e.title)
+                .collect::<Vec<_>>()
         };
         assert_eq!(titles("air"), ["Sexy Boy"]);
         assert_eq!(titles("nova").len(), 2);
@@ -495,8 +646,10 @@ mod tests {
     #[test]
     fn likes_are_per_track_and_survive_clearing_the_history() {
         let db = Database::open_in_memory().unwrap();
-        db.log_track("fip", Some("FIP"), "Air - Sexy Boy", true).unwrap();
-        db.log_track("nova", Some("Nova"), "AIR - Sexy Boy (Remastered)", true).unwrap();
+        db.log_track("fip", Some("FIP"), "Air - Sexy Boy", true)
+            .unwrap();
+        db.log_track("nova", Some("Nova"), "AIR - Sexy Boy (Remastered)", true)
+            .unwrap();
         let history = db.recent_history(10, None).unwrap();
         assert!(db.like_track(history[1].id).unwrap());
         // Same track heard elsewhere: still the first like, on the first station.

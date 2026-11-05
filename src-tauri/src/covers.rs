@@ -50,8 +50,14 @@ pub struct CoverSource {
 /// The order and switches of a fresh install: only what needs nothing more to leave the device.
 pub fn default_sources() -> Vec<CoverSource> {
     vec![
-        CoverSource { id: SourceId::Station, enabled: true },
-        CoverSource { id: SourceId::CoverArtArchive, enabled: false },
+        CoverSource {
+            id: SourceId::Station,
+            enabled: true,
+        },
+        CoverSource {
+            id: SourceId::CoverArtArchive,
+            enabled: false,
+        },
     ]
 }
 
@@ -66,7 +72,9 @@ pub fn normalize(list: Vec<CoverSource>) -> Vec<CoverSource> {
 
 pub fn load_sources(db: &Database) -> rusqlite::Result<Vec<CoverSource>> {
     let stored = db.get_str(SETTING_COVER_SOURCES)?;
-    let list = stored.and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default();
+    let list = stored
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default();
     Ok(normalize(list))
 }
 
@@ -100,14 +108,24 @@ fn station_cover(now_playing: &NowPlaying) -> Option<String> {
 
 /// The track to look up online: artist and title, and its cache key. A title without an artist
 /// is too vague to look up; the station's own name between tracks is not a track.
-fn online_query(now_playing: &NowPlaying, station: Option<&str>) -> Option<(String, tracks::ParsedTitle)> {
-    let raw = now_playing.title.as_deref().map(str::trim).filter(|t| !t.is_empty())?;
+fn online_query(
+    now_playing: &NowPlaying,
+    station: Option<&str>,
+) -> Option<(String, tracks::ParsedTitle)> {
+    let raw = now_playing
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())?;
     let is_station = |name: Option<&str>| name.is_some_and(|n| n.trim().eq_ignore_ascii_case(raw));
     if is_station(station) || is_station(now_playing.station.as_deref()) {
         return None;
     }
     let parsed = match &now_playing.track {
-        Some(track) => tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() },
+        Some(track) => tracks::ParsedTitle {
+            artist: track.artist.clone(),
+            title: track.title.clone(),
+        },
         None => tracks::parse(raw, station),
     };
     parsed.artist.as_ref()?;
@@ -124,7 +142,10 @@ enum Answer {
 }
 
 /// The first cover found, asking the enabled sources in order, and whether a lookup must run.
-fn pick(sources: &[CoverSource], mut ask: impl FnMut(SourceId) -> Answer) -> (Option<String>, bool) {
+fn pick(
+    sources: &[CoverSource],
+    mut ask: impl FnMut(SourceId) -> Answer,
+) -> (Option<String>, bool) {
     let mut lookup = false;
     for source in sources.iter().filter(|s| s.enabled) {
         match ask(source.id) {
@@ -177,13 +198,25 @@ pub fn app_icon_file(app: &tauri::AppHandle) -> Option<String> {
             return None;
         }
     }
-    stream_download::http::reqwest::Url::from_file_path(&path).ok().map(String::from)
+    stream_download::http::reqwest::Url::from_file_path(&path)
+        .ok()
+        .map(String::from)
 }
 
 impl Covers {
-    pub fn new(app: tauri::AppHandle, mb: Option<Arc<MusicBrainz>>, media: Arc<SystemMedia>) -> Arc<Self> {
+    pub fn new(
+        app: tauri::AppHandle,
+        mb: Option<Arc<MusicBrainz>>,
+        media: Arc<SystemMedia>,
+    ) -> Arc<Self> {
         let app_icon = app_icon_file(&app);
-        Arc::new(Self { app, mb, media, app_icon, state: Mutex::new(State::default()) })
+        Arc::new(Self {
+            app,
+            mb,
+            media,
+            app_icon,
+            state: Mutex::new(State::default()),
+        })
     }
 
     fn state(&self) -> MutexGuard<'_, State> {
@@ -219,7 +252,9 @@ impl Covers {
         tauri::async_runtime::spawn(async move {
             let catalog = this.app.state::<crate::commands::CatalogState>().0.clone();
             let logo = match catalog.station(&id).await {
-                Ok(station) => station.and_then(|s| s.favicon).and_then(|f| web_address(&f)),
+                Ok(station) => station
+                    .and_then(|s| s.favicon)
+                    .and_then(|f| web_address(&f)),
                 Err(e) => {
                     // Not remembered: tried again the next time the station starts.
                     return tracing::debug!("station logo not found: {e}");
@@ -238,7 +273,10 @@ impl Covers {
     fn resolve(self: &Arc<Self>, title_changed: bool) {
         let (now_playing, station, logo) = {
             let state = self.state();
-            let logo = state.station_id.as_ref().and_then(|id| state.logos.get(id).cloned().flatten());
+            let logo = state
+                .station_id
+                .as_ref()
+                .and_then(|id| state.logos.get(id).cloned().flatten());
             (state.now_playing.clone(), state.station.clone(), logo)
         };
         let db = self.app.state::<Database>();
@@ -251,7 +289,9 @@ impl Covers {
         let (url, lookup) = pick(&sources, |source| match source {
             SourceId::Station => station_cover(&now_playing).map_or(Answer::None, Answer::Found),
             SourceId::CoverArtArchive => {
-                let Some((key, _)) = &query else { return Answer::None };
+                let Some((key, _)) = &query else {
+                    return Answer::None;
+                };
                 match db.cached_cover(key) {
                     Ok(Some(Some(url))) => Answer::Found(url),
                     Ok(Some(None)) => Answer::None,
@@ -271,8 +311,16 @@ impl Covers {
         }
 
         let cover = match url {
-            Some(url) => Cover { title: now_playing.title.clone(), url: Some(url), logo: false },
-            None => Cover { title: now_playing.title.clone(), logo: logo.is_some(), url: logo.clone() },
+            Some(url) => Cover {
+                title: now_playing.title.clone(),
+                url: Some(url),
+                logo: false,
+            },
+            None => Cover {
+                title: now_playing.title.clone(),
+                logo: logo.is_some(),
+                url: logo.clone(),
+            },
         };
         let picture = logo.or_else(|| self.app_icon.clone());
         let (changed, picture_changed) = {
@@ -288,7 +336,8 @@ impl Covers {
             (changed, picture_changed)
         };
         if title_changed || picture_changed {
-            self.media.show_now_playing(&now_playing, station.as_deref(), picture.as_deref());
+            self.media
+                .show_now_playing(&now_playing, station.as_deref(), picture.as_deref());
         }
         if changed {
             if let Err(e) = self.app.emit(COVER_EVENT, cover) {
@@ -334,7 +383,11 @@ impl Covers {
 }
 
 /// The track's albums on MusicBrainz, then the first front cover the Cover Art Archive has for one.
-async fn find_cover(mb: &MusicBrainz, artist: &str, title: &str) -> Result<Option<String>, LookupError> {
+async fn find_cover(
+    mb: &MusicBrainz,
+    artist: &str,
+    title: &str,
+) -> Result<Option<String>, LookupError> {
     for album in mb.albums_of(artist, title).await? {
         if let Some(url) = mb.release_group_cover(&album).await? {
             return Ok(Some(url));
@@ -364,51 +417,117 @@ mod tests {
 
     #[test]
     fn station_cover_is_a_web_address() {
-        assert_eq!(station_cover(&on_air("Air - Sexy Boy", Some(" https://x/c.jpg "))).as_deref(), Some("https://x/c.jpg"));
-        assert_eq!(station_cover(&on_air("Air - Sexy Boy", Some("file:///etc/passwd"))), None);
+        assert_eq!(
+            station_cover(&on_air("Air - Sexy Boy", Some(" https://x/c.jpg "))).as_deref(),
+            Some("https://x/c.jpg")
+        );
+        assert_eq!(
+            station_cover(&on_air("Air - Sexy Boy", Some("file:///etc/passwd"))),
+            None
+        );
         assert_eq!(station_cover(&on_air("Air - Sexy Boy", None)), None);
     }
 
     #[test]
     fn stored_sources_are_completed() {
-        let caa_first = vec![CoverSource { id: SourceId::CoverArtArchive, enabled: true }];
+        let caa_first = vec![CoverSource {
+            id: SourceId::CoverArtArchive,
+            enabled: true,
+        }];
         assert_eq!(
             normalize(caa_first),
             [
-                CoverSource { id: SourceId::CoverArtArchive, enabled: true },
-                CoverSource { id: SourceId::Station, enabled: true },
+                CoverSource {
+                    id: SourceId::CoverArtArchive,
+                    enabled: true
+                },
+                CoverSource {
+                    id: SourceId::Station,
+                    enabled: true
+                },
             ]
         );
         let twice = vec![
-            CoverSource { id: SourceId::Station, enabled: false },
-            CoverSource { id: SourceId::Station, enabled: true },
+            CoverSource {
+                id: SourceId::Station,
+                enabled: false,
+            },
+            CoverSource {
+                id: SourceId::Station,
+                enabled: true,
+            },
         ];
-        assert_eq!(normalize(twice)[0], CoverSource { id: SourceId::Station, enabled: false });
+        assert_eq!(
+            normalize(twice)[0],
+            CoverSource {
+                id: SourceId::Station,
+                enabled: false
+            }
+        );
         assert_eq!(normalize(Vec::new()), default_sources());
     }
 
     #[test]
     fn sources_are_asked_in_order() {
         let both = |first, second| {
-            vec![CoverSource { id: first, enabled: true }, CoverSource { id: second, enabled: true }]
+            vec![
+                CoverSource {
+                    id: first,
+                    enabled: true,
+                },
+                CoverSource {
+                    id: second,
+                    enabled: true,
+                },
+            ]
         };
         let answers = |station: Answer, archive: Answer| {
-            let mut answers = HashMap::from([(SourceId::Station, Some(station)), (SourceId::CoverArtArchive, Some(archive))]);
+            let mut answers = HashMap::from([
+                (SourceId::Station, Some(station)),
+                (SourceId::CoverArtArchive, Some(archive)),
+            ]);
             move |id| answers.get_mut(&id).and_then(Option::take).unwrap()
         };
         let found = |u: &str| Answer::Found(u.into());
         let (s, a) = (SourceId::Station, SourceId::CoverArtArchive);
 
-        assert_eq!(pick(&both(s, a), answers(found("s"), found("a"))), (Some("s".into()), false));
-        assert_eq!(pick(&both(a, s), answers(found("s"), found("a"))), (Some("a".into()), false));
+        assert_eq!(
+            pick(&both(s, a), answers(found("s"), found("a"))),
+            (Some("s".into()), false)
+        );
+        assert_eq!(
+            pick(&both(a, s), answers(found("s"), found("a"))),
+            (Some("a".into()), false)
+        );
         // The archive must be asked first: the station's cover is shown meanwhile
-        assert_eq!(pick(&both(a, s), answers(found("s"), Answer::Lookup)), (Some("s".into()), true));
+        assert_eq!(
+            pick(&both(a, s), answers(found("s"), Answer::Lookup)),
+            (Some("s".into()), true)
+        );
         // The station has a cover: no need to look anything up
-        assert_eq!(pick(&both(s, a), answers(found("s"), Answer::Lookup)), (Some("s".into()), false));
-        assert_eq!(pick(&both(s, a), answers(Answer::None, Answer::None)), (None, false));
+        assert_eq!(
+            pick(&both(s, a), answers(found("s"), Answer::Lookup)),
+            (Some("s".into()), false)
+        );
+        assert_eq!(
+            pick(&both(s, a), answers(Answer::None, Answer::None)),
+            (None, false)
+        );
 
-        let disabled = vec![CoverSource { id: s, enabled: false }, CoverSource { id: a, enabled: true }];
-        assert_eq!(pick(&disabled, answers(found("s"), Answer::None)), (None, false));
+        let disabled = vec![
+            CoverSource {
+                id: s,
+                enabled: false,
+            },
+            CoverSource {
+                id: a,
+                enabled: true,
+            },
+        ];
+        assert_eq!(
+            pick(&disabled, answers(found("s"), Answer::None)),
+            (None, false)
+        );
     }
 
     /// Against the real APIs: `cargo test -- --ignored live_cover`.
@@ -416,8 +535,14 @@ mod tests {
     #[ignore = "network"]
     async fn live_cover_of_a_classic() {
         let mb = MusicBrainz::new().unwrap();
-        let url = find_cover(&mb, "Ben E. King", "Stand by Me").await.unwrap().unwrap();
-        assert!(url.starts_with("https://") && url.contains("archive.org"), "{url}");
+        let url = find_cover(&mb, "Ben E. King", "Stand by Me")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            url.starts_with("https://") && url.contains("archive.org"),
+            "{url}"
+        );
     }
 
     #[test]

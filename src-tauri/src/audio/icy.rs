@@ -24,7 +24,13 @@ impl<R: Read> IcyReader<R> {
     /// `metaint` must be > 0 (value of the `icy-metaint` header).
     pub fn new(inner: R, metaint: usize, on_title: TitleCallback) -> Self {
         debug_assert!(metaint > 0);
-        Self { inner, metaint, until_meta: metaint, block: Vec::new(), on_title }
+        Self {
+            inner,
+            metaint,
+            until_meta: metaint,
+            block: Vec::new(),
+            on_title,
+        }
     }
 
     fn read_metadata_block(&mut self) -> io::Result<()> {
@@ -127,8 +133,11 @@ mod tests {
 
         let titles = Arc::new(Mutex::new(Vec::new()));
         let sink = titles.clone();
-        let mut reader =
-            IcyReader::new(Cursor::new(stream), 8, Arc::new(move |t| sink.lock().unwrap().push(t)));
+        let mut reader = IcyReader::new(
+            Cursor::new(stream),
+            8,
+            Arc::new(move |t| sink.lock().unwrap().push(t)),
+        );
 
         let mut audio = Vec::new();
         let mut chunk = [0u8; 3]; // reads smaller than metaint: the edge cases

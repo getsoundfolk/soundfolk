@@ -69,16 +69,25 @@ struct Mirrors {
 
 impl Mirrors {
     fn stale(&self) -> bool {
-        self.at.elapsed() > if self.fallback { RETRY_DNS_AFTER } else { REFRESH_AFTER }
+        self.at.elapsed()
+            > if self.fallback {
+                RETRY_DNS_AFTER
+            } else {
+                REFRESH_AFTER
+            }
     }
 }
 
 fn client(pinned: Option<SocketAddr>) -> Result<Client, CatalogError> {
-    let mut builder = Client::builder().user_agent(USER_AGENT).timeout(REQUEST_TIMEOUT);
+    let mut builder = Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(REQUEST_TIMEOUT);
     if let Some(addr) = pinned {
         builder = builder.resolve(ALL_MIRRORS, addr);
     }
-    builder.build().map_err(|e| CatalogError::Network(e.to_string()))
+    builder
+        .build()
+        .map_err(|e| CatalogError::Network(e.to_string()))
 }
 
 /// Mirrors from the addresses DNS gave, in a shuffled order; the fallback when there are none.
@@ -92,23 +101,43 @@ fn mirrors_from(addrs: impl IntoIterator<Item = SocketAddr>) -> Result<Mirrors, 
             base: Url::parse(FALLBACK_SERVER).expect("valid constant URL"),
             client: client(None)?,
         };
-        return Ok(Mirrors { list: Arc::new(vec![fallback]), fallback: true, at: Instant::now() });
+        return Ok(Mirrors {
+            list: Arc::new(vec![fallback]),
+            fallback: true,
+            at: Instant::now(),
+        });
     }
     // Spreads load across mirrors without a random-number dependency.
-    let shift = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.subsec_nanos() as usize) % addrs.len();
+    let shift = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.subsec_nanos() as usize)
+        % addrs.len();
     addrs.rotate_left(shift);
     let base = Url::parse(&format!("https://{ALL_MIRRORS}/")).expect("valid constant URL");
     let list = addrs
         .into_iter()
-        .map(|addr| Ok(Mirror { key: addr.ip().to_string(), base: base.clone(), client: client(Some(addr))? }))
+        .map(|addr| {
+            Ok(Mirror {
+                key: addr.ip().to_string(),
+                base: base.clone(),
+                client: client(Some(addr))?,
+            })
+        })
         .collect::<Result<Vec<_>, CatalogError>>()?;
-    Ok(Mirrors { list: Arc::new(list), fallback: false, at: Instant::now() })
+    Ok(Mirrors {
+        list: Arc::new(list),
+        fallback: false,
+        at: Instant::now(),
+    })
 }
 
 /// `count` mirrors to try, the one that last responded first.
 fn candidates<'a>(list: &'a [Mirror], preferred: Option<&str>, count: usize) -> Vec<&'a Mirror> {
     let mut ordered: Vec<&Mirror> = list.iter().collect();
-    if let Some(i) = ordered.iter().position(|m| Some(m.key.as_str()) == preferred) {
+    if let Some(i) = ordered
+        .iter()
+        .position(|m| Some(m.key.as_str()) == preferred)
+    {
         let first = ordered.remove(i);
         ordered.insert(0, first);
     }
@@ -128,7 +157,8 @@ impl RadioBrowser {
 
     /// The mirrors, looked up again when needed (see the module).
     async fn mirrors(&self) -> Result<Arc<Vec<Mirror>>, CatalogError> {
-        let fresh = |slot: &Option<Mirrors>| slot.as_ref().filter(|m| !m.stale()).map(|m| m.list.clone());
+        let fresh =
+            |slot: &Option<Mirrors>| slot.as_ref().filter(|m| !m.stale()).map(|m| m.list.clone());
         if let Some(list) = fresh(&self.mirrors.lock().unwrap_or_else(|p| p.into_inner())) {
             return Ok(list);
         }
@@ -164,7 +194,9 @@ impl RadioBrowser {
                 let body = self.get("json/stations/search", &params).await?;
                 let (_, found) = parse_stations(&body)?;
                 if found == 0 {
-                    tracing::warn!("the catalog no longer reads % as a wildcard: slower name search");
+                    tracing::warn!(
+                        "the catalog no longer reads % as a wildcard: slower name search"
+                    );
                 }
                 Ok(found > 0)
             })
@@ -178,22 +210,46 @@ impl RadioBrowser {
     }
 
     /// GET on an API path, on one mirror only, the one that last responded.
-    async fn get_once(&self, path: &str, params: &[(&str, String)]) -> Result<Vec<u8>, CatalogError> {
+    async fn get_once(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+    ) -> Result<Vec<u8>, CatalogError> {
         self.request(path, params, 1).await
     }
 
-    async fn request(&self, path: &str, params: &[(&str, String)], attempts: usize) -> Result<Vec<u8>, CatalogError> {
+    async fn request(
+        &self,
+        path: &str,
+        params: &[(&str, String)],
+        attempts: usize,
+    ) -> Result<Vec<u8>, CatalogError> {
         let list = self.mirrors().await?;
-        let preferred = self.preferred.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let preferred = self
+            .preferred
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
         let mut last_error = CatalogError::Network("no server available".into());
         for mirror in candidates(&list, preferred.as_deref(), attempts) {
-            let mut url = mirror.base.join(path).map_err(|e| CatalogError::Invalid(e.to_string()))?;
-            url.query_pairs_mut().extend_pairs(params.iter().map(|(k, v)| (*k, v.as_str())));
+            let mut url = mirror
+                .base
+                .join(path)
+                .map_err(|e| CatalogError::Invalid(e.to_string()))?;
+            url.query_pairs_mut()
+                .extend_pairs(params.iter().map(|(k, v)| (*k, v.as_str())));
 
-            match mirror.client.get(url).send().await.and_then(|r| r.error_for_status()) {
+            match mirror
+                .client
+                .get(url)
+                .send()
+                .await
+                .and_then(|r| r.error_for_status())
+            {
                 Ok(response) => match response.bytes().await {
                     Ok(bytes) => {
-                        *self.preferred.lock().unwrap_or_else(|p| p.into_inner()) = Some(mirror.key.clone());
+                        *self.preferred.lock().unwrap_or_else(|p| p.into_inner()) =
+                            Some(mirror.key.clone());
                         return Ok(bytes.to_vec());
                     }
                     Err(e) => last_error = CatalogError::Network(e.to_string()),
@@ -253,7 +309,10 @@ impl CatalogSource for RadioBrowser {
             }
 
             rank(&mut stations);
-            Ok(SearchPage { stations, next_offset: (!exhausted).then_some(offset) })
+            Ok(SearchPage {
+                stations,
+                next_offset: (!exhausted).then_some(offset),
+            })
         })
     }
 
@@ -273,11 +332,15 @@ impl CatalogSource for RadioBrowser {
         Box::pin(async move {
             // The ID ends up in the URL path: only a UUID is accepted.
             if !is_uuid(station_id) {
-                return Err(CatalogError::BadRequest(format!("Invalid ID: {station_id}")));
+                return Err(CatalogError::BadRequest(format!(
+                    "Invalid ID: {station_id}"
+                )));
             }
             // One mirror, no retry: each mirror counts a listener once a day on its own, so a
             // retry elsewhere (after a timeout the first one may have counted) would count twice.
-            self.get_once(&format!("json/url/{station_id}"), &[]).await.map(|_| ())
+            self.get_once(&format!("json/url/{station_id}"), &[])
+                .await
+                .map(|_| ())
         })
     }
 }
@@ -306,7 +369,12 @@ struct RawStation {
 
 /// Query parameters of one catalog request.
 /// `name` replaces `q.text`, which [`NameQuery`] rewrites.
-fn search_params(q: &SearchQuery, name: Option<&str>, limit: u32, offset: u32) -> Vec<(&'static str, String)> {
+fn search_params(
+    q: &SearchQuery,
+    name: Option<&str>,
+    limit: u32,
+    offset: u32,
+) -> Vec<(&'static str, String)> {
     let mut params = vec![
         // Descending popularity: dead stations (0 clicks) naturally end up at the bottom.
         ("order", "clickcount".to_string()),
@@ -345,15 +413,21 @@ fn non_empty(value: Option<String>) -> Option<String> {
 fn convert(raw: RawStation) -> Option<Station> {
     let name = non_empty(raw.name)?;
     let url = non_empty(raw.url_resolved).or_else(|| non_empty(raw.url))?;
-    let parsed = Url::parse(&url).ok().filter(|u| matches!(u.scheme(), "http" | "https"))?;
+    let parsed = Url::parse(&url)
+        .ok()
+        .filter(|u| matches!(u.scheme(), "http" | "https"))?;
     if !is_uuid(&raw.stationuuid) {
         return None;
     }
 
     let health = if raw.hls == Some(1) || parsed.path().to_ascii_lowercase().ends_with(".m3u8") {
-        Health::Unsupported { reason: "hls".into() }
+        Health::Unsupported {
+            reason: "hls".into(),
+        }
     } else if raw.lastcheckok == Some(0) {
-        Health::Unreachable { last_ok: non_empty(raw.lastcheckoktime_iso8601) }
+        Health::Unreachable {
+            last_ok: non_empty(raw.lastcheckoktime_iso8601),
+        }
     } else {
         Health::Ok
     };
@@ -401,12 +475,20 @@ mod tests {
 
     #[test]
     fn mirrors_are_reached_under_the_common_name_pinned_to_their_address() {
-        let found = mirrors_from([addr("91.98.4.78:443"), addr("10.0.0.2:443"), addr("91.98.4.78:443")]).unwrap();
+        let found = mirrors_from([
+            addr("91.98.4.78:443"),
+            addr("10.0.0.2:443"),
+            addr("91.98.4.78:443"),
+        ])
+        .unwrap();
         assert!(!found.fallback);
         let mut keys: Vec<_> = found.list.iter().map(|m| m.key.as_str()).collect();
         keys.sort();
         assert_eq!(keys, ["10.0.0.2", "91.98.4.78"]); // duplicates dropped
-        assert!(found.list.iter().all(|m| m.base.as_str() == "https://all.api.radio-browser.info/"));
+        assert!(found
+            .list
+            .iter()
+            .all(|m| m.base.as_str() == "https://all.api.radio-browser.info/"));
     }
 
     #[test]
@@ -427,9 +509,17 @@ mod tests {
 
     #[test]
     fn the_mirror_that_answered_is_tried_first() {
-        let found = mirrors_from([addr("10.0.0.1:443"), addr("10.0.0.2:443"), addr("10.0.0.3:443")]).unwrap();
+        let found = mirrors_from([
+            addr("10.0.0.1:443"),
+            addr("10.0.0.2:443"),
+            addr("10.0.0.3:443"),
+        ])
+        .unwrap();
         let keys = |preferred: Option<&str>, count| -> Vec<String> {
-            candidates(&found.list, preferred, count).iter().map(|m| m.key.clone()).collect()
+            candidates(&found.list, preferred, count)
+                .iter()
+                .map(|m| m.key.clone())
+                .collect()
         };
         assert_eq!(keys(Some("10.0.0.2"), 3)[0], "10.0.0.2");
         assert_eq!(keys(Some("10.0.0.2"), 1), ["10.0.0.2"]); // a click goes to that one only
@@ -444,7 +534,10 @@ mod tests {
         let rb = RadioBrowser::new().unwrap();
         let list = rb.mirrors().await.unwrap();
         assert!(!list.is_empty());
-        assert!(list.iter().all(|m| m.base.host_str() == Some(ALL_MIRRORS)), "fallback used");
+        assert!(
+            list.iter().all(|m| m.base.host_str() == Some(ALL_MIRRORS)),
+            "fallback used"
+        );
         let body = rb.get("json/stats", &[]).await.unwrap();
         assert!(String::from_utf8_lossy(&body).contains("stations"));
     }
@@ -468,9 +561,19 @@ mod tests {
 
         let dead = &stations[0];
         assert_eq!(dead.tags, ["jazz", "soul"]);
-        assert_eq!(dead.health, Health::Unreachable { last_ok: Some("2026-10-01T10:00:00Z".into()) });
+        assert_eq!(
+            dead.health,
+            Health::Unreachable {
+                last_ok: Some("2026-10-01T10:00:00Z".into())
+            }
+        );
 
-        assert_eq!(stations[1].health, Health::Unsupported { reason: "hls".into() });
+        assert_eq!(
+            stations[1].health,
+            Health::Unsupported {
+                reason: "hls".into()
+            }
+        );
 
         // Empty `url_resolved`: fall back to `url`; empty fields = None.
         assert_eq!(stations[2].url, "https://c.example/x");
@@ -504,18 +607,41 @@ mod tests {
         assert_eq!(q.limit, Some(super::super::MAX_LIMIT));
 
         let pasted = |text: &str| {
-            SearchQuery { text: Some(text.into()), ..Default::default() }.sanitized().unwrap().text
+            SearchQuery {
+                text: Some(text.into()),
+                ..Default::default()
+            }
+            .sanitized()
+            .unwrap()
+            .text
         };
-        assert_eq!(pasted("Wonder 80’s “Flashback”").as_deref(), Some("Wonder 80's \"Flashback\""));
-        assert_eq!(pasted("Radio–Canada — Ici…").as_deref(), Some("Radio-Canada - Ici..."));
-        assert_eq!(pasted("\u{feff} Radio\t\u{a0} Fr\u{ad}ance\u{200b}\n").as_deref(), Some("Radio France"));
+        assert_eq!(
+            pasted("Wonder 80’s “Flashback”").as_deref(),
+            Some("Wonder 80's \"Flashback\"")
+        );
+        assert_eq!(
+            pasted("Radio–Canada — Ici…").as_deref(),
+            Some("Radio-Canada - Ici...")
+        );
+        assert_eq!(
+            pasted("\u{feff} Radio\t\u{a0} Fr\u{ad}ance\u{200b}\n").as_deref(),
+            Some("Radio France")
+        );
         assert_eq!(pasted(" \u{200b} "), None);
 
-        let empty = SearchQuery { text: Some("   ".into()), ..Default::default() }.sanitized().unwrap();
+        let empty = SearchQuery {
+            text: Some("   ".into()),
+            ..Default::default()
+        }
+        .sanitized()
+        .unwrap();
         assert_eq!(empty.text, None);
-        assert!(SearchQuery { country_code: Some("FRA".into()), ..Default::default() }
-            .sanitized()
-            .is_err());
+        assert!(SearchQuery {
+            country_code: Some("FRA".into()),
+            ..Default::default()
+        }
+        .sanitized()
+        .is_err());
     }
 
     #[test]
@@ -532,15 +658,23 @@ mod tests {
         let rb = RadioBrowser::new().unwrap();
         assert!(rb.wildcards().await.unwrap());
         // The catalog stores "Wonder 80's Flashback".
-        assert!(names(&rb, "Wonder 80’s Flashback").await.contains(&"Wonder 80's Flashback".to_owned()));
+        assert!(names(&rb, "Wonder 80’s Flashback")
+            .await
+            .contains(&"Wonder 80's Flashback".to_owned()));
         // Both apostrophes and the spaced form, nothing else in between.
         let rock = names(&rb, "Rock'n'Roll").await;
         assert!(rock.iter().any(|n| n.contains('’')), "{rock:?}");
         assert!(rock.iter().any(|n| n.contains("Rock 'n' Roll")), "{rock:?}");
-        assert!(!rock.iter().any(|n| n.contains("Rock and Roll")), "{rock:?}");
+        assert!(
+            !rock.iter().any(|n| n.contains("Rock and Roll")),
+            "{rock:?}"
+        );
         // "Radio-Canada" and "Radio–Canada".
         let canada = names(&rb, "Radio-Canada").await;
-        assert!(canada.iter().any(|n| n.contains("Radio-Canada")), "{canada:?}");
+        assert!(
+            canada.iter().any(|n| n.contains("Radio-Canada")),
+            "{canada:?}"
+        );
     }
 
     /// Against the real API: `%` is searched as typed, `_` as a space.
@@ -552,12 +686,25 @@ mod tests {
         assert!(!percent.is_empty());
         assert!(percent.iter().all(|n| n.contains('%')), "{percent:?}");
         let underscore = names(&rb, "radio_x").await;
-        assert!(underscore.iter().any(|n| n.contains("Radio X")), "{underscore:?}");
+        assert!(
+            underscore.iter().any(|n| n.contains("Radio X")),
+            "{underscore:?}"
+        );
     }
 
     async fn names(rb: &RadioBrowser, text: &str) -> Vec<String> {
-        let query = SearchQuery { text: Some(text.into()), limit: Some(100), ..Default::default() };
-        rb.search(&query).await.unwrap().stations.into_iter().map(|s| s.name).collect()
+        let query = SearchQuery {
+            text: Some(text.into()),
+            limit: Some(100),
+            ..Default::default()
+        };
+        rb.search(&query)
+            .await
+            .unwrap()
+            .stations
+            .into_iter()
+            .map(|s| s.name)
+            .collect()
     }
 
     /// Against the real API: `cargo test -- --ignored live_search`.
@@ -565,16 +712,25 @@ mod tests {
     #[ignore = "network"]
     async fn live_search_finds_rdwa() {
         let rb = RadioBrowser::new().unwrap();
-        let query = SearchQuery { text: Some("rdwa".into()), ..Default::default() };
+        let query = SearchQuery {
+            text: Some("rdwa".into()),
+            ..Default::default()
+        };
         let page = rb.search(&query).await.unwrap();
-        assert!(page.stations.iter().any(|s| s.id == "ab30ca84-c228-4f57-8cac-816c69ef651d"));
+        assert!(page
+            .stations
+            .iter()
+            .any(|s| s.id == "ab30ca84-c228-4f57-8cac-816c69ef651d"));
     }
 
     #[test]
     fn unsupported_stations_are_filtered_out() {
         let (stations, _) = parse_stations(FIXTURE.as_bytes()).unwrap();
-        let supported: Vec<_> =
-            stations.iter().filter(|s| s.is_supported()).map(|s| s.name.as_str()).collect();
+        let supported: Vec<_> = stations
+            .iter()
+            .filter(|s| s.is_supported())
+            .map(|s| s.name.as_str())
+            .collect();
         assert_eq!(supported, ["Dead Radio", "RDWA"]); // unreachable stays, HLS goes
     }
 
@@ -587,7 +743,12 @@ mod tests {
             ..Default::default()
         };
         let params = search_params(&q, Some("jazz"), 30, 60);
-        let get = |key: &str| params.iter().find(|(k, _)| *k == key).map(|(_, v)| v.as_str());
+        let get = |key: &str| {
+            params
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| v.as_str())
+        };
         assert_eq!(get("limit"), Some("30"));
         assert_eq!(get("offset"), Some("60"));
         assert_eq!(get("name"), Some("jazz"));
@@ -601,7 +762,11 @@ mod tests {
     #[ignore = "network"]
     async fn live_station_by_id() {
         let rb = RadioBrowser::new().unwrap();
-        let station = rb.station("ab30ca84-c228-4f57-8cac-816c69ef651d").await.unwrap().unwrap();
+        let station = rb
+            .station("ab30ca84-c228-4f57-8cac-816c69ef651d")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(station.id, "ab30ca84-c228-4f57-8cac-816c69ef651d");
         assert!(rb.station("../../etc/passwd").await.is_err());
     }
@@ -612,17 +777,27 @@ mod tests {
     async fn live_search_hides_hls_and_paginates() {
         let rb = RadioBrowser::new().unwrap();
         // Korean broadcasters are mostly HLS: a good stress test for short pages.
-        let query = SearchQuery { text: Some("kbs".into()), limit: Some(10), ..Default::default() };
+        let query = SearchQuery {
+            text: Some("kbs".into()),
+            limit: Some(10),
+            ..Default::default()
+        };
         let first = rb.search(&query).await.unwrap();
         assert!(first.stations.iter().all(|s| s.is_supported()));
         if let Some(next) = first.next_offset {
             let second = rb
-                .search(&SearchQuery { offset: Some(next), ..query.clone() })
+                .search(&SearchQuery {
+                    offset: Some(next),
+                    ..query.clone()
+                })
                 .await
                 .unwrap();
             assert!(second.stations.iter().all(|s| s.is_supported()));
             let ids: std::collections::HashSet<_> = first.stations.iter().map(|s| &s.id).collect();
-            assert!(second.stations.iter().all(|s| !ids.contains(&s.id)), "pages overlap");
+            assert!(
+                second.stations.iter().all(|s| !ids.contains(&s.id)),
+                "pages overlap"
+            );
         }
     }
 }

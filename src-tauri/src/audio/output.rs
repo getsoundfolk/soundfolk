@@ -50,17 +50,23 @@ pub struct Health {
 
 impl Health {
     fn new() -> Self {
-        Self { failed: AtomicBool::new(false), base: Instant::now(), last_callback_ms: AtomicU64::new(0) }
+        Self {
+            failed: AtomicBool::new(false),
+            base: Instant::now(),
+            last_callback_ms: AtomicU64::new(0),
+        }
     }
 
     fn alive(&self) {
-        self.last_callback_ms.store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
+        self.last_callback_ms
+            .store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
     }
 
     /// The device is gone, or the callback stopped running.
     pub fn is_lost(&self) -> bool {
         let last = Duration::from_millis(self.last_callback_ms.load(Ordering::Relaxed));
-        self.failed.load(Ordering::Relaxed) || self.base.elapsed().saturating_sub(last) > SILENT_CALLBACK
+        self.failed.load(Ordering::Relaxed)
+            || self.base.elapsed().saturating_sub(last) > SILENT_CALLBACK
     }
 }
 
@@ -97,7 +103,9 @@ pub fn open(controls: Arc<Controls>) -> Result<(Output, Producer<f32>), String> 
         SampleFormat::I32 => build::<i32>(&device, &config, consumer, controls, thresholds, h),
         other => return Err(format!("Unsupported sample format: {other}")),
     }?;
-    stream.play().map_err(|e| format!("Cannot start the audio output: {e}"))?;
+    stream
+        .play()
+        .map_err(|e| format!("Cannot start the audio output: {e}"))?;
 
     tracing::info!(
         rate = format.sample_rate,
@@ -106,7 +114,14 @@ pub fn open(controls: Arc<Controls>) -> Result<(Output, Producer<f32>), String> 
         ms = started.elapsed().as_millis() as u64,
         "audio output opened"
     );
-    Ok((Output { format, health, _stream: stream }, producer))
+    Ok((
+        Output {
+            format,
+            health,
+            _stream: stream,
+        },
+        producer,
+    ))
 }
 
 #[derive(Clone, Copy)]
@@ -162,7 +177,10 @@ where
             },
             move |err: cpal::Error| {
                 tracing::warn!("audio output stream error: {err}");
-                if matches!(err.kind(), cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated) {
+                if matches!(
+                    err.kind(),
+                    cpal::ErrorKind::DeviceNotAvailable | cpal::ErrorKind::StreamInvalidated
+                ) {
                     errors.failed.store(true, Ordering::Relaxed);
                 }
             },

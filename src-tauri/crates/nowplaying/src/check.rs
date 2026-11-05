@@ -18,11 +18,18 @@ pub struct Reading {
 /// Reads `page` with `recipe` as if it had been fetched at `at` (its HTTP `Date`).
 pub fn read(recipe: &Recipe, page: &str, at: Timestamp) -> Result<Reading, String> {
     let snapshot = extract::read(recipe, page).map_err(|e| e.to_string())?;
-    let policy = Policy { jitter: crate::SignedDuration::ZERO, ..Policy::default() };
+    let policy = Policy {
+        jitter: crate::SignedDuration::ZERO,
+        ..Policy::default()
+    };
     let mut tracker = Tracker::new(policy, recipe.every(), None, 0);
     let plan = tracker.on_snapshot(snapshot.clone(), at, Some(at));
     let on_air = plan.publish.into_iter().next().map(|s| s.on_air);
-    Ok(Reading { snapshot, on_air, offset: tracker.offset() })
+    Ok(Reading {
+        snapshot,
+        on_air,
+        offset: tracker.offset(),
+    })
 }
 
 /// Runs one fixture; returns what did not match (empty = passed).
@@ -49,11 +56,18 @@ pub fn run_test(recipe: &Recipe, test: &Test, page: &str) -> Vec<String> {
     let current = &on_air.current;
     expect("artist", &test.artist, current.artist.clone());
     expect("title", &test.title, Some(current.title.clone()));
-    expect("next title", &test.next_title, on_air.next.as_ref().map(|t| t.title.clone()));
+    expect(
+        "next title",
+        &test.next_title,
+        on_air.next.as_ref().map(|t| t.title.clone()),
+    );
     if let Some(expected) = &test.started_at {
         match expected.parse::<Timestamp>() {
             Ok(expected) if current.started_at == Some(expected) => {}
-            Ok(expected) => failures.push(format!("start: expected {expected}, got {:?}", current.started_at)),
+            Ok(expected) => failures.push(format!(
+                "start: expected {expected}, got {:?}",
+                current.started_at
+            )),
             Err(e) => failures.push(format!("`started_at`: {e}")),
         }
     }
@@ -85,12 +99,19 @@ pub fn compile(recipes: &[(String, Recipe)]) -> serde_json::Value {
 /// working with a newer list.
 pub fn load_compiled(json: &str) -> Result<Vec<(String, Recipe)>, String> {
     let value: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
-    let recipes = value.get("recipes").and_then(|r| r.as_array()).ok_or("no `recipes` list")?;
+    let recipes = value
+        .get("recipes")
+        .and_then(|r| r.as_array())
+        .ok_or("no `recipes` list")?;
     Ok(recipes
         .iter()
         .filter_map(|r| {
             let mut object = r.as_object()?.clone();
-            let id = object.remove("id")?.as_str().filter(|id| is_valid_id(id))?.to_owned();
+            let id = object
+                .remove("id")?
+                .as_str()
+                .filter(|id| is_valid_id(id))?
+                .to_owned();
             let recipe = serde_json::from_value::<Recipe>(object.into()).ok()?;
             recipe.problems().is_empty().then_some((id, recipe))
         })
@@ -101,7 +122,9 @@ pub fn load_compiled(json: &str) -> Result<Vec<(String, Recipe)>, String> {
 pub fn is_valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64
-        && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
 }
 
 #[cfg(test)]
@@ -122,7 +145,10 @@ mod tests {
     #[test]
     fn unreadable_entries_are_skipped() {
         let recipe = Recipe::from_toml(FREQUENCE7).unwrap();
-        let mut list = compile(&[("ok".into(), recipe.clone()), ("newer".into(), recipe.clone())]);
+        let mut list = compile(&[
+            ("ok".into(), recipe.clone()),
+            ("newer".into(), recipe.clone()),
+        ]);
         let entries = list["recipes"].as_array_mut().unwrap();
         entries[1]["schema"] = 2.into();
         entries.push(serde_json::json!({ "id": "unknown-field", "schema": 1, "future": true }));
@@ -133,7 +159,10 @@ mod tests {
         bad_id["id"] = "../etc".into();
         entries.push(bad_id);
         let loaded = load_compiled(&list.to_string()).unwrap();
-        assert_eq!(loaded.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["ok"]);
+        assert_eq!(
+            loaded.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            ["ok"]
+        );
         assert!(load_compiled("{}").is_err());
     }
 }

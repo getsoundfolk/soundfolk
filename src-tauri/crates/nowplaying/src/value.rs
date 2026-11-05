@@ -73,11 +73,15 @@ pub(crate) fn parse_duration(text: &str) -> Option<SignedDuration> {
     if text.contains(':') {
         let mut secs = 0i64;
         for part in text.split(':') {
-            secs = secs.checked_mul(60)?.checked_add(part.trim().parse::<i64>().ok()?)?;
+            secs = secs
+                .checked_mul(60)?
+                .checked_add(part.trim().parse::<i64>().ok()?)?;
         }
         return (secs > 0).then(|| SignedDuration::from_secs(secs));
     }
-    text.parse::<SignedDuration>().ok().filter(|d| d.is_positive())
+    text.parse::<SignedDuration>()
+        .ok()
+        .filter(|d| d.is_positive())
 }
 
 /// A duration given as a JSON number of seconds.
@@ -100,7 +104,10 @@ mod tests {
         assert_eq!(parse_start("1793828211"), Some(Start::At(at)));
         assert_eq!(parse_start("1793828211000"), Some(Start::At(at)));
         assert_eq!(parse_start("2026-11-04T21:36:51Z"), Some(Start::At(at)));
-        assert_eq!(parse_start("2026-11-04T22:36:51+01:00"), Some(Start::At(at)));
+        assert_eq!(
+            parse_start("2026-11-04T22:36:51+01:00"),
+            Some(Start::At(at))
+        );
         assert_eq!(parse_start("25:00"), None);
         assert_eq!(parse_start("soon"), None);
     }
@@ -120,7 +127,10 @@ mod tests {
 
     #[test]
     fn text() {
-        assert_eq!(clean_text("  BLACK \n  RAINBOWS "), Some("BLACK RAINBOWS".into()));
+        assert_eq!(
+            clean_text("  BLACK \n  RAINBOWS "),
+            Some("BLACK RAINBOWS".into())
+        );
         assert_eq!(clean_text(" \n "), None);
     }
 }

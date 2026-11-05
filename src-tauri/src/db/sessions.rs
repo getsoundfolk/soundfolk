@@ -12,7 +12,11 @@ const ENDED_AT: &str = "MIN(CURRENT_TIMESTAMP, datetime(last_seen_at, '+90 secon
 impl Database {
     /// A station started playing. A session already open on the same station continues (a
     /// reconnection is not a new listen); one open on another station is closed first.
-    pub fn start_session(&self, station_id: &str, station_name: Option<&str>) -> rusqlite::Result<()> {
+    pub fn start_session(
+        &self,
+        station_id: &str,
+        station_name: Option<&str>,
+    ) -> rusqlite::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute(
@@ -67,8 +71,9 @@ mod tests {
 
     fn sessions(db: &Database) -> Vec<(String, bool)> {
         let conn = db.conn();
-        let mut stmt =
-            conn.prepare("SELECT station_id, ended_at IS NOT NULL FROM listening_sessions ORDER BY id").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT station_id, ended_at IS NOT NULL FROM listening_sessions ORDER BY id")
+            .unwrap();
         let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
         rows.collect::<rusqlite::Result<_>>().unwrap()
     }
@@ -94,7 +99,10 @@ mod tests {
             .execute_batch("UPDATE listening_sessions SET last_seen_at = '2026-01-01 10:30:00'")
             .unwrap();
         db.end_session().unwrap();
-        let ended: String = db.conn().query_row("SELECT ended_at FROM listening_sessions", [], |r| r.get(0)).unwrap();
+        let ended: String = db
+            .conn()
+            .query_row("SELECT ended_at FROM listening_sessions", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(ended, "2026-01-01 10:31:30");
     }
 
@@ -106,8 +114,10 @@ mod tests {
             .execute_batch("UPDATE listening_sessions SET last_seen_at = '2026-01-01 10:30:00'")
             .unwrap();
         db.close_abandoned_sessions().unwrap();
-        let ended: String =
-            db.conn().query_row("SELECT ended_at FROM listening_sessions", [], |r| r.get(0)).unwrap();
+        let ended: String = db
+            .conn()
+            .query_row("SELECT ended_at FROM listening_sessions", [], |r| r.get(0))
+            .unwrap();
         assert_eq!(ended, "2026-01-01 10:30:00");
     }
 }

@@ -152,7 +152,10 @@ pub enum LoadError {
 impl std::fmt::Display for LoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::NewerSchema(v) => write!(f, "written for recipe schema {v}, this app reads {SCHEMA_VERSION}"),
+            Self::NewerSchema(v) => write!(
+                f,
+                "written for recipe schema {v}, this app reads {SCHEMA_VERSION}"
+            ),
             Self::Invalid(e) => f.write_str(e),
         }
     }
@@ -166,7 +169,8 @@ impl Recipe {
         struct Version {
             schema: Option<u32>,
         }
-        let version: Version = toml::from_str(text).map_err(|e| LoadError::Invalid(e.to_string()))?;
+        let version: Version =
+            toml::from_str(text).map_err(|e| LoadError::Invalid(e.to_string()))?;
         match version.schema {
             Some(v) if v > SCHEMA_VERSION => return Err(LoadError::NewerSchema(v)),
             Some(_) => {}
@@ -222,10 +226,16 @@ impl Recipe {
                     ("show", &f.show),
                     ("next", &f.next),
                 ];
-                let empty: Vec<&str> =
-                    named.iter().filter(|(_, v)| v.as_deref().is_some_and(|v| v.trim().is_empty())).map(|(n, _)| *n).collect();
+                let empty: Vec<&str> = named
+                    .iter()
+                    .filter(|(_, v)| v.as_deref().is_some_and(|v| v.trim().is_empty()))
+                    .map(|(n, _)| *n)
+                    .collect();
                 if !empty.is_empty() {
-                    problems.push(format!("fill in or remove the empty `extract` field(s): {}", empty.join(", ")));
+                    problems.push(format!(
+                        "fill in or remove the empty `extract` field(s): {}",
+                        empty.join(", ")
+                    ));
                     // Empty selectors would only add confusing errors below.
                     return problems;
                 }
@@ -234,8 +244,12 @@ impl Recipe {
                 }
             }
             Extract::Text(p) => {
-                if !["title", "text"].iter().any(|g| p.pattern.contains(&format!("(?P<{g}>")))
-                    && !["title", "text"].iter().any(|g| p.pattern.contains(&format!("(?<{g}>")))
+                if !["title", "text"]
+                    .iter()
+                    .any(|g| p.pattern.contains(&format!("(?P<{g}>")))
+                    && !["title", "text"]
+                        .iter()
+                        .any(|g| p.pattern.contains(&format!("(?<{g}>")))
                 {
                     problems.push("`extract.pattern` needs a `title` or `text` group".into());
                 }
@@ -255,11 +269,18 @@ impl Recipe {
     /// Whether the recipe applies to this station (Radio-Browser UUID) or stream URL.
     pub fn matches(&self, station_id: Option<&str>, stream: &str) -> bool {
         if let Some(id) = station_id {
-            if self.matches.stations.iter().any(|s| s.eq_ignore_ascii_case(id)) {
+            if self
+                .matches
+                .stations
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case(id))
+            {
                 return true;
             }
         }
-        let Some(stream) = normalize_stream(stream) else { return false };
+        let Some(stream) = normalize_stream(stream) else {
+            return false;
+        };
         self.matches.streams.iter().any(|pattern| {
             let pattern = pattern.trim().to_ascii_lowercase();
             match pattern.strip_suffix('*') {
@@ -276,12 +297,18 @@ impl Recipe {
 
     /// Whether a title is noise (jingle, ad…) according to `ignore`.
     pub fn ignores(&self, title: &str) -> bool {
-        self.ignore.iter().filter_map(|p| regex_lite::Regex::new(p).ok()).any(|re| re.is_match(title))
+        self.ignore
+            .iter()
+            .filter_map(|p| regex_lite::Regex::new(p).ok())
+            .any(|re| re.is_match(title))
     }
 
     /// The recipe without its tests, as published in `recipes.json`.
     pub fn published(&self) -> Recipe {
-        Recipe { tests: Vec::new(), ..self.clone() }
+        Recipe {
+            tests: Vec::new(),
+            ..self.clone()
+        }
     }
 
     /// The recipe as a TOML file (comments are not kept: written from a published list).
@@ -297,19 +324,32 @@ pub fn stream_pattern(url: &str) -> Option<String> {
 
 /// `host[:port]/path`, lowercase, without scheme, query or trailing slash.
 fn normalize_stream(url: &str) -> Option<String> {
-    let rest = url.trim().split_once("://").map_or(url.trim(), |(_, rest)| rest);
+    let rest = url
+        .trim()
+        .split_once("://")
+        .map_or(url.trim(), |(_, rest)| rest);
     let rest = rest.split(['?', '#']).next()?;
     let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
     let host = host.rsplit('@').next()?; // drop credentials
-    let host = host.strip_suffix(":80").or_else(|| host.strip_suffix(":443")).unwrap_or(host);
+    let host = host
+        .strip_suffix(":80")
+        .or_else(|| host.strip_suffix(":443"))
+        .unwrap_or(host);
     if host.is_empty() {
         return None;
     }
-    Some(format!("{host}/{path}").trim_end_matches('/').to_ascii_lowercase())
+    Some(
+        format!("{host}/{path}")
+            .trim_end_matches('/')
+            .to_ascii_lowercase(),
+    )
 }
 
 fn parse_every(text: &str) -> Option<SignedDuration> {
-    text.trim().parse::<SignedDuration>().ok().filter(|d| d.is_positive())
+    text.trim()
+        .parse::<SignedDuration>()
+        .ok()
+        .filter(|d| d.is_positive())
 }
 
 /// Recipes in priority order: the first one matching a station wins.
@@ -368,7 +408,9 @@ mod tests {
         let recipe = Recipe::from_toml(FREQUENCE7).unwrap();
         assert_eq!(recipe.name, "Fréquence 7");
         assert_eq!(recipe.every(), Some(SignedDuration::from_secs(30)));
-        let Extract::Html(fields) = &recipe.extract else { panic!("html") };
+        let Extract::Html(fields) = &recipe.extract else {
+            panic!("html")
+        };
         assert_eq!(fields.duration.as_deref(), Some("@data-duration"));
         assert!(recipe.ignores("Fréquence 7 - le direct"));
         assert!(!recipe.ignores("BLACK RAINBOWS - Children Of Fire"));
@@ -377,13 +419,19 @@ mod tests {
     #[test]
     fn matches_streams_and_stations() {
         let mut recipe = Recipe::from_toml(FREQUENCE7).unwrap();
-        recipe.matches.stations.push("96202f73-0601-11e8-ae97-52543be04c81".into());
+        recipe
+            .matches
+            .stations
+            .push("96202f73-0601-11e8-ae97-52543be04c81".into());
         assert!(recipe.matches(None, "https://live.aurafm.org/Frequence7"));
         assert!(recipe.matches(None, "http://LIVE.aurafm.org:80/frequence7/"));
         assert!(recipe.matches(None, "https://live.aurafm.org/Frequence7?listener=1"));
         assert!(!recipe.matches(None, "https://live.aurafm.org/Frequence7HD"));
         assert!(!recipe.matches(None, "https://example.com/Frequence7"));
-        assert!(recipe.matches(Some("96202F73-0601-11E8-AE97-52543BE04C81"), "https://cdn.example/x"));
+        assert!(recipe.matches(
+            Some("96202F73-0601-11E8-AE97-52543BE04C81"),
+            "https://cdn.example/x"
+        ));
 
         recipe.matches.streams = vec!["stream.example.org/radio/*".into()];
         assert!(recipe.matches(None, "https://stream.example.org/radio/hd.mp3"));
@@ -392,16 +440,29 @@ mod tests {
 
     #[test]
     fn rejects_bad_recipes() {
-        let bad = |from: &str, to: &str| Recipe::from_toml(&FREQUENCE7.replace(from, to)).unwrap_err();
-        assert!(matches!(bad("schema = 1", "schema = 7"), LoadError::NewerSchema(7)));
+        let bad =
+            |from: &str, to: &str| Recipe::from_toml(&FREQUENCE7.replace(from, to)).unwrap_err();
+        assert!(matches!(
+            bad("schema = 1", "schema = 7"),
+            LoadError::NewerSchema(7)
+        ));
         assert!(matches!(bad("schema = 1", ""), LoadError::Invalid(_)));
-        let LoadError::Invalid(e) = bad("every = \"30s\"", "every = \"2s\"") else { panic!() };
+        let LoadError::Invalid(e) = bad("every = \"30s\"", "every = \"2s\"") else {
+            panic!()
+        };
         assert!(e.contains("minimum"), "{e}");
-        let LoadError::Invalid(e) = bad("\"live.aurafm", "\"https://live.aurafm") else { panic!() };
+        let LoadError::Invalid(e) = bad("\"live.aurafm", "\"https://live.aurafm") else {
+            panic!()
+        };
         assert!(e.contains("scheme"), "{e}");
-        let LoadError::Invalid(e) = bad("li.event_0", "li[[") else { panic!() };
+        let LoadError::Invalid(e) = bad("li.event_0", "li[[") else {
+            panic!()
+        };
         assert!(e.contains("selector"), "{e}");
-        let LoadError::Invalid(e) = bad("type = \"html\"", "type = \"html\"\ncolour = \"red\"") else { panic!() };
+        let LoadError::Invalid(e) = bad("type = \"html\"", "type = \"html\"\ncolour = \"red\"")
+        else {
+            panic!()
+        };
         assert!(e.contains("colour"), "{e}");
     }
 
@@ -412,13 +473,21 @@ mod tests {
         let mut book = RecipeBook::default();
         book.extend([local]);
         book.extend([shared]);
-        assert_eq!(book.find(None, "https://live.aurafm.org/Frequence7").unwrap().name, "Local");
+        assert_eq!(
+            book.find(None, "https://live.aurafm.org/Frequence7")
+                .unwrap()
+                .name,
+            "Local"
+        );
     }
 
     #[test]
     fn schema_describes_the_format() {
         let schema = json_schema().to_string();
-        assert!(schema.contains("\"streams\"") && schema.contains("\"html\""), "{schema}");
+        assert!(
+            schema.contains("\"streams\"") && schema.contains("\"html\""),
+            "{schema}"
+        );
     }
 
     #[test]

@@ -48,7 +48,11 @@ mod platform {
 
     /// `GetConnectivity`: 1 local only, 2 limited, 3 captive portal, 4 full.
     fn portal() -> Option<Connectivity> {
-        let bus = Builder::session().ok()?.method_timeout(TIMEOUT).build().ok()?;
+        let bus = Builder::session()
+            .ok()?
+            .method_timeout(TIMEOUT)
+            .build()
+            .ok()?;
         let reply = bus
             .call_method(
                 Some("org.freedesktop.portal.Desktop"),
@@ -68,7 +72,11 @@ mod platform {
 
     /// `Connectivity`: 0 unknown, 1 none, 2 portal, 3 limited, 4 full.
     fn network_manager() -> Option<Connectivity> {
-        let bus = Builder::system().ok()?.method_timeout(TIMEOUT).build().ok()?;
+        let bus = Builder::system()
+            .ok()?
+            .method_timeout(TIMEOUT)
+            .build()
+            .ok()?;
         let reply = bus
             .call_method(
                 Some("org.freedesktop.NetworkManager"),
@@ -93,10 +101,13 @@ mod platform {
     use std::sync::OnceLock;
 
     use windows_sys::Win32::Networking::WinSock::{
-        NetworkConnectivityLevelHintConstrainedInternetAccess, NetworkConnectivityLevelHintInternetAccess,
-        NetworkConnectivityLevelHintLocalAccess, NetworkConnectivityLevelHintNone, NL_NETWORK_CONNECTIVITY_HINT,
+        NetworkConnectivityLevelHintConstrainedInternetAccess,
+        NetworkConnectivityLevelHintInternetAccess, NetworkConnectivityLevelHintLocalAccess,
+        NetworkConnectivityLevelHintNone, NL_NETWORK_CONNECTIVITY_HINT,
     };
-    use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32};
+    use windows_sys::Win32::System::LibraryLoader::{
+        GetProcAddress, LoadLibraryExW, LOAD_LIBRARY_SEARCH_SYSTEM32,
+    };
 
     use super::Connectivity;
 
@@ -108,14 +119,23 @@ mod platform {
         *FUNCTION.get_or_init(|| {
             let dll: Vec<u16> = "iphlpapi.dll\0".encode_utf16().collect();
             // SAFETY: a NUL-terminated name, loaded from System32 only.
-            let module = unsafe { LoadLibraryExW(dll.as_ptr(), std::ptr::null_mut(), LOAD_LIBRARY_SEARCH_SYSTEM32) };
+            let module = unsafe {
+                LoadLibraryExW(
+                    dll.as_ptr(),
+                    std::ptr::null_mut(),
+                    LOAD_LIBRARY_SEARCH_SYSTEM32,
+                )
+            };
             if module.is_null() {
                 return None;
             }
             // SAFETY: a NUL-terminated name; the module stays loaded for the process lifetime.
-            let function = unsafe { GetProcAddress(module, c"GetNetworkConnectivityHint".as_ptr().cast()) }?;
+            let function =
+                unsafe { GetProcAddress(module, c"GetNetworkConnectivityHint".as_ptr().cast()) }?;
             // SAFETY: the documented signature of `GetNetworkConnectivityHint`.
-            Some(unsafe { std::mem::transmute::<unsafe extern "system" fn() -> isize, GetHint>(function) })
+            Some(unsafe {
+                std::mem::transmute::<unsafe extern "system" fn() -> isize, GetHint>(function)
+            })
         })
     }
 
@@ -128,7 +148,9 @@ mod platform {
         }
         #[allow(non_upper_case_globals)]
         match hint.ConnectivityLevel {
-            NetworkConnectivityLevelHintNone | NetworkConnectivityLevelHintLocalAccess => Some(Connectivity::NoInternet),
+            NetworkConnectivityLevelHintNone | NetworkConnectivityLevelHintLocalAccess => {
+                Some(Connectivity::NoInternet)
+            }
             // "Restricted access, e.g. a captive portal": not certainly a portal.
             NetworkConnectivityLevelHintConstrainedInternetAccess => Some(Connectivity::NoInternet),
             NetworkConnectivityLevelHintInternetAccess => Some(Connectivity::Full),

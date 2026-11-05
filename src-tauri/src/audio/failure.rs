@@ -22,7 +22,10 @@ use super::connectivity::Connectivity;
 /// Servers asked whether Internet works: the Radio-Browser API, which Soundfolk already uses for
 /// its catalog (no new third party learns anything). Any HTTPS answer counts, even an error: it
 /// proves a real connection (a captive portal cannot fake the certificate).
-const INTERNET_CHECKS: [&str; 2] = ["https://all.api.radio-browser.info/", "https://de1.api.radio-browser.info/"];
+const INTERNET_CHECKS: [&str; 2] = [
+    "https://all.api.radio-browser.info/",
+    "https://de1.api.radio-browser.info/",
+];
 const INTERNET_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Why a playback attempt failed.
@@ -61,7 +64,11 @@ pub(crate) enum Verdict {
 
 /// Whose fault `failure` is, on proof only (see the module). Blocking, at most a few seconds.
 pub(crate) fn diagnose(failure: &Failure, runtime: &tokio::runtime::Handle) -> Verdict {
-    decide(failure, || internet_reachable(runtime), super::connectivity::system)
+    decide(
+        failure,
+        || internet_reachable(runtime),
+        super::connectivity::system,
+    )
 }
 
 /// [`diagnose`], with the checks passed in. They only run when the failure itself proves nothing.
@@ -97,7 +104,9 @@ impl Failure {
             Self::Refused => "its server refuses connections".into(),
             Self::NoAnswer => "its server does not answer".into(),
             Self::Unreachable(detail) => format!("its server cannot be reached ({detail})"),
-            Self::Http(status @ (404 | 410)) => format!("the stream no longer exists (HTTP {status})"),
+            Self::Http(status @ (404 | 410)) => {
+                format!("the stream no longer exists (HTTP {status})")
+            }
             Self::Http(status @ 500..) => format!("its server has a problem (HTTP {status})"),
             Self::Http(status) => format!("the stream is refused (HTTP {status})"),
             Self::Stopped(_) => "the stream stopped".into(),
@@ -120,7 +129,9 @@ impl Failure {
     /// The connection to the station's server failed.
     pub(crate) fn connect(error: &HttpStreamError<Client>) -> Self {
         match error {
-            HttpStreamError::ResponseFailure(failure) => Self::Http(failure.response().status().as_u16()),
+            HttpStreamError::ResponseFailure(failure) => {
+                Self::Http(failure.response().status().as_u16())
+            }
             HttpStreamError::FetchFailure(error) => Self::request(error),
         }
     }
@@ -165,7 +176,10 @@ pub(crate) fn internet_reachable(runtime: &tokio::runtime::Handle) -> bool {
         return true; // cannot tell: blame nobody, the station's own error is shown
     };
     runtime.block_on(async {
-        let (a, b) = tokio::join!(client.head(INTERNET_CHECKS[0]).send(), client.head(INTERNET_CHECKS[1]).send());
+        let (a, b) = tokio::join!(
+            client.head(INTERNET_CHECKS[0]).send(),
+            client.head(INTERNET_CHECKS[1]).send()
+        );
         a.is_ok() || b.is_ok()
     })
 }
@@ -177,7 +191,10 @@ mod tests {
     use stream_download::http::HttpStream;
 
     async fn connect(url: &str) -> Failure {
-        let client = Client::builder().timeout(Duration::from_secs(5)).build().unwrap();
+        let client = Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
         match HttpStream::new(client, url.parse().unwrap()).await {
             Ok(_) => panic!("{url} should fail"),
             Err(e) => Failure::connect(&e),
@@ -187,8 +204,15 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_stopped_server_refuses_connections() {
         // A port that was just freed: nothing listens there.
-        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-        assert_eq!(connect(&format!("http://127.0.0.1:{port}/live")).await, Failure::Refused);
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        assert_eq!(
+            connect(&format!("http://127.0.0.1:{port}/live")).await,
+            Failure::Refused
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -208,21 +232,39 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn an_unknown_name_is_an_unknown_host() {
         // `.invalid` never resolves (RFC 2606), with or without network.
-        assert_eq!(connect("http://soundfolk-test.invalid/live").await, Failure::UnknownHost);
+        assert_eq!(
+            connect("http://soundfolk-test.invalid/live").await,
+            Failure::UnknownHost
+        );
     }
 
     #[test]
     fn reasons_read_after_the_lead() {
         assert_eq!(Failure::Refused.reason(), "its server refuses connections");
-        assert_eq!(Failure::Http(503).reason(), "its server has a problem (HTTP 503)");
-        assert_eq!(Failure::Http(403).reason(), "the stream is refused (HTTP 403)");
-        assert_eq!(Failure::Stopped("ended".into()).reason(), "the stream stopped");
+        assert_eq!(
+            Failure::Http(503).reason(),
+            "its server has a problem (HTTP 503)"
+        );
+        assert_eq!(
+            Failure::Http(403).reason(),
+            "the stream is refused (HTTP 403)"
+        );
+        assert_eq!(
+            Failure::Stopped("ended".into()).reason(),
+            "the stream stopped"
+        );
     }
 
     #[test]
     fn symptoms_name_no_cause() {
-        assert_eq!(Failure::UnknownHost.symptom(), "its server's address cannot be found");
-        assert_eq!(Failure::Stopped("reset".into()).symptom(), "the connection was cut");
+        assert_eq!(
+            Failure::UnknownHost.symptom(),
+            "its server's address cannot be found"
+        );
+        assert_eq!(
+            Failure::Stopped("reset".into()).symptom(),
+            "the connection was cut"
+        );
         assert_eq!(Failure::NoAnswer.symptom(), "its server does not answer");
     }
 
@@ -230,26 +272,48 @@ mod tests {
     fn answers_from_the_station_or_a_portal_need_no_check() {
         let unused = || -> bool { panic!("no check needed") };
         let no_system = || -> Option<Connectivity> { panic!("no check needed") };
-        assert_eq!(decide(&Failure::Http(404), unused, no_system), Verdict::Station);
-        assert_eq!(decide(&Failure::Http(511), unused, no_system), Verdict::SignIn);
+        assert_eq!(
+            decide(&Failure::Http(404), unused, no_system),
+            Verdict::Station
+        );
+        assert_eq!(
+            decide(&Failure::Http(511), unused, no_system),
+            Verdict::SignIn
+        );
     }
 
     #[test]
     fn internet_working_blames_the_station() {
-        let never = || -> Option<Connectivity> { panic!("not asked once Internet is shown to work") };
+        let never =
+            || -> Option<Connectivity> { panic!("not asked once Internet is shown to work") };
         assert_eq!(decide(&Failure::NoAnswer, || true, never), Verdict::Station);
         // A 5xx may come from a proxy: checked like the rest.
-        assert_eq!(decide(&Failure::Http(502), || true, never), Verdict::Station);
+        assert_eq!(
+            decide(&Failure::Http(502), || true, never),
+            Verdict::Station
+        );
     }
 
     #[test]
     fn no_internet_needs_both_signals() {
         let failure = Failure::UnknownHost;
-        assert_eq!(decide(&failure, || false, || Some(Connectivity::NoInternet)), Verdict::NoInternet);
-        assert_eq!(decide(&failure, || false, || Some(Connectivity::Portal)), Verdict::SignIn);
+        assert_eq!(
+            decide(&failure, || false, || Some(Connectivity::NoInternet)),
+            Verdict::NoInternet
+        );
+        assert_eq!(
+            decide(&failure, || false, || Some(Connectivity::Portal)),
+            Verdict::SignIn
+        );
         // Only Soundfolk's check failed (Radio-Browser down or blocked): nobody is blamed.
-        assert_eq!(decide(&failure, || false, || Some(Connectivity::Full)), Verdict::Unknown);
+        assert_eq!(
+            decide(&failure, || false, || Some(Connectivity::Full)),
+            Verdict::Unknown
+        );
         assert_eq!(decide(&failure, || false, || None), Verdict::Unknown);
-        assert_eq!(decide(&Failure::Http(503), || false, || None), Verdict::Unknown);
+        assert_eq!(
+            decide(&Failure::Http(503), || false, || None),
+            Verdict::Unknown
+        );
     }
 }

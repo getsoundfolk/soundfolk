@@ -39,7 +39,8 @@ impl Database {
     /// Median loudness of the stations learned, once there are enough of them.
     pub fn median_station_loudness(&self) -> rusqlite::Result<Option<f64>> {
         let conn = self.conn();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM station_loudness", [], |r| r.get(0))?;
+        let count: i64 =
+            conn.query_row("SELECT COUNT(*) FROM station_loudness", [], |r| r.get(0))?;
         if count < MIN_FOR_GUESS {
             return Ok(None);
         }
@@ -61,7 +62,11 @@ mod tests {
     use super::*;
 
     fn level(lufs: f64) -> StoredLevel {
-        StoredLevel { loudness_lufs: lufs, peak_dbfs: -1.5, measured_secs: 42.0 }
+        StoredLevel {
+            loudness_lufs: lufs,
+            peak_dbfs: -1.5,
+            measured_secs: 42.0,
+        }
     }
 
     #[test]
@@ -79,7 +84,8 @@ mod tests {
     fn the_guess_is_the_median_once_enough_stations_are_known() {
         let db = Database::open_in_memory().unwrap();
         for i in 0..19 {
-            db.save_station_level(&i.to_string(), &level(-20.0 + f64::from(i))).unwrap();
+            db.save_station_level(&i.to_string(), &level(-20.0 + f64::from(i)))
+                .unwrap();
         }
         assert_eq!(db.median_station_loudness().unwrap(), None);
         db.save_station_level("19", &level(-1.0)).unwrap();

@@ -45,9 +45,13 @@ pub enum Health {
     Ok,
     /// The catalog's last check failed. May be a false negative (brief outage,
     /// geo-blocking of the checking servers): playback is still allowed.
-    Unreachable { last_ok: Option<String> },
+    Unreachable {
+        last_ok: Option<String>,
+    },
     /// Cannot be played by our engine (HLS for now).
-    Unsupported { reason: String },
+    Unsupported {
+        reason: String,
+    },
 }
 
 impl Health {
@@ -116,14 +120,19 @@ impl SearchQuery {
     /// Normalizes frontend input (whitespace, case, bounds); an empty value becomes `None`.
     pub fn sanitized(&self) -> Result<Self, CatalogError> {
         let clean = |v: &Option<String>| {
-            v.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)
+            v.as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned)
         };
         let clean_text =
             |v: &Option<String>| v.as_deref().map(catalog_text).filter(|s| !s.is_empty());
         let country_code = clean(&self.country_code).map(|c| c.to_ascii_uppercase());
         if let Some(code) = &country_code {
             if code.len() != 2 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(CatalogError::BadRequest(format!("Invalid country code: {code}")));
+                return Err(CatalogError::BadRequest(format!(
+                    "Invalid country code: {code}"
+                )));
             }
         }
         Ok(Self {

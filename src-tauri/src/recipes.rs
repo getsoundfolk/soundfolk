@@ -66,7 +66,9 @@ pub struct RecipeSet {
 impl RecipeSet {
     /// The recipe for a station (Radio-Browser UUID) or stream URL.
     pub fn find(&self, station_id: Option<&str>, stream: &str) -> Option<&Entry> {
-        self.entries.iter().find(|e| e.recipe.matches(station_id, stream))
+        self.entries
+            .iter()
+            .find(|e| e.recipe.matches(station_id, stream))
     }
 
     #[cfg(test)]
@@ -133,7 +135,12 @@ impl Recipes {
                 parse(text)
                     .inspect_err(|e| tracing::warn!("bundled recipe {file}: {e}"))
                     .ok()
-                    .map(|recipe| Entry { id, origin: Origin::Bundled, path: None, recipe: Arc::new(recipe) })
+                    .map(|recipe| Entry {
+                        id,
+                        origin: Origin::Bundled,
+                        path: None,
+                        recipe: Arc::new(recipe),
+                    })
             })
             .collect();
         let recipes = Self {
@@ -153,7 +160,10 @@ impl Recipes {
 
     /// The recipes in use now.
     pub fn current(&self) -> Arc<RecipeSet> {
-        self.current.read().unwrap_or_else(|p| p.into_inner()).clone()
+        self.current
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
     }
 
     /// Incremented every time the recipes in use change.
@@ -163,7 +173,10 @@ impl Recipes {
 
     /// The shipped TOML of a recipe.
     pub(crate) fn bundled_text(&self, id: &str) -> Option<&'static str> {
-        BUNDLED.iter().find(|(file, _)| file.trim_end_matches(".toml") == id).map(|(_, text)| *text)
+        BUNDLED
+            .iter()
+            .find(|(file, _)| file.trim_end_matches(".toml") == id)
+            .map(|(_, text)| *text)
     }
 
     /// A shipped or shared recipe as a local file to edit (see [`local_copy`]).
@@ -177,7 +190,8 @@ impl Recipes {
 
     /// Whether a shipped or shared recipe has this id (a new local file must not take it).
     pub fn is_known_id(&self, id: &str) -> bool {
-        self.bundled.iter().any(|e| e.id == id) || self.lock_layers().shared.iter().any(|e| e.id == id)
+        self.bundled.iter().any(|e| e.id == id)
+            || self.lock_layers().shared.iter().any(|e| e.id == id)
     }
 
     /// Number of recipes in the shared list in use.
@@ -192,7 +206,12 @@ impl Recipes {
         let mut layers = self.lock_layers();
         layers.shared = recipes
             .into_iter()
-            .map(|(id, recipe)| Entry { id, origin: Origin::Shared, path: None, recipe: Arc::new(recipe) })
+            .map(|(id, recipe)| Entry {
+                id,
+                origin: Origin::Shared,
+                path: None,
+                recipe: Arc::new(recipe),
+            })
             .collect();
         self.publish(&layers);
     }
@@ -213,7 +232,11 @@ impl Recipes {
             .filter(|e| seen.insert(e.id.clone()))
             .cloned()
             .collect();
-        let set = RecipeSet { local: layers.local_count, entries, errors: layers.errors.clone() };
+        let set = RecipeSet {
+            local: layers.local_count,
+            entries,
+            errors: layers.errors.clone(),
+        };
         *self.current.write().unwrap_or_else(|p| p.into_inner()) = Arc::new(set);
         self.generation.fetch_add(1, Ordering::SeqCst);
     }
@@ -221,12 +244,22 @@ impl Recipes {
     /// Reloads the local folder if a file appeared, changed or disappeared. Returns the files that
     /// appeared or changed (`None`: nothing changed).
     pub fn reload_if_changed(&self) -> Option<Vec<Change>> {
-        let files = self.local_dir.as_deref().map(list_local).unwrap_or_default();
+        let files = self
+            .local_dir
+            .as_deref()
+            .map(list_local)
+            .unwrap_or_default();
         let fingerprint: Fingerprint = files
             .iter()
             .map(|path| {
                 let meta = std::fs::metadata(path).ok();
-                (path.clone(), (meta.as_ref().and_then(|m| m.modified().ok()), meta.map_or(0, |m| m.len())))
+                (
+                    path.clone(),
+                    (
+                        meta.as_ref().and_then(|m| m.modified().ok()),
+                        meta.map_or(0, |m| m.len()),
+                    ),
+                )
             })
             .collect();
         let mut layers = self.lock_layers();
@@ -234,14 +267,18 @@ impl Recipes {
         if !first && layers.fingerprint == fingerprint {
             return None;
         }
-        let changed: Vec<&PathBuf> =
-            files.iter().filter(|p| !first && layers.fingerprint.get(*p) != fingerprint.get(*p)).collect();
+        let changed: Vec<&PathBuf> = files
+            .iter()
+            .filter(|p| !first && layers.fingerprint.get(*p) != fingerprint.get(*p))
+            .collect();
 
         let mut local = Vec::new();
         let mut errors = Vec::new();
         for path in &files {
             let id = file_id(path);
-            let result = std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|text| parse(&text));
+            let result = std::fs::read_to_string(path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| parse(&text));
             match result {
                 Ok(recipe) => local.push(Entry {
                     id,
@@ -251,7 +288,11 @@ impl Recipes {
                 }),
                 Err(error) => {
                     tracing::warn!("recipe {}: {error}", path.display());
-                    errors.push(FileError { id, path: path.clone(), error });
+                    errors.push(FileError {
+                        id,
+                        path: path.clone(),
+                        error,
+                    });
                 }
             }
         }
@@ -259,8 +300,15 @@ impl Recipes {
             .into_iter()
             .map(|path| {
                 let id = file_id(path);
-                let error = errors.iter().find(|e| e.path == *path).map(|e| e.error.clone());
-                Change { id, path: path.clone(), error }
+                let error = errors
+                    .iter()
+                    .find(|e| e.path == *path)
+                    .map(|e| e.error.clone());
+                Change {
+                    id,
+                    path: path.clone(),
+                    error,
+                }
             })
             .collect();
 
@@ -274,7 +322,9 @@ impl Recipes {
 }
 
 fn list_local(dir: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
     let mut paths: Vec<PathBuf> = entries
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().is_some_and(|x| x == "toml") && p.is_file())
@@ -284,7 +334,9 @@ fn list_local(dir: &Path) -> Vec<PathBuf> {
 }
 
 fn file_id(path: &Path) -> String {
-    path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+    path.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn parse(text: &str) -> Result<Recipe, String> {
@@ -297,13 +349,24 @@ fn parse(text: &str) -> Result<Recipe, String> {
 /// A file name for a new recipe, from the station name: lowercase ASCII words joined by `-`.
 pub fn slug(name: &str) -> String {
     use unicode_normalization::UnicodeNormalization;
-    let folded: String = name.nfkd().filter(char::is_ascii).collect::<String>().to_ascii_lowercase();
-    let words: Vec<&str> = folded.split(|c: char| !c.is_ascii_alphanumeric()).filter(|w| !w.is_empty()).collect();
+    let folded: String = name
+        .nfkd()
+        .filter(char::is_ascii)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let words: Vec<&str> = folded
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
     let slug = words.join("-");
     if slug.is_empty() {
         "station".into()
     } else {
-        slug.chars().take(48).collect::<String>().trim_end_matches('-').to_owned()
+        slug.chars()
+            .take(48)
+            .collect::<String>()
+            .trim_end_matches('-')
+            .to_owned()
     }
 }
 
@@ -434,14 +497,19 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("soundfolk-recipes-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("soundfolk-recipes-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     fn frequence7() -> &'static str {
-        BUNDLED.iter().find(|(n, _)| *n == "frequence7.toml").unwrap().1
+        BUNDLED
+            .iter()
+            .find(|(n, _)| *n == "frequence7.toml")
+            .unwrap()
+            .1
     }
 
     #[test]
@@ -463,7 +531,8 @@ mod tests {
     #[test]
     fn published_schema_is_up_to_date() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("recipes/recipe.schema.json");
-        let published: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let published: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(
             published,
             soundfolk_nowplaying::recipe::json_schema(),
@@ -474,16 +543,26 @@ mod tests {
     #[test]
     fn local_recipes_come_first_and_replace_shipped_ones_by_id() {
         let dir = temp_dir("order");
-        std::fs::write(dir.join("mine.toml"), frequence7().replace("name = \"Fréquence 7\"", "name = \"Mine\"")).unwrap();
+        std::fs::write(
+            dir.join("mine.toml"),
+            frequence7().replace("name = \"Fréquence 7\"", "name = \"Mine\""),
+        )
+        .unwrap();
         std::fs::write(dir.join("broken.toml"), "schema = 1\nname = ").unwrap();
         let recipes = Recipes::new(Some(dir.clone()));
         let set = recipes.current();
-        assert_eq!(set.find(None, "https://live.aurafm.org/Frequence7").unwrap().id, "mine");
+        assert_eq!(
+            set.find(None, "https://live.aurafm.org/Frequence7")
+                .unwrap()
+                .id,
+            "mine"
+        );
         assert_eq!((set.len(), set.local_count()), (2, 2));
         assert_eq!(set.errors()[0].id, "broken");
 
         // Same id as the shipped recipe: replaces it even when it matches another stream.
-        let moved = local_copy(frequence7()).replace("live.aurafm.org/Frequence7", "example.org/other");
+        let moved =
+            local_copy(frequence7()).replace("live.aurafm.org/Frequence7", "example.org/other");
         std::fs::write(dir.join("frequence7.toml"), moved).unwrap();
         recipes.reload_if_changed().unwrap();
         let set = recipes.current();
@@ -511,11 +590,17 @@ mod tests {
         std::fs::write(dir.join("frequence7.toml"), local_copy(frequence7())).unwrap();
         let changes = recipes.reload_if_changed().unwrap();
         assert_eq!(changes[0].error, None);
-        assert_eq!(recipes.current().get("frequence7").unwrap().origin, Origin::Local);
+        assert_eq!(
+            recipes.current().get("frequence7").unwrap().origin,
+            Origin::Local
+        );
 
         std::fs::remove_file(dir.join("frequence7.toml")).unwrap();
         assert_eq!(recipes.reload_if_changed(), Some(Vec::new()));
-        assert_eq!(recipes.current().get("frequence7").unwrap().origin, Origin::Bundled);
+        assert_eq!(
+            recipes.current().get("frequence7").unwrap().origin,
+            Origin::Bundled
+        );
         assert_eq!(recipes.generation(), start + 3);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -525,15 +610,26 @@ mod tests {
         let dir = temp_dir("shared");
         let recipes = Recipes::new(Some(dir.clone()));
         let shipped = Recipe::from_toml(frequence7()).unwrap();
-        let other = Recipe::from_toml(&frequence7().replace("live.aurafm.org/Frequence7", "example.org/other")).unwrap();
+        let other = Recipe::from_toml(
+            &frequence7().replace("live.aurafm.org/Frequence7", "example.org/other"),
+        )
+        .unwrap();
         let start = recipes.generation();
-        recipes.set_shared(vec![("frequence7".into(), other.published()), ("new".into(), shipped.published())]);
+        recipes.set_shared(vec![
+            ("frequence7".into(), other.published()),
+            ("new".into(), shipped.published()),
+        ]);
         assert_eq!(recipes.generation(), start + 1);
         let set = recipes.current();
         // Same id as the shipped recipe: the shared one replaces it, and only it is used.
         assert_eq!(set.get("frequence7").unwrap().origin, Origin::Shared);
         assert_eq!(set.len(), 2);
-        assert_eq!(set.find(None, "https://live.aurafm.org/Frequence7").unwrap().id, "new");
+        assert_eq!(
+            set.find(None, "https://live.aurafm.org/Frequence7")
+                .unwrap()
+                .id,
+            "new"
+        );
         assert!(recipes.is_known_id("new") && recipes.shared_count() == 2);
 
         // A local file replaces the shared recipe, and the shared list survives local reloads.
@@ -546,7 +642,10 @@ mod tests {
         // An edited copy of a shared recipe reads back as the same recipe.
         let entry = set.get("frequence7").unwrap().clone();
         let copy = recipes.local_copy_of(&entry).unwrap();
-        assert!(copy.starts_with(&format!("#:schema {SCHEMA_FILE}\n")), "{copy}");
+        assert!(
+            copy.starts_with(&format!("#:schema {SCHEMA_FILE}\n")),
+            "{copy}"
+        );
         assert_eq!(Recipe::from_toml(&copy).unwrap(), *entry.recipe);
         std::fs::remove_dir_all(&dir).unwrap();
     }
@@ -571,19 +670,36 @@ mod tests {
         });
         assert!(text.contains(r#"name = "Radio \"Test\" Été""#), "{text}");
         assert!(text.contains(r#"stations = ["11111111-1111-1111-1111-111111111111"], streams = ["stream.example.org/live.mp3"]"#), "{text}");
-        assert!(text.contains(r#"fetch = { url = "https://example.org/" }"#), "{text}");
+        assert!(
+            text.contains(r#"fetch = { url = "https://example.org/" }"#),
+            "{text}"
+        );
         // Parses as TOML; invalid as a recipe until the selectors are filled in.
         let error = parse(&text).unwrap_err();
-        assert_eq!(error, "fill in or remove the empty `extract` field(s): item, artist, title", "{text}");
-        let filled = text.replace("item = \"\"", "item = \"li\"").replace("artist = \"\"", "artist = \".a\"").replace("title = \"\"", "title = \".t\"");
+        assert_eq!(
+            error, "fill in or remove the empty `extract` field(s): item, artist, title",
+            "{text}"
+        );
+        let filled = text
+            .replace("item = \"\"", "item = \"li\"")
+            .replace("artist = \"\"", "artist = \".a\"")
+            .replace("title = \"\"", "title = \".t\"");
         assert!(parse(&filled).is_ok(), "{:?}", parse(&filled));
     }
 
     #[test]
     fn share_links_fill_in_the_issue_form() {
-        let link = share_link("radio-x", "Radio X & co", "schema = 1\nname = \"X\"\n", Some("<li>a</li>"));
+        let link = share_link(
+            "radio-x",
+            "Radio X & co",
+            "schema = 1\nname = \"X\"\n",
+            Some("<li>a</li>"),
+        );
         let url = crate::audio::Url::parse(&link).unwrap();
-        assert_eq!(url.as_str().split('?').next(), Some("https://github.com/getsoundfolk/soundfolk-recipes/issues/new"));
+        assert_eq!(
+            url.as_str().split('?').next(),
+            Some("https://github.com/getsoundfolk/soundfolk-recipes/issues/new")
+        );
         let params: HashMap<String, String> = url.query_pairs().into_owned().collect();
         assert_eq!(params["template"], "share.yml");
         assert_eq!(params["title"], "Recipe: Radio X & co");

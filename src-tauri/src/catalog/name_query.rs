@@ -52,13 +52,20 @@ impl NameQuery {
     /// characters" (SQL `LIKE`): this is not documented, see [`super::radio_browser`] which
     /// checks that it still works before relying on it.
     pub fn wildcard_term(&self) -> String {
-        self.fragments.iter().map(|f| like_literal(f)).collect::<Vec<_>>().join("%")
+        self.fragments
+            .iter()
+            .map(|f| like_literal(f))
+            .collect::<Vec<_>>()
+            .join("%")
     }
 
     /// Longest fragment, as catalog search text: what to ask the catalog for when `%` is not
     /// available, or the whole search when there is a single fragment.
     pub fn longest_fragment(&self) -> String {
-        self.fragments.iter().max_by_key(|f| f.chars().count()).map_or_else(String::new, |f| like_literal(f))
+        self.fragments
+            .iter()
+            .max_by_key(|f| f.chars().count())
+            .map_or_else(String::new, |f| like_literal(f))
     }
 
     /// Whether `name` holds the fragments in order, separated only by spaces, quotes, dashes, dots

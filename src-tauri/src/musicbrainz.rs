@@ -22,7 +22,11 @@ pub const SETTING_IDENTIFY: &str = "identify_tracks";
 
 const API: &str = "https://musicbrainz.org/ws/2/";
 const COVER_ART_ARCHIVE: &str = "https://coverartarchive.org/";
-const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"), " ( https://github.com/getsoundfolk/soundfolk )");
+const USER_AGENT: &str = concat!(
+    "Soundfolk/",
+    env!("CARGO_PKG_VERSION"),
+    " ( https://github.com/getsoundfolk/soundfolk )"
+);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// The API allows one request per second on average.
 const REQUEST_INTERVAL: Duration = Duration::from_millis(1100);
@@ -85,7 +89,10 @@ impl MusicBrainz {
             .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| LookupError::Network(e.to_string()))?;
-        Ok(Self { client, last_request: tokio::sync::Mutex::new(None) })
+        Ok(Self {
+            client,
+            last_request: tokio::sync::Mutex::new(None),
+        })
     }
 
     /// Waits until a request to MusicBrainz is allowed (at most one per [`REQUEST_INTERVAL`]).
@@ -98,26 +105,46 @@ impl MusicBrainz {
     }
 
     async fn get(&self, path: &str, params: &[(&str, &str)]) -> Result<Value, LookupError> {
-        let mut url = Url::parse(API).and_then(|u| u.join(path)).map_err(|e| LookupError::Invalid(e.to_string()))?;
-        url.query_pairs_mut().extend_pairs(params).append_pair("fmt", "json");
+        let mut url = Url::parse(API)
+            .and_then(|u| u.join(path))
+            .map_err(|e| LookupError::Invalid(e.to_string()))?;
+        url.query_pairs_mut()
+            .extend_pairs(params)
+            .append_pair("fmt", "json");
         self.throttle().await;
-        let response = self.client.get(url).send().await.map_err(|e| LookupError::Network(e.to_string()))?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| LookupError::Network(e.to_string()))?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(Value::Null);
         }
-        let response = response.error_for_status().map_err(|e| LookupError::Network(e.to_string()))?;
-        let bytes = response.bytes().await.map_err(|e| LookupError::Network(e.to_string()))?;
+        let response = response
+            .error_for_status()
+            .map_err(|e| LookupError::Network(e.to_string()))?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| LookupError::Network(e.to_string()))?;
         serde_json::from_slice(&bytes).map_err(|e| LookupError::Invalid(e.to_string()))
     }
 
     /// Best recording for an artist and a title, if one is trustworthy.
-    pub async fn find_recording(&self, artist: &str, title: &str) -> Result<Option<RecordingMatch>, LookupError> {
+    pub async fn find_recording(
+        &self,
+        artist: &str,
+        title: &str,
+    ) -> Result<Option<RecordingMatch>, LookupError> {
         let query = format!(
             "recording:{} AND artist:{}",
             lucene_phrase(&tracks::clean_for_search(title)),
             lucene_phrase(&tracks::clean_for_search(artist)),
         );
-        let body = self.get("recording", &[("query", &query), ("limit", "5")]).await?;
+        let body = self
+            .get("recording", &[("query", &query), ("limit", "5")])
+            .await?;
         Ok(best_recording(&body))
     }
 
@@ -128,7 +155,9 @@ impl MusicBrainz {
             lucene_phrase(&tracks::clean_for_search(title)),
             lucene_phrase(&tracks::clean_for_search(artist)),
         );
-        let body = self.get("recording", &[("query", &query), ("limit", "25")]).await?;
+        let body = self
+            .get("recording", &[("query", &query), ("limit", "25")])
+            .await?;
         Ok(cover_candidates(&body))
     }
 
@@ -137,7 +166,9 @@ impl MusicBrainz {
         if !is_mbid(mbid) {
             return Err(LookupError::Invalid(format!("invalid artist ID: {mbid}")));
         }
-        let body = self.get(&format!("artist/{mbid}"), &[("inc", "genres")]).await?;
+        let body = self
+            .get(&format!("artist/{mbid}"), &[("inc", "genres")])
+            .await?;
         Ok(parse_artist(&body))
     }
 
@@ -145,16 +176,29 @@ impl MusicBrainz {
     /// 500 px thumbnail address, if it has one.
     pub async fn release_group_cover(&self, mbid: &str) -> Result<Option<String>, LookupError> {
         if !is_mbid(mbid) {
-            return Err(LookupError::Invalid(format!("invalid release group ID: {mbid}")));
+            return Err(LookupError::Invalid(format!(
+                "invalid release group ID: {mbid}"
+            )));
         }
         let url = format!("{COVER_ART_ARCHIVE}release-group/{mbid}");
-        let response = self.client.get(url).send().await.map_err(|e| LookupError::Network(e.to_string()))?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| LookupError::Network(e.to_string()))?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        let response = response.error_for_status().map_err(|e| LookupError::Network(e.to_string()))?;
-        let bytes = response.bytes().await.map_err(|e| LookupError::Network(e.to_string()))?;
-        let body: Value = serde_json::from_slice(&bytes).map_err(|e| LookupError::Invalid(e.to_string()))?;
+        let response = response
+            .error_for_status()
+            .map_err(|e| LookupError::Network(e.to_string()))?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| LookupError::Network(e.to_string()))?;
+        let body: Value =
+            serde_json::from_slice(&bytes).map_err(|e| LookupError::Invalid(e.to_string()))?;
         Ok(front_cover(&body))
     }
 }
@@ -235,7 +279,12 @@ fn is_mbid(value: &str) -> bool {
 }
 
 fn str_of(value: &Value, key: &str) -> Option<String> {
-    value.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(str::to_owned)
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
 }
 
 /// The score is a number in the current API, a string in older responses.
@@ -253,10 +302,19 @@ fn names(value: &Value, key: &str) -> Vec<String> {
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|t| Some((t.get("count").and_then(Value::as_i64).unwrap_or(0), str_of(t, "name")?)))
+        .filter_map(|t| {
+            Some((
+                t.get("count").and_then(Value::as_i64).unwrap_or(0),
+                str_of(t, "name")?,
+            ))
+        })
         .collect();
     items.sort_by_key(|(count, _)| std::cmp::Reverse(*count));
-    items.into_iter().map(|(_, n)| n.to_lowercase()).take(5).collect()
+    items
+        .into_iter()
+        .map(|(_, n)| n.to_lowercase())
+        .take(5)
+        .collect()
 }
 
 /// Picks the first recording above [`MIN_SCORE`] (results come best first).
@@ -288,18 +346,33 @@ fn best_album(recording: &Value) -> Option<Album> {
         .iter()
         .filter_map(|r| r.get("release-group"))
         .collect();
-    let primary = |g: &Value| g.get("primary-type").and_then(Value::as_str).map(str::to_owned);
+    let primary = |g: &Value| {
+        g.get("primary-type")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    };
     let group = groups.into_iter().min_by_key(|g| album_rank(g))?;
-    Some(Album { mbid: str_of(group, "id")?, title: str_of(group, "title")?, primary_type: primary(group) })
+    Some(Album {
+        mbid: str_of(group, "id")?,
+        title: str_of(group, "title")?,
+        primary_type: primary(group),
+    })
 }
 
 /// How well a release group stands for "the album" (lower is better): a plain album, then an album
 /// or EP that is not a compilation or a live recording, then a single, then anything else.
 fn album_rank(group: &Value) -> u8 {
     let primary = group.get("primary-type").and_then(Value::as_str);
-    let secondary: Vec<&str> =
-        group.get("secondary-types").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).collect();
-    let bad = secondary.iter().any(|s| *s == "Compilation" || *s == "Live");
+    let secondary: Vec<&str> = group
+        .get("secondary-types")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    let bad = secondary
+        .iter()
+        .any(|s| *s == "Compilation" || *s == "Live");
     match primary {
         Some("Album") if secondary.is_empty() => 0,
         Some("Album" | "EP") if !bad => 1,
@@ -316,11 +389,21 @@ pub const MAX_COVER_CANDIDATES: usize = 3;
 /// The best-scored recording alone is often an obscure compilation without cover art.
 fn cover_candidates(body: &Value) -> Vec<String> {
     let mut groups: Vec<(String, u8, usize, usize)> = Vec::new();
-    let recordings = body.get("recordings").and_then(Value::as_array).into_iter().flatten();
+    let recordings = body
+        .get("recordings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten();
     for recording in recordings.filter(|r| score_of(r) >= MIN_SCORE) {
-        let releases = recording.get("releases").and_then(Value::as_array).into_iter().flatten();
+        let releases = recording
+            .get("releases")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten();
         for group in releases.filter_map(|r| r.get("release-group")) {
-            let Some(id) = str_of(group, "id").filter(|id| is_mbid(id)) else { continue };
+            let Some(id) = str_of(group, "id").filter(|id| is_mbid(id)) else {
+                continue;
+            };
             match groups.iter_mut().find(|g| g.0 == id) {
                 Some(seen) => seen.2 += 1,
                 None => {
@@ -331,14 +414,20 @@ fn cover_candidates(body: &Value) -> Vec<String> {
         }
     }
     groups.sort_by_key(|&(_, rank, count, order)| (rank, std::cmp::Reverse(count), order));
-    groups.into_iter().map(|g| g.0).take(MAX_COVER_CANDIDATES).collect()
+    groups
+        .into_iter()
+        .map(|g| g.0)
+        .take(MAX_COVER_CANDIDATES)
+        .collect()
 }
 
 /// The image marked as front in a Cover Art Archive listing: its 500 px thumbnail, or the largest
 /// one given. Addresses are moved to https.
 fn front_cover(body: &Value) -> Option<String> {
     let images = body.get("images")?.as_array()?;
-    let front = images.iter().find(|i| i.get("front").and_then(Value::as_bool) == Some(true))?;
+    let front = images
+        .iter()
+        .find(|i| i.get("front").and_then(Value::as_bool) == Some(true))?;
     let thumbnails = front.get("thumbnails");
     let url = ["500", "large", "250", "small"]
         .iter()
@@ -418,7 +507,10 @@ mod tests {
             {"id":"c","score":95,"releases":[group(5, "Album", &[])]},
             {"id":"d","score":60,"releases":[group(6, "Album", &[])]}
         ]});
-        let ids: Vec<String> = cover_candidates(&body).into_iter().map(|id| id[24..].to_string()).collect();
+        let ids: Vec<String> = cover_candidates(&body)
+            .into_iter()
+            .map(|id| id[24..].to_string())
+            .collect();
         // Two plain albums, the one with more releases first, then the single; never the low score
         assert_eq!(ids, ["000000000005", "000000000004", "000000000003"]);
         assert!(cover_candidates(&Value::Null).is_empty());
@@ -431,11 +523,20 @@ mod tests {
             {"front":true,"image":"http://coverartarchive.org/release/r/1.jpg",
              "thumbnails":{"250":"http://coverartarchive.org/release/r/1-250.jpg","500":"http://coverartarchive.org/release/r/1-500.jpg"}}
         ]});
-        assert_eq!(front_cover(&body).as_deref(), Some("https://coverartarchive.org/release/r/1-500.jpg"));
+        assert_eq!(
+            front_cover(&body).as_deref(),
+            Some("https://coverartarchive.org/release/r/1-500.jpg")
+        );
         let only_image = serde_json::json!({"images":[{"front":true,"image":"https://x/1.jpg"}]});
         assert_eq!(front_cover(&only_image).as_deref(), Some("https://x/1.jpg"));
-        assert_eq!(front_cover(&serde_json::json!({"images":[{"front":false,"image":"https://x/1.jpg"}]})), None);
-        assert_eq!(front_cover(&serde_json::json!({"images":[{"front":true,"image":"ftp://x/1.jpg"}]})), None);
+        assert_eq!(
+            front_cover(&serde_json::json!({"images":[{"front":false,"image":"https://x/1.jpg"}]})),
+            None
+        );
+        assert_eq!(
+            front_cover(&serde_json::json!({"images":[{"front":true,"image":"ftp://x/1.jpg"}]})),
+            None
+        );
     }
 
     #[test]
@@ -450,7 +551,11 @@ mod tests {
     #[ignore = "network"]
     async fn live_musicbrainz_finds_a_classic() {
         let mb = MusicBrainz::new().unwrap();
-        let found = mb.find_recording("Ben E. King", "Stand by Me").await.unwrap().unwrap();
+        let found = mb
+            .find_recording("Ben E. King", "Stand by Me")
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(found.artist_name, "Ben E. King");
         tokio::time::sleep(REQUEST_INTERVAL).await;
         let artist = mb.artist(&found.artist_mbid).await.unwrap().unwrap();

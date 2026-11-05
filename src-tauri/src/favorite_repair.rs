@@ -98,7 +98,11 @@ impl Repair {
             play,
             favorite,
             url: url.to_owned(),
-            stage: if retrying { Stage::Retrying } else { Stage::Starting },
+            stage: if retrying {
+                Stage::Retrying
+            } else {
+                Stage::Starting
+            },
         });
     }
 
@@ -130,23 +134,35 @@ impl Repair {
 
     /// Whether playback `play` still waits for its lookup (not stopped, no other station since).
     fn looking_up(&self, play: u64) -> bool {
-        self.watched.as_ref().is_some_and(|w| w.play == play && w.stage == Stage::LookingUp)
+        self.watched
+            .as_ref()
+            .is_some_and(|w| w.play == play && w.stage == Stage::LookingUp)
     }
 }
 
 /// Called for every playback, before it starts: watches it if it is a catalog favorite.
 pub(crate) fn watch(app: &AppHandle, station_id: Option<&str>, url: &str) {
-    let Some(state) = app.try_state::<FavoriteRepair>() else { return };
+    let Some(state) = app.try_state::<FavoriteRepair>() else {
+        return;
+    };
     let favorite = station_id
         .filter(|id| commands::is_catalog_id(id))
-        .and_then(|id| app.state::<Database>().list_favorites().ok()?.into_iter().find(|f| f.station_id == id));
+        .and_then(|id| {
+            app.state::<Database>()
+                .list_favorites()
+                .ok()?
+                .into_iter()
+                .find(|f| f.station_id == id)
+        });
     state.lock().start(favorite, url);
 }
 
 /// Called for every player state, before anyone else sees it; returns the state to show. Holds
 /// back the error of a favorite that never started, while its new address is looked up.
 pub(crate) fn on_state(app: &AppHandle, state: PlayerState) -> PlayerState {
-    let Some(repair) = app.try_state::<FavoriteRepair>() else { return state };
+    let Some(repair) = app.try_state::<FavoriteRepair>() else {
+        return state;
+    };
     let action = repair.lock().on_state(&state);
     match (action, &state) {
         (Action::LookUp(watched), PlayerState::Error(message)) => {
@@ -215,8 +231,13 @@ fn retry(app: &AppHandle, watched: &Watched, url: String) -> Result<(), String> 
         repair.retry_url = Some(url.clone());
     }
     tracing::info!(station = %favorite.station_id, "favorite moved: trying its new address");
-    let outcome = commands::start_station(app, url.clone(), Some(favorite.station_id.clone()), Some(favorite.name.clone()))
-        .map_err(|e| e.to_string())?;
+    let outcome = commands::start_station(
+        app,
+        url.clone(),
+        Some(favorite.station_id.clone()),
+        Some(favorite.name.clone()),
+    )
+    .map_err(|e| e.to_string())?;
     let change = StationChange {
         id: favorite.station_id.clone(),
         name: favorite.name.clone(),
@@ -245,11 +266,16 @@ fn take_if_looking_up(app: &AppHandle, play: u64) -> bool {
 fn save_new_address(app: &AppHandle, watched: &Watched) {
     let db = app.state::<Database>();
     let current = match db.list_favorites() {
-        Ok(list) => list.into_iter().find(|f| f.station_id == watched.favorite.station_id),
+        Ok(list) => list
+            .into_iter()
+            .find(|f| f.station_id == watched.favorite.station_id),
         Err(e) => return tracing::warn!("favorite not updated: {e}"),
     };
     let Some(favorite) = current else { return };
-    if let Err(e) = db.add_favorite(&Favorite { stream_url: watched.url.clone(), ..favorite }) {
+    if let Err(e) = db.add_favorite(&Favorite {
+        stream_url: watched.url.clone(),
+        ..favorite
+    }) {
         return tracing::warn!("favorite not updated: {e}");
     }
     tracing::info!(station = %watched.favorite.station_id, "favorite's new address saved");
@@ -355,9 +381,15 @@ mod tests {
 
     #[test]
     fn a_user_play_of_another_address_is_not_taken_for_the_retry() {
-        let mut repair = Repair { retry_url: Some(NEW.into()), ..Default::default() };
+        let mut repair = Repair {
+            retry_url: Some(NEW.into()),
+            ..Default::default()
+        };
         repair.start(favorite(), OLD);
-        assert_eq!(repair.watched.as_ref().map(|w| w.stage), Some(Stage::Starting));
+        assert_eq!(
+            repair.watched.as_ref().map(|w| w.stage),
+            Some(Stage::Starting)
+        );
         assert_eq!(repair.retry_url, None);
     }
 }

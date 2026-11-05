@@ -29,8 +29,10 @@ const SLEEP_GAP: Duration = Duration::from_secs(4);
 
 /// Public addresses whose route is looked up (nothing is ever sent to them).
 const PROBE_V4: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)), 53);
-const PROBE_V6: SocketAddr =
-    SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)), 53);
+const PROBE_V6: SocketAddr = SocketAddr::new(
+    IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0x4700, 0, 0, 0, 0, 0x1111)),
+    53,
+);
 
 /// What the watcher knows. Generations only go up: a change since a connection was opened is
 /// seen by comparing them.
@@ -53,7 +55,10 @@ struct Watcher {
 pub(crate) fn subscribe() -> watch::Receiver<NetState> {
     static WATCH: OnceLock<Watcher> = OnceLock::new();
     let watcher = WATCH.get_or_init(|| {
-        let (tx, _) = watch::channel(NetState { online: true, ..Default::default() });
+        let (tx, _) = watch::channel(NetState {
+            online: true,
+            ..Default::default()
+        });
         let sender = tx.clone();
         let thread = thread::Builder::new()
             .name("net-watch".into())
@@ -65,7 +70,9 @@ pub(crate) fn subscribe() -> watch::Receiver<NetState> {
     });
     // Up to date at once: a playback started offline waits for the network instead of failing.
     let online = routes().online();
-    watcher.tx.send_if_modified(|s| std::mem::replace(&mut s.online, online) != online);
+    watcher
+        .tx
+        .send_if_modified(|s| std::mem::replace(&mut s.online, online) != online);
     let rx = watcher.tx.subscribe();
     if let Some(thread) = &watcher.thread {
         thread.unpark();
@@ -91,7 +98,8 @@ fn watch_while_listened(tx: &watch::Sender<NetState>) {
     let (mut wall, mut mono, mut resumes) = (SystemTime::now(), Instant::now(), windows::resumes());
     while tx.receiver_count() > 0 {
         thread::sleep(POLL);
-        let (wall_now, mono_now, resumes_now) = (SystemTime::now(), Instant::now(), windows::resumes());
+        let (wall_now, mono_now, resumes_now) =
+            (SystemTime::now(), Instant::now(), windows::resumes());
         let slept = wall_now.duration_since(wall).unwrap_or_default();
         let awake = mono_now.duration_since(mono);
         let resumed = resumes_now != resumes;
@@ -130,7 +138,10 @@ impl Routes {
 }
 
 fn routes() -> Routes {
-    Routes { v4: local_address(PROBE_V4), v6: local_address(PROBE_V6) }
+    Routes {
+        v4: local_address(PROBE_V4),
+        v6: local_address(PROBE_V6),
+    }
 }
 
 fn local_address(target: SocketAddr) -> Option<IpAddr> {
@@ -151,7 +162,9 @@ mod windows {
     use std::ffi::c_void;
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use windows_sys::Win32::System::Power::{PowerRegisterSuspendResumeNotification, DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS};
+    use windows_sys::Win32::System::Power::{
+        PowerRegisterSuspendResumeNotification, DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS,
+    };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         DEVICE_NOTIFY_CALLBACK, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND,
     };
@@ -163,7 +176,11 @@ mod windows {
         RESUMES.load(Ordering::SeqCst)
     }
 
-    unsafe extern "system" fn on_power(_context: *const c_void, kind: u32, _setting: *const c_void) -> u32 {
+    unsafe extern "system" fn on_power(
+        _context: *const c_void,
+        kind: u32,
+        _setting: *const c_void,
+    ) -> u32 {
         // Both are sent on a wake by the user; one is enough to count it.
         if kind == PBT_APMRESUMEAUTOMATIC || kind == PBT_APMRESUMESUSPEND {
             RESUMES.fetch_add(1, Ordering::SeqCst);
@@ -173,13 +190,19 @@ mod windows {
 
     /// Registers for the process lifetime (never unregistered: the watcher never stops).
     pub(super) fn watch_resume() {
-        let params: &'static mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS = Box::leak(Box::new(
-            DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS { Callback: Some(on_power), Context: std::ptr::null_mut() },
-        ));
+        let params: &'static mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS =
+            Box::leak(Box::new(DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS {
+                Callback: Some(on_power),
+                Context: std::ptr::null_mut(),
+            }));
         let mut handle: *mut c_void = std::ptr::null_mut();
         // SAFETY: `params` lives forever; `handle` is a valid out pointer.
         let error = unsafe {
-            PowerRegisterSuspendResumeNotification(DEVICE_NOTIFY_CALLBACK, (params as *mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS).cast(), &mut handle)
+            PowerRegisterSuspendResumeNotification(
+                DEVICE_NOTIFY_CALLBACK,
+                (params as *mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS).cast(),
+                &mut handle,
+            )
         };
         if error != 0 {
             tracing::warn!("wake from sleep not watched (error {error})");
@@ -240,32 +263,66 @@ mod tests {
 
     #[test]
     fn interface_switches_and_outages_are_changes() {
-        let wifi = Routes { v4: ip("192.168.1.20"), v6: None };
-        let lte = Routes { v4: ip("10.64.3.7"), v6: ip("2a01:cb00::7") };
+        let wifi = Routes {
+            v4: ip("192.168.1.20"),
+            v6: None,
+        };
+        let lte = Routes {
+            v4: ip("10.64.3.7"),
+            v6: ip("2a01:cb00::7"),
+        };
         let mut d = Detector::new(wifi);
         assert_eq!(d.observe(wifi, SEC, SEC), Changes::default());
         assert!(d.observe(lte, SEC, SEC).network, "Wi-Fi → 4G");
-        assert!(d.observe(Routes::default(), SEC, SEC).network, "network lost");
+        assert!(
+            d.observe(Routes::default(), SEC, SEC).network,
+            "network lost"
+        );
         assert!(!d.routes.online());
         assert!(d.observe(wifi, SEC, SEC).network, "network back");
     }
 
     #[test]
     fn ipv6_address_rotation_alone_is_not_a_change() {
-        let before = Routes { v4: ip("192.168.1.20"), v6: ip("2a01:cb00::1") };
-        let after = Routes { v4: ip("192.168.1.20"), v6: ip("2a01:cb00::2") };
+        let before = Routes {
+            v4: ip("192.168.1.20"),
+            v6: ip("2a01:cb00::1"),
+        };
+        let after = Routes {
+            v4: ip("192.168.1.20"),
+            v6: ip("2a01:cb00::2"),
+        };
         let mut d = Detector::new(before);
         assert!(!d.observe(after, SEC, SEC).network);
         // IPv6 only: the address is the route, a new one is a change.
-        let mut d = Detector::new(Routes { v4: None, v6: ip("2a01:cb00::1") });
-        assert!(d.observe(Routes { v4: None, v6: ip("2a01:cb00::2") }, SEC, SEC).network);
+        let mut d = Detector::new(Routes {
+            v4: None,
+            v6: ip("2a01:cb00::1"),
+        });
+        assert!(
+            d.observe(
+                Routes {
+                    v4: None,
+                    v6: ip("2a01:cb00::2")
+                },
+                SEC,
+                SEC
+            )
+            .network
+        );
     }
 
     #[test]
     fn a_wall_clock_jump_is_a_wake() {
-        let net = Routes { v4: ip("192.168.1.20"), v6: None };
+        let net = Routes {
+            v4: ip("192.168.1.20"),
+            v6: None,
+        };
         let mut d = Detector::new(net);
-        assert!(!d.observe(net, Duration::from_millis(1_300), SEC).wake, "a late tick is not a sleep");
+        assert!(
+            !d.observe(net, Duration::from_millis(1_300), SEC).wake,
+            "a late tick is not a sleep"
+        );
         assert!(d.observe(net, Duration::from_secs(3_600), SEC).wake);
     }
 
