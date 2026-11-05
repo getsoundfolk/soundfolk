@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# cargo-deny: security advisories, duplicate crates and licenses of the dependencies.
+# Run locally from src-tauri/:  cargo deny check
+# Run in CI by .github/workflows/deps.yml (weekly, and when Cargo.lock changes).
+
+[graph]
+# The desktop platforms the app is built for: what only Android or iOS pull in is left out.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-apple-darwin",
+]
+all-features = true
+
+[advisories]
+# Vulnerabilities always fail. Unmaintained crates fail only when we depend on them directly:
+# the ones deep in Tauri or GTK are not ours to replace.
+unmaintained = "workspace"
+unsound = "workspace"
+yanked = "deny"
+ignore = []
+
+[bans]
+# Two versions of one crate fail, except the ones below: they come from Tauri, WebKitGTK / GTK3 or
+# their build crates, and only move when those do. A new duplicate (a dependency added or updated)
+# fails the check: fix it (another version of our crate, see the scraper 0.27 commit) or add it
+# here with the reason. An entry nothing matches any more gives a warning: remove it.
+multiple-versions = "deny"
+# Path dependencies (crates/nowplaying) have no version: the only wildcards we have.
+wildcards = "allow"
+highlight = "simplest-path"
+skip = [
+    # Tauri (tauri-utils, swift-rs, plist, image): older majors than the rest of the tree
+    { crate = "base64:<0.23", reason = "Tauri" },
+    { crate = "getrandom:<0.4", reason = "Tauri" },
+    { crate = "heck:<0.5", reason = "Tauri" },
+    { crate = "miniz_oxide:<0.9", reason = "Tauri (png, ico)" },
+    { crate = "schemars:<1", reason = "tauri-utils" },
+    { crate = "schemars_derive:<1", reason = "tauri-utils" },
+    { crate = "serde_derive_internals:<0.30", reason = "tauri-utils (schemars 0.8)" },
+    { crate = "indexmap:<2", reason = "tauri-utils (schemars 0.8)" },
+    { crate = "hashbrown:<0.17", reason = "tauri-utils (indexmap 1), arboard (clipboard plugin)" },
+    { crate = "foldhash:<0.2", reason = "arboard (clipboard plugin)" },
+    { crate = "quick-xml:<0.42", reason = "wayland-scanner (clipboard plugin)" },
+    { crate = "dirs:<7", reason = "tauri-plugin-autostart" },
+    # GTK3 / WebKitGTK bindings (gtk-rs 0.18) and their build crates (system-deps)
+    { crate = "bitflags:<2", reason = "webkit2gtk, javascriptcore-rs" },
+    { crate = "syn:<2", reason = "proc-macro-error (glib-macros, gtk3-macros)" },
+    { crate = "thiserror:<2", reason = "gtk-rs 0.18" },
+    { crate = "thiserror-impl:<2", reason = "gtk-rs 0.18" },
+    { crate = "proc-macro-crate:<3", reason = "glib-macros, gtk3-macros" },
+    { crate = "toml:<1", reason = "system-deps" },
+    { crate = "toml_edit:<0.25", reason = "system-deps, proc-macro-crate 1 and 2" },
+    { crate = "toml_datetime:<1", reason = "system-deps" },
+    { crate = "serde_spanned:<1", reason = "system-deps" },
+    { crate = "winnow:<1", reason = "system-deps" },
+    # Crates moving to a new major: both live side by side until the ecosystem has moved
+    { crate = "syn:>=3", reason = "syn 3 arriving (async-recursion, zbus...), syn 2 still most of the tree" },
+    { crate = "parking_lot:>=0.13", reason = "stream-download is ahead of the rest of the tree" },
+    { crate = "parking_lot_core:>=0.10", reason = "stream-download (parking_lot 0.13)" },
+    { crate = "lock_api:>=0.5", reason = "stream-download (parking_lot 0.13)" },
+]
+
+[licenses]
+# Compatible with the app's MPL-2.0.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

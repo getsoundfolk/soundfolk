@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Weekly update PRs for the Rust crates, the npm packages and the GitHub Actions.
+# Security fixes come as soon as an advisory is published, outside this schedule, once
+# "Dependabot security updates" is on in the repository settings (Settings → Code security).
+# The DCO check skips Dependabot's commits (bot account, see .github/scripts/check-dco.sh).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /src-tauri # the workspace root, also covers crates/nowplaying
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      # Tauri, its plugins and its build crates move together.
+      tauri:
+        patterns: ["tauri", "tauri-*"]
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      tauri:
+        patterns: ["@tauri-apps/*"]
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Keeps the SHA-pinned actions of the workflows up to date.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      actions:
+        patterns: ["*"]

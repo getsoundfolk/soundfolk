@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Dependency checks:
+#   - Rust (cargo-deny, rules in src-tauri/deny.toml): security advisories, duplicate crates, licenses,
+#     sources;
+#   - npm: security advisories of moderate severity or more;
+#   - on a pull request: how many crates / packages it adds, and which. Fails above a threshold: a
+#     dependency that pulls many others in cascade deserves a look (see TODO.md, clipboard plugin).
+# Runs every Monday (new advisories come out for unchanged dependencies) and whenever a lockfile
+# changes. Dependency updates themselves come from Dependabot (.github/dependabot.yml).
+name: Dependencies
+
+on:
+  schedule:
+    - cron: "41 5 * * 1" # Mondays, 05:41 UTC, before Dependabot's weekly PRs are reviewed
+  push:
+    branches: [main]
+    paths:
+      - src-tauri/Cargo.lock
+      - src-tauri/**/Cargo.toml
+      - src-tauri/deny.toml
+      - package-lock.json
+      - .github/workflows/deps.yml
+  pull_request:
+    paths:
+      - src-tauri/Cargo.lock
+      - src-tauri/**/Cargo.toml
+      - src-tauri/deny.toml
+      - package-lock.json
+      - .github/workflows/deps.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    name: Rust (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned to commit SHAs rather than mutable tags.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          manifest-path: src-tauri/Cargo.toml
+          command: check
+          arguments: --all-features
+
+  npm-audit:
+    name: npm (audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # Reads package-lock.json, no install needed. Low-severity advisories without a fix
+      # (deepmerge via vite-plugin-svelte, build only) do not fail the job.
+      - run: npm audit --audit-level=moderate
+
+  weight:
+    name: Added dependencies
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      # Above this many new crates or npm packages in one pull request, the job fails.
+      MAX_NEW: 15
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base commit's lockfiles
+      - name: Compare the lockfiles with the base branch
+        run: |
+          export LC_ALL=C # one sort order for sort and comm
+          crates() { # name@version of every package in a Cargo.lock
+            awk '/^name = /{n=$3} /^version = /{gsub(/"/,"",n); gsub(/"/,"",$3); print n"@"$3}' | sort -u
+          }
+          npm_packages() { # name@version of every package in a package-lock.json
+            jq -r '.packages | to_entries[] | select(.key != "") | "\(.key | sub(".*node_modules/"; ""))@\(.value.version)"' | sort -u
+          }
+          names() { sed 's/@[^@]*$//' | sort -u; }
+
+          status=0
+          report() { # <label> <base list> <head list>
+            local label=$1 base=$2 head=$3
+            local added removed new_names
+            added=$(comm -13 "$base" "$head" | wc -l)
+            removed=$(comm -23 "$base" "$head" | wc -l)
+            # New names only: a version bump of a crate already there is not a new dependency.
+            new_names=$(comm -13 <(names < "$base") <(names < "$head"))
+            local count; count=$(printf '%s' "$new_names" | grep -c . || true)
+            {
+              echo "### $label: $(wc -l < "$base") → $(wc -l < "$head") packages"
+              echo "$count new, $added versions added, $removed removed."
+              if [ "$count" -gt 0 ]; then
+                echo; echo '```'; echo "$new_names"; echo '```'
+              fi
+            } >> "$GITHUB_STEP_SUMMARY"
+            if [ "$count" -gt "$MAX_NEW" ]; then
+              echo "::error::$label: $count new packages (more than $MAX_NEW). Check what pulls them in (cargo tree -i <crate>, npm ls <package>); if they are worth it, merge anyway."
+              status=1
+            fi
+          }
+
+          git show "$BASE_SHA:src-tauri/Cargo.lock" | crates > /tmp/base-crates
+          crates < src-tauri/Cargo.lock > /tmp/head-crates
+          report "Rust crates" /tmp/base-crates /tmp/head-crates
+
+          git show "$BASE_SHA:package-lock.json" | npm_packages > /tmp/base-npm
+          npm_packages < package-lock.json > /tmp/head-npm
+          report "npm packages" /tmp/base-npm /tmp/head-npm
+
+          exit $status
