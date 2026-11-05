@@ -19,6 +19,7 @@
     "windows": [
       {
         "title": "Soundfolk",
+        "create": false,
         "width": 480,
         "height": 720,
         "resizable": true

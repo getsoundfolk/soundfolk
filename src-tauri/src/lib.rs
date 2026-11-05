@@ -144,8 +144,12 @@ fn track_session(
     }
 }
 
-/// Label of the main window, as declared in `tauri.conf.json`.
+/// Label of the main window, as declared in `tauri.conf.json` (`create: false`: opened in `setup`).
 const MAIN_WINDOW: &str = "main";
+
+/// Argument of the launch at login (Settings): the app starts in the notification area, without
+/// its window, and does not play.
+const HIDDEN_ARG: &str = "--hidden";
 
 /// Size and position of the main window when it was last closed, to open it again in the same place.
 #[derive(Default)]
@@ -216,7 +220,12 @@ pub fn run() {
     // Registered first, as the plugin asks: a second launch hands over to the running copy
     // (which keeps playing and shows its window) and exits before opening the database or the audio
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)));
+    let builder = builder
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![HIDDEN_ARG]),
+        ));
 
     builder
         .plugin(tauri_plugin_opener::init())
@@ -302,10 +311,19 @@ pub fn run() {
                 }
             });
 
+            // Launched at login: no window, so no web view, until the icon is clicked. If the icon turns
+            // out to show nowhere, the window opens after all (`tray::set_unavailable`).
+            let hidden = std::env::args().skip(1).any(|arg| arg == HIDDEN_ARG);
+            if hidden {
+                tray::show_window_state(app.handle(), false);
+            }
             // Without an icon, closing the window quits: there would be no way back to it
             if let Err(e) = tray::init(app) {
                 tracing::warn!("no notification area icon: {e}");
                 tray::set_available(false);
+            }
+            if !hidden || !tray::available() {
+                open_main_window(app.handle())?;
             }
             Ok(())
         })
@@ -364,6 +382,8 @@ pub fn run() {
             commands::set_click_counting,
             commands::get_web_titles,
             commands::set_web_titles,
+            commands::get_autostart,
+            commands::set_autostart,
             commands::get_title_status,
             commands::reload_recipes,
             commands::test_recipe,

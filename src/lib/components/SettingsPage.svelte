@@ -14,6 +14,7 @@
   let clickCounting = $state(true);
   let identify = $state(false);
   let webTitles = $state(true);
+  let autostart = $state(false);
   let version = $state<string | null>(null);
   let back: HTMLButtonElement | undefined = $state();
 
@@ -104,6 +105,10 @@
       .getCoverSources()
       .then((s) => (coverSources = s))
       .catch((e) => (player.error = errorMessage(e)));
+    api
+      .getAutostart()
+      .then((enabled) => (autostart = enabled))
+      .catch((e) => (player.error = errorMessage(e)));
     try {
       [clickCounting, identify, webTitles] = await Promise.all([
         api.getClickCounting(),
@@ -123,6 +128,16 @@
       if (!enabled) player.clickNotice = false;
     } catch (e) {
       clickCounting = !enabled;
+      player.error = errorMessage(e);
+    }
+  }
+
+  async function changeAutostart(enabled: boolean) {
+    autostart = enabled;
+    try {
+      await api.setAutostart(enabled);
+    } catch (e) {
+      autostart = !enabled;
       player.error = errorMessage(e);
     }
   }
@@ -248,6 +263,26 @@
   {#if player.error}<p class={styles.error} role="alert">{player.error}</p>{/if}
 
   <div class={styles.body}>
+    <section class={styles.group} aria-labelledby="settings-startup">
+      <h2 class={styles.groupTitle} id="settings-startup">Startup</h2>
+
+      <label class={styles.option}>
+        <span class={styles.text}>
+          <span class={styles.name}>Launch at login</span>
+          <span class={styles.detail}>
+            Soundfolk starts in the notification area when you log in, without opening its window or playing.
+          </span>
+        </span>
+        <input
+          class={styles.toggle}
+          type="checkbox"
+          role="switch"
+          checked={autostart}
+          onchange={(e) => changeAutostart(e.currentTarget.checked)}
+        />
+      </label>
+    </section>
+
     <section class={styles.group} aria-labelledby="settings-privacy">
       <h2 class={styles.groupTitle} id="settings-privacy">Privacy</h2>
       <p class={styles.groupIntro}>

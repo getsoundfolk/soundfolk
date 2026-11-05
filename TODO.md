@@ -86,7 +86,7 @@ listening stats must be crossed with the sessions.
 - [ ] Make the tray optional; check GNOME without the AppIndicator extension (closing may hide the window with no
   icon to bring it back).
 - [ ] Setting to use the system title bar (window decorations).
-- [ ] Launch at startup (`tauri-plugin-autostart`), possibly with "resume the last station".
+- [x] Launch at login (`tauri-plugin-autostart`), hidden in the notification area, without playing.
 - [ ] Audio quality Low / Auto / High: pick among a station's streams by bitrate (Radio-Browser often lists several).
 - [ ] When a stream fails, fall back to another stream of the same station, or a similar station.
 - [ ] Drop `tauri-plugin-clipboard-manager` (~10–15 crates fewer, mostly `image`, for text only): a small `copy_text`

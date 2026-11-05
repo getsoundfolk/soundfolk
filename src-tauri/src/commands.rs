@@ -282,6 +282,22 @@ pub async fn set_web_titles(db: State<'_, Database>, web: State<'_, WebTitlesSta
     Ok(())
 }
 
+/// Launch at login, hidden in the notification area. The system keeps the setting (on Linux a file
+/// in `~/.config/autostart`), so it is read from there, not from the database.
+#[tauri::command]
+pub async fn get_autostart(app: AppHandle) -> AppResult<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    Ok(app.autolaunch().is_enabled().map_err(|e| format!("Launch at login unknown: {e}"))?)
+}
+
+#[tauri::command]
+pub async fn set_autostart(app: AppHandle, enabled: bool) -> AppResult<()> {
+    use tauri_plugin_autostart::ManagerExt;
+    let launch = app.autolaunch();
+    let changed = if enabled { launch.enable() } else { launch.disable() };
+    Ok(changed.map_err(|e| format!("Launch at login not changed: {e}"))?)
+}
+
 // ── Recipes ──────────────────────────────────────────────────────────────────
 
 /// Where the title of the current playback comes from.

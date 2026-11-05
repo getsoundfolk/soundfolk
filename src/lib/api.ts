@@ -217,6 +217,9 @@ export const api = {
 
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),
+  /** Launch at login, hidden in the notification area. */
+  getAutostart: () => invoke<boolean>('get_autostart'),
+  setAutostart: (enabled: boolean) => invoke<void>('set_autostart', { enabled }),
   getWebTitles: () => invoke<boolean>('get_web_titles'),
   setWebTitles: (enabled: boolean) => invoke<void>('set_web_titles', { enabled }),
   getTitleStatus: () => invoke<TitleStatus>('get_title_status'),

@@ -14,7 +14,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
 use crate::audio::PlayerState;
 use crate::media_controls::{control, Command};
@@ -32,7 +32,8 @@ static AVAILABLE: AtomicBool = AtomicBool::new(true);
 /// Whether the player is playing, as the menu shows it (Play or Pause).
 static PLAYING: AtomicBool = AtomicBool::new(false);
 
-/// Whether the main window is shown, as the menu shows it (Hide or Show). It opens at launch.
+/// Whether the main window is shown, as the menu shows it (Hide or Show). It opens at launch,
+/// unless the app starts hidden (`lib.rs`).
 static WINDOW_SHOWN: AtomicBool = AtomicBool::new(true);
 
 /// Can the window be brought back from the notification area? See [`AVAILABLE`].
@@ -42,6 +43,15 @@ pub fn available() -> bool {
 
 pub fn set_available(available: bool) {
     AVAILABLE.store(available, Ordering::Relaxed);
+}
+
+/// No icon to come back from: after a launch hidden in the notification area, the window opens
+/// after all, or the app would play on with no way back to it.
+pub fn set_unavailable(app: &AppHandle) {
+    set_available(false);
+    if app.get_webview_window(crate::MAIN_WINDOW).is_none() {
+        crate::show_main_window(app);
+    }
 }
 
 /// Follows the player, so that the menu offers Pause while it plays and Play otherwise.
@@ -92,7 +102,7 @@ mod imp {
     use ksni::{Handle, Icon, OfflineReason, ToolTip, Tray, TrayMethods};
     use tauri::AppHandle;
 
-    use super::{handle_menu, play_pause_label, set_available, toggle_label, WINDOW_SHOWN};
+    use super::{handle_menu, play_pause_label, set_available, set_unavailable, toggle_label, WINDOW_SHOWN};
 
     /// Set once the icon is registered; `Handle` is not `Clone`, so it lives here.
     static HANDLE: OnceLock<Handle<SoundfolkTray>> = OnceLock::new();
@@ -148,7 +158,7 @@ mod imp {
         /// the icon, and `watcher_online` makes it available again.
         fn watcher_offline(&self, reason: OfflineReason) -> bool {
             tracing::warn!("tray: no StatusNotifierWatcher ({reason:?}), closing the window will quit");
-            set_available(false);
+            set_unavailable(&self.app);
             true
         }
 
@@ -185,6 +195,7 @@ mod imp {
         let icon = app.default_window_icon().map(pixmap).unwrap_or_default();
         let window_shown = WINDOW_SHOWN.load(Ordering::Relaxed);
         let tray = SoundfolkTray { app: app.handle().clone(), playing: false, window_shown, icon };
+        let handle = app.handle().clone();
         // Registering is asynchronous: a failure costs the icon, not the app, so it is logged.
         // `assume_sni_available`: no watcher yet becomes a `watcher_offline` call rather than an
         // error, which keeps the service waiting for one.
@@ -194,8 +205,8 @@ mod imp {
                     let _ = HANDLE.set(handle);
                 }
                 Err(e) => {
-                    set_available(false);
                     tracing::warn!("tray: StatusNotifierItem not registered: {e}");
+                    set_unavailable(&handle);
                 }
             }
         });
