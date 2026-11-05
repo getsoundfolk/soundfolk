@@ -37,9 +37,11 @@ const RECIPE_NOTICE_EVENT: &str = "recipes:notice";
 /// How often an open listening session records that it is still playing.
 const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Adds the title to `listening_history`, without consecutive duplicates (a reconnection or a
-/// server repeating the same ICY block must not create extra rows). Some radios send their own
-/// name as the title between tracks: that is not a track, so it is skipped.
+/// Adds the title to `listening_history`, without consecutive duplicates: while listening goes on,
+/// the same track on the same station several times in a row is one entry (checked here, then by
+/// the database, which also catches another spelling of the title). After a stop (`last_logged`
+/// cleared, see `track_session`), the same track is heard again and gets its own entry. Some radios
+/// send their own name as the title between tracks: that is not a track, so it is skipped.
 fn journalize_title(
     app: &tauri::AppHandle,
     station: &Mutex<Option<OnAir>>,
@@ -72,17 +74,25 @@ fn journalize_title(
         return;
     }
     let structured = now_playing.track.is_some();
+    let continuing = last.is_some();
     let logged = match &now_playing.track {
         // Artist and title given apart by the source: stored as given, with the real start.
         Some(track) => {
             let parsed = tracks::ParsedTitle { artist: track.artist.clone(), title: track.title.clone() };
             let played_at = track.started_at.as_deref().and_then(history_time);
-            db.log_structured_track(&entry.0, station.name.as_deref(), &entry.1, &parsed, played_at.as_deref())
+            db.log_structured_track(
+                &entry.0,
+                station.name.as_deref(),
+                &entry.1,
+                &parsed,
+                played_at.as_deref(),
+                continuing,
+            )
         }
-        None => db.log_track(&entry.0, station.name.as_deref(), &entry.1),
+        None => db.log_track(&entry.0, station.name.as_deref(), &entry.1, continuing),
     };
     match logged {
-        Ok(()) => *last = Some(Logged { station_id: entry.0, title: entry.1, structured }),
+        Ok(_) => *last = Some(Logged { station_id: entry.0, title: entry.1, structured }),
         Err(e) => tracing::warn!("listening history not saved: {e}"),
     }
 }
@@ -104,8 +114,18 @@ fn history_time(started_at: &str) -> Option<String> {
         .then(|| started.strftime("%Y-%m-%d %H:%M:%S").to_string())
 }
 
-/// Opens a listening session when a station starts playing and closes it when playback stops.
-fn track_session(app: &tauri::AppHandle, station: &Mutex<Option<OnAir>>, state: &PlayerState) {
+/// Opens a listening session when a station starts playing and closes it when playback stops. A
+/// stop, a pause or an error also ends the run of titles `journalize_title` merges; a
+/// reconnection does not.
+fn track_session(
+    app: &tauri::AppHandle,
+    station: &Mutex<Option<OnAir>>,
+    last_logged: &Mutex<Option<Logged>>,
+    state: &PlayerState,
+) {
+    if matches!(state, PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_)) {
+        *last_logged.lock().unwrap_or_else(|p| p.into_inner()) = None;
+    }
     let db = app.state::<Database>();
     let result = match state {
         PlayerState::Playing => match station.lock().unwrap_or_else(|p| p.into_inner()).clone() {
@@ -229,7 +249,8 @@ pub fn run() {
             app.manage(WindowGeometry::default());
 
             let on_air = Arc::new(Mutex::new(None::<OnAir>));
-            let last_logged = Mutex::new(None::<Logged>);
+            let last_logged = Arc::new(Mutex::new(None::<Logged>));
+            let session_logged = last_logged.clone();
 
             let state_handle = app.handle().clone();
             let title_handle = app.handle().clone();
@@ -262,7 +283,7 @@ pub fn run() {
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
-                    track_session(&state_handle, &session_station, &state);
+                    track_session(&state_handle, &session_station, &session_logged, &state);
                     commands::schedule_click(&state_handle, &state);
                     state_media.show_state(&state);
                     if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {

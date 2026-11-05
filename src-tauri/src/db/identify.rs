@@ -124,7 +124,7 @@ mod tests {
     use crate::musicbrainz::Album;
 
     fn liked(db: &Database, raw: &str) -> String {
-        db.log_track("s", Some("Station"), raw).unwrap();
+        db.log_track("s", Some("Station"), raw, true).unwrap();
         let entry = db.recent_history(1, None).unwrap().remove(0);
         db.like_track(entry.id).unwrap();
         entry.track_key

@@ -347,7 +347,7 @@ mod tests {
     }
 
     fn like(db: &Database, station: &str, raw: &str) -> String {
-        db.log_track(station, Some(&station.to_uppercase()), raw).unwrap();
+        db.log_track(station, Some(&station.to_uppercase()), raw, true).unwrap();
         let entry = db.recent_history(1, None).unwrap().remove(0);
         db.like_track(entry.id).unwrap();
         entry.track_key
@@ -376,8 +376,8 @@ mod tests {
         let air2 = like(&db, "nova", "Air - Kelly Watch the Stars");
         let moby = like(&db, "fip", "Moby - Porcelain");
         let _unidentified = like(&db, "fip", "Unknown - Song");
-        db.log_track("nova", Some("NOVA"), "Air - Sexy Boy").unwrap();
-        db.log_track("nova", Some("NOVA"), "Station jingle").unwrap();
+        db.log_track("nova", Some("NOVA"), "Air - Sexy Boy", true).unwrap();
+        db.log_track("nova", Some("NOVA"), "Station jingle", true).unwrap();
         matched(&db, &air1, "air", "1998-01-16");
         matched(&db, &air2, "air", "1998");
         matched(&db, &moby, "moby", "1999");
