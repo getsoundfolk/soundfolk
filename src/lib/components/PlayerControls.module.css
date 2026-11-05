@@ -16,19 +16,36 @@
   gap: 0.75rem;
 }
 
-.cover {
+/* The art tile: always the same size, whatever it holds. */
+.art {
   flex: none;
+  display: grid;
+  place-items: center;
   width: 3.5rem;
   height: 3.5rem;
+  overflow: hidden;
   border-radius: 0.5rem;
-  object-fit: cover;
   background: #2c2c36;
+  color: #5a5a66;
 }
 
-/* Logos come in any shape and size (often a small favicon): shown whole, on a plain tile. */
+.cover {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Logos come in any shape and size (often a small favicon): shown whole, on the plain tile. */
 .cover[data-logo='true'] {
+  box-sizing: border-box;
   padding: 0.35rem;
   object-fit: contain;
+}
+
+.placeholder {
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 .info {

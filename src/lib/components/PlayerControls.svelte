@@ -56,16 +56,26 @@
 
 <section class={styles.root} aria-label="Player">
   <div class={styles.top}>
-    {#if cover}
-      <img
-        class={styles.cover}
-        data-logo={player.cover.logo === true}
-        src={cover}
-        alt=""
-        referrerpolicy="no-referrer"
-        onerror={() => (brokenCover = cover)}
-      />
-    {/if}
+    <!-- Always the same tile: the cover, the logo, or a plain note when there is neither.
+         The size is also set on the <img> itself, so a big cover never spills over the window. -->
+    <div class={styles.art} aria-hidden="true">
+      {#if cover}
+        <img
+          class={styles.cover}
+          data-logo={player.cover.logo === true}
+          src={cover}
+          width="56"
+          height="56"
+          alt=""
+          referrerpolicy="no-referrer"
+          onerror={() => (brokenCover = cover)}
+        />
+      {:else}
+        <svg class={styles.placeholder} width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M9 18.5a2.5 2.5 0 1 1-2-2.45V5.2l12-2.2v12.5a2.5 2.5 0 1 1-2-2.45V7.3l-8 1.47z" />
+        </svg>
+      {/if}
+    </div>
     <div class={styles.info}>
       <p class={styles.headline} title={headline}>{headline}</p>
       {#if subline}<p class={styles.subline}>{subline}</p>{/if}
