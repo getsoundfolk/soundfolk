@@ -272,7 +272,7 @@ pub fn template(t: &Template) -> String {
         r#"#:schema {SCHEMA_FILE}
 # Where the website of {name} shows the track on air, and how to read it.
 # Save the file: Soundfolk reloads it and reads the page again while the station plays.
-# Format: https://github.com/raphaelh/soundfolk/blob/main/docs/07-now-playing.md
+# Format: https://github.com/getsoundfolk/soundfolk/blob/main/docs/07-now-playing.md
 schema = 1
 name = {name_toml}
 match = {{ {matches} }}

@@ -309,7 +309,7 @@ impl WebTitles {
                     .user_agent(concat!(
                         "Soundfolk/",
                         env!("CARGO_PKG_VERSION"),
-                        " (+https://github.com/raphaelh/soundfolk)"
+                        " (+https://github.com/getsoundfolk/soundfolk)"
                     ))
                     .timeout(REQUEST_TIMEOUT)
                     .build()

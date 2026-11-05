@@ -21,7 +21,7 @@ use crate::tracks;
 pub const SETTING_IDENTIFY: &str = "identify_tracks";
 
 const API: &str = "https://musicbrainz.org/ws/2/";
-const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"), " ( https://github.com/raphaelh/soundfolk )");
+const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"), " ( https://github.com/getsoundfolk/soundfolk )");
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// The API allows one request per second on average.
 const REQUEST_INTERVAL: Duration = Duration::from_millis(1100);

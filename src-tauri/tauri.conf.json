@@ -35,7 +35,7 @@
     "category": "Music",
     "shortDescription": "Discover and listen to web radios from around the world",
     "longDescription": "Soundfolk is a desktop player for internet radio stations: browse and play web radios from around the world, see what is on air, and keep a history of the tracks you heard.",
-    "homepage": "https://github.com/raphaelh/soundfolk",
+    "homepage": "https://github.com/getsoundfolk/soundfolk",
     "license": "MPL-2.0",
     "linux": {
       "deb": {

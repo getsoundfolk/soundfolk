@@ -5,7 +5,7 @@
 #     (skipped when main hasn't moved since the last nightly);
 #   - on every `v*` tag, published to the GitHub Release of that tag.
 # Each .deb gets a signed build provenance attestation
-# (check it with `gh attestation verify <file>.deb -R raphaelh/soundfolk`).
+# (check it with `gh attestation verify <file>.deb -R getsoundfolk/soundfolk`).
 name: Debian package
 
 on:

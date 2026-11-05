@@ -8,7 +8,7 @@ Specs in [`docs/`](docs/).
 ## Install (Debian/Ubuntu)
 
 A `.deb` package is built automatically (see [`.github/workflows/deb.yml`](.github/workflows/deb.yml)):
-each tagged version is attached to its [release](https://github.com/raphaelh/soundfolk/releases), and a
+each tagged version is attached to its [release](https://github.com/getsoundfolk/soundfolk/releases), and a
 build of `main` is published every night as the **nightly** pre-release.
 
 ```bash
@@ -21,7 +21,7 @@ The package is built on Ubuntu 22.04, so it installs on **Ubuntu 22.04 or later*
 To check that a `.deb` was built by this repository's CI:
 
 ```bash
-gh attestation verify Soundfolk_*_amd64.deb -R raphaelh/soundfolk
+gh attestation verify Soundfolk_*_amd64.deb -R getsoundfolk/soundfolk
 ```
 
 ## Build from source
