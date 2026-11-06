@@ -71,14 +71,19 @@ URL and ticks the licence box. A bot checks it and opens the pull request. Only 
     by the next run.
 
 ### 2.4 In the app
-* `v1/stations.json` (`id`, `name`, `match`, `donate`) is downloaded once a day with `If-None-Match` and cached,
-  like the recipes (`recipe_list.rs`). Unknown keys are ignored, so new optional fields keep `v1`.
+* `v1/stations.json` (`id`, `name`, `match`, `donate`) is downloaded once a day with `If-None-Match` and cached
+  ([donations.rs](../src-tauri/src/donations.rs), on the same code as the recipes: `daily_list.rs`). Unknown keys
+  are ignored, so new optional fields keep `v1`; another `version` is refused. `SOUNDFOLK_STATIONS_URL` replaces
+  the address.
 * Downloaded **even when web titles are off** (⚙ › Privacy): the list is part of the catalog, and GitHub sees the
   listener's IP address at most once a day.
-* A station gets `donate: Option<String>` from the first entry whose `match` fits it.
+* The player asks `get_donation_link(station_id, url)` for the station it shows: the first entry whose `match`
+  fits (a Radio-Browser UUID, or the stream for a personal station), and only `https://` links. It asks again
+  on `donations:updated`, sent after a download that changed the list.
 
 ## 3. The link in the player
-Next to ♡, a **Donate** link showing the domain in its tooltip (`helloasso.com`). It is always there when the
+Between ♡ and ⓘ, a **Donate** button whose tooltip names the station and the domain ("Donate to Radio Zinzine
+(helloasso.com)"). It is always there when the
 station has a link, whatever the reminder settings. It opens with `openUrl`, in the system browser. It uses no
 heart icon: ♡ already means "like this track".
 

@@ -358,6 +358,30 @@
   }
 }
 
+/* The station's donation page: a word, not a heart (♡ likes the track). */
+.donate {
+  flex: none;
+  height: 2rem;
+  padding: 0 0.6rem;
+  border: 1px solid #3a3a46;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #c9c9d6;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.donate:hover {
+  border-color: #f0a028;
+  color: #ececf1;
+}
+
+.donate:focus-visible {
+  outline: 2px solid #f0a028;
+  outline-offset: 2px;
+}
+
 .gear {
   flex: none;
   width: 2rem;

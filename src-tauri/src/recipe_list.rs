@@ -4,9 +4,9 @@
 //! `docs/07-now-playing.md` and the repository's `ARCHITECTURE.md`.
 //!
 //! * At startup, the copy cached by the last download is used right away (offline included).
-//! * The list is downloaded again when that copy is older than [`MAX_AGE`], with `If-None-Match`:
-//!   an unchanged list costs a `304`. Only while web titles are on (⚙ › Privacy): GitHub sees the
-//!   listener's IP address, like the station sites do.
+//! * The list is downloaded again when that copy is a day old, with `If-None-Match`: an unchanged
+//!   list costs a `304` (see `daily_list.rs`). Only while web titles are on (⚙ › Privacy): GitHub
+//!   sees the listener's IP address, like the station sites do.
 //! * A list that does not parse is ignored and the cached one stays; entries this version cannot
 //!   read are skipped one by one (see [`soundfolk_nowplaying::check::load_compiled`]).
 //!
@@ -14,30 +14,27 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime};
 
 use soundfolk_nowplaying::check::load_compiled;
 use soundfolk_nowplaying::recipe::Recipe;
-use stream_download::http::reqwest::{header, Client, StatusCode};
+use stream_download::http::reqwest::Client;
 
 use crate::audio::WebTitles;
+use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
 
 /// Where the list is published. `v1` is the list format, not the recipe schema: a breaking change
 /// of the list moves it, and older apps keep reading the old one.
 pub const DEFAULT_URL: &str = "https://getsoundfolk.github.io/soundfolk-recipes/v1/recipes.json";
-/// How old the cached list may get before it is downloaded again.
-const MAX_AGE: Duration = Duration::from_secs(24 * 3600);
-/// How often to check whether the list is due (and whether web titles were turned on).
-const CHECK_EVERY: Duration = Duration::from_secs(3600);
-/// First check after startup: lets the first station start without competing for the network.
-const FIRST_CHECK: Duration = Duration::from_secs(10);
-const TIMEOUT: Duration = Duration::from_secs(30);
-/// A larger answer is not a recipe list.
-const MAX_SIZE: usize = 8 * 1024 * 1024;
 
-const LIST_FILE: &str = "recipes.json";
-/// The `ETag` of the cached list; its modification time is when the list was last checked.
-const ETAG_FILE: &str = "recipes.etag";
+const FILES: Files = Files {
+    list: "recipes.json",
+    // Its modification time is when the list was last checked.
+    etag: "recipes.etag",
+};
+#[cfg(test)]
+const LIST_FILE: &str = FILES.list;
+#[cfg(test)]
+const ETAG_FILE: &str = FILES.etag;
 
 /// Loads the cached list, then keeps it up to date in the background.
 pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
@@ -48,15 +45,7 @@ pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
     }
     let url = std::env::var("SOUNDFOLK_RECIPES_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     tauri::async_runtime::spawn(async move {
-        let client = match Client::builder()
-            .user_agent(concat!(
-                "Soundfolk/",
-                env!("CARGO_PKG_VERSION"),
-                " (+https://github.com/getsoundfolk/soundfolk)"
-            ))
-            .timeout(TIMEOUT)
-            .build()
-        {
+        let client = match daily_list::client() {
             Ok(client) => client,
             Err(e) => return tracing::warn!("shared recipes unavailable: {e}"),
         };
@@ -77,22 +66,16 @@ pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
     });
 }
 
+fn parse(text: &str) -> Result<Vec<(String, Recipe)>, String> {
+    load_compiled(text).map_err(|e| e.to_string())
+}
+
 fn read_cached(dir: &Path) -> Option<Vec<(String, Recipe)>> {
-    let text = std::fs::read_to_string(dir.join(LIST_FILE)).ok()?;
-    load_compiled(&text)
-        .inspect_err(|e| tracing::warn!("cached shared recipes: {e}"))
-        .ok()
+    daily_list::read_cached(dir, FILES, parse)
 }
 
 fn is_due(dir: &Path) -> bool {
-    let checked = std::fs::metadata(dir.join(ETAG_FILE))
-        .and_then(|m| m.modified())
-        .ok();
-    let cached = dir.join(LIST_FILE).is_file();
-    !cached
-        || checked
-            .and_then(|t| SystemTime::now().duration_since(t).ok())
-            .is_none_or(|age| age >= MAX_AGE)
+    daily_list::is_due(dir, FILES)
 }
 
 /// Downloads the list if it changed. `Ok(None)`: unchanged.
@@ -101,49 +84,7 @@ async fn refresh(
     url: &str,
     dir: &Path,
 ) -> Result<Option<Vec<(String, Recipe)>>, String> {
-    let etag_path = dir.join(ETAG_FILE);
-    let etag = std::fs::read_to_string(&etag_path)
-        .ok()
-        .filter(|_| dir.join(LIST_FILE).is_file());
-    let mut request = client.get(url);
-    if let Some(etag) = etag.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
-        request = request.header(header::IF_NONE_MATCH, etag);
-    }
-    let response = request.send().await.map_err(|e| e.to_string())?;
-    let status = response.status();
-    if status == StatusCode::NOT_MODIFIED {
-        // Rewritten to note when the list was checked.
-        std::fs::write(&etag_path, etag.unwrap_or_default()).map_err(|e| e.to_string())?;
-        return Ok(None);
-    }
-    if !status.is_success() {
-        return Err(format!("{url}: HTTP {status}"));
-    }
-    let new_etag = response
-        .headers()
-        .get(header::ETAG)
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
-    if response
-        .content_length()
-        .is_some_and(|n| n > MAX_SIZE as u64)
-    {
-        return Err(format!("{url}: too large"));
-    }
-    let body = response.bytes().await.map_err(|e| e.to_string())?;
-    if body.len() > MAX_SIZE {
-        return Err(format!("{url}: too large"));
-    }
-    let text = std::str::from_utf8(&body).map_err(|e| format!("{url}: {e}"))?;
-    let recipes = load_compiled(text).map_err(|e| format!("{url}: {e}"))?;
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    // The list first: an ETag must never describe a list that was not saved.
-    let tmp = dir.join(format!("{LIST_FILE}.tmp"));
-    std::fs::write(&tmp, text)
-        .and_then(|()| std::fs::rename(&tmp, dir.join(LIST_FILE)))
-        .map_err(|e| e.to_string())?;
-    std::fs::write(&etag_path, new_etag.unwrap_or_default()).map_err(|e| e.to_string())?;
-    Ok(Some(recipes))
+    daily_list::refresh(client, url, dir, FILES, parse).await
 }
 
 #[cfg(test)]

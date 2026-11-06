@@ -3,7 +3,9 @@ mod audio;
 mod catalog;
 mod commands;
 mod covers;
+mod daily_list;
 mod db;
+mod donations;
 mod error;
 mod export;
 mod favorite_repair;
@@ -36,6 +38,8 @@ const NOW_PLAYING_EVENT: &str = "player:now-playing";
 const TITLE_STATUS_EVENT: &str = "player:title-status";
 /// Event emitted after a local recipe file was saved (payload: `RecipeNotice`).
 const RECIPE_NOTICE_EVENT: &str = "recipes:notice";
+/// Event emitted when a new list of donation links was downloaded (no payload).
+const DONATIONS_EVENT: &str = "donations:updated";
 /// How often an open listening session records that it is still playing.
 const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -339,6 +343,21 @@ pub fn run() {
                     .ok()
                     .map(|dir| dir.join("recipes")),
             );
+            let donations = Arc::new(donations::Donations::default());
+            app.manage(donations.clone());
+            let donation_events = app.handle().clone();
+            donations::start(
+                donations,
+                app.path()
+                    .app_cache_dir()
+                    .ok()
+                    .map(|dir| dir.join("stations")),
+                move || {
+                    if let Err(e) = donation_events.emit(DONATIONS_EVENT, ()) {
+                        tracing::warn!("failed to emit {DONATIONS_EVENT}: {e}");
+                    }
+                },
+            );
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
@@ -492,6 +511,7 @@ pub fn run() {
             commands::add_personal_station,
             commands::list_personal_stations,
             commands::remove_personal_station,
+            donations::get_donation_link,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")

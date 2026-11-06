@@ -159,6 +159,12 @@ export interface Stats {
   countries: Count[];
 }
 
+/** A station's donation page (`soundfolk-stations`), and the domain the money goes to. */
+export interface DonationLink {
+  url: string;
+  domain: string;
+}
+
 export interface SearchQuery {
   text?: string;
   country_code?: string;
@@ -175,6 +181,8 @@ export const api = {
   resumeStream: () => invoke<void>('resume_stream'),
   setVolume: (volume: number) => invoke<void>('set_volume', { volume }),
   getCurrentStation: () => invoke<Playable | null>('get_current_station'),
+  getDonationLink: (stationId: string | null, url: string) =>
+    invoke<DonationLink | null>('get_donation_link', { stationId, url }),
   getVolume: () => invoke<number | null>('get_volume'),
   saveVolume: (volume: number) => invoke<void>('save_volume', { volume }),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),

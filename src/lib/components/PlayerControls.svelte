@@ -1,5 +1,8 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
+  import { listen } from '@tauri-apps/api/event';
+  import { openUrl } from '@tauri-apps/plugin-opener';
+  import { api, type DonationLink } from '../api';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
@@ -79,6 +82,39 @@
     saveTimer = setTimeout(() => player.saveVolume(), 400);
   }
 
+  // The station's donation page (docs/12-donations.md §3), asked again when the station changes
+  // or a new list was downloaded. A late answer for a previous station is dropped.
+  let donation = $state<DonationLink | null>(null);
+  let listVersion = $state(0);
+  $effect(() => {
+    let unlisten: (() => void) | undefined;
+    let gone = false;
+    void listen('donations:updated', () => listVersion++).then((f) => {
+      if (gone) f();
+      else unlisten = f;
+    });
+    return () => {
+      gone = true;
+      unlisten?.();
+    };
+  });
+  $effect(() => {
+    void listVersion;
+    const station = player.current;
+    donation = null;
+    if (!station) return;
+    let current = true;
+    api
+      .getDonationLink(station.id || null, station.url)
+      .then((link) => {
+        if (current) donation = link;
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  });
+
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
   let wasOpen = false;
@@ -138,6 +174,14 @@
         data-on={track.liked}
         onclick={() => history.toggleLike({ ...track, historyId: track.id })}
         >{track.liked ? '♥' : '♡'}</button
+      >
+    {/if}
+    {#if donation && player.current}
+      <button
+        class={styles.donate}
+        type="button"
+        title={`Donate to ${player.current.name} (${donation.domain})`}
+        onclick={() => openUrl(donation!.url)}>Donate</button
       >
     {/if}
     <button
