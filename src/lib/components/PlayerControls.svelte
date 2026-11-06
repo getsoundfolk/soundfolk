@@ -90,10 +90,12 @@
   $effect(() => {
     let unlisten: (() => void) | undefined;
     let gone = false;
-    void listen('donations:updated', () => listVersion++).then((f) => {
-      if (gone) f();
-      else unlisten = f;
-    });
+    listen('donations:updated', () => listVersion++)
+      .then((f) => {
+        if (gone) f();
+        else unlisten = f;
+      })
+      .catch((e) => errors.report('player', e));
     return () => {
       gone = true;
       unlisten?.();
