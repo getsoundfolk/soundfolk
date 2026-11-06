@@ -671,9 +671,10 @@ impl WebTitles {
         }
     }
 
-    /// For AzuraCast streams: the details of each ICY title, from the server's API, until the
-    /// playback ends. One request per title (one more if the API does not know it yet), never
-    /// closer than the minimum interval. Stops for good if the API does not describe the stream.
+    /// For streams one of whose adapters [enriches](Adapter::enriches) titles (AzuraCast): the
+    /// details of each ICY title, from the server's API, until the playback ends. One request
+    /// per title (one more if the API does not know it yet), never closer than the minimum
+    /// interval. Stops for good if the API does not describe the stream.
     async fn icy_details(
         &self,
         session: &Session,
@@ -681,11 +682,14 @@ impl WebTitles {
         reporter: &Reporter,
         cancel: &Cancel,
     ) {
-        let adapter = Adapter::AzuraCast;
         let stream = session.stream.as_str();
-        if !adapters::candidates(stream, None).contains(&adapter)
-            || lock(&self.no_details).contains(stream)
-        {
+        let Some(adapter) = adapters::candidates(stream, None)
+            .into_iter()
+            .find(|a| a.enriches())
+        else {
+            return;
+        };
+        if lock(&self.no_details).contains(stream) {
             return;
         }
         let Some(Probe { url, .. }) = adapter.probe(stream) else {
