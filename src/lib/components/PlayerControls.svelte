@@ -182,7 +182,8 @@
         class={styles.donate}
         type="button"
         title={`Donate to ${player.current.name} (${donation.domain})`}
-        onclick={() => openUrl(donation!.url)}>Donate</button
+        onclick={() => openUrl(donation!.url).catch((e) => errors.report('player', e))}
+        >Donate</button
       >
     {/if}
     <button

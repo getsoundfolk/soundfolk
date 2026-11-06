@@ -106,6 +106,12 @@
     return `UTC${sign}${Math.floor(abs / 60)}${abs % 60 ? `:${String(abs % 60).padStart(2, '0')}` : ''}`;
   };
 
+  /** Opens a link in the browser; a failure shows under the sheet's actions. */
+  function open(url: string) {
+    error = null;
+    openUrl(url).catch((e) => (error = errorMessage(e)));
+  }
+
   async function edit() {
     if (!station) return;
     error = null;
@@ -168,7 +174,7 @@
         <div>
           <dt>Website</dt>
           <dd>
-            <button class={styles.link} type="button" onclick={() => openUrl(station.homepage!)}>
+            <button class={styles.link} type="button" onclick={() => open(station.homepage!)}>
               {station.homepage.replace(/^https?:\/\//, '').replace(/\/$/, '')}
             </button>
           </dd>
@@ -221,7 +227,7 @@
           <button
             class={styles.button}
             type="button"
-            onclick={() => openUrl(recipeRequestLink(station))}
+            onclick={() => open(recipeRequestLink(station))}
           >
             Ask for a recipe
           </button>

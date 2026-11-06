@@ -39,27 +39,29 @@ class PlayerStore {
 
   /** Call once on mount; returns the unsubscribe function. */
   async init(): Promise<() => void> {
-    const offs = [
-      await listen<PlayerState>('player:state', (e) => {
+    // Subscribed together; one that fails must not leak the others nor stop the loading below.
+    const subscriptions = await Promise.allSettled([
+      listen<PlayerState>('player:state', (e) => {
         this.state = e.payload;
         if (e.payload.status !== 'error') this.goneFavorite = null;
       }),
-      await listen<string>('favorite:gone', (e) => (this.goneFavorite = e.payload)),
-      await listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
-      await listen<Cover>('player:cover', (e) => (this.cover = e.payload)),
-      await listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
-      await listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
+      listen<string>('favorite:gone', (e) => (this.goneFavorite = e.payload)),
+      listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
+      listen<Cover>('player:cover', (e) => (this.cover = e.payload)),
+      listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
+      listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
       // A favorite that had moved now plays from its new address, saved by the backend.
-      await listen('favorites:changed', () =>
+      listen('favorites:changed', () =>
         this.run(async () => (this.favorites = await api.listFavorites())),
       ),
       // Station switched from the system media controls (next / previous favorite)
-      await listen<StationChange>('player:station', (e) => {
+      listen<StationChange>('player:station', (e) => {
         const { show_click_notice, ...station } = e.payload;
         this.current = station;
         if (show_click_notice) this.clickNotice = true;
       }),
-    ];
+    ]);
+    const offs = subscriptions.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
     await this.run(async () => {
       this.state = await api.getPlayerState();
       this.nowPlaying = await api.getNowPlaying();
@@ -71,6 +73,9 @@ class PlayerStore {
       // The last station played, in this run (app kept playing in the background) or the previous one.
       this.current = await api.getCurrentStation();
     });
+    // Reported after the loading, which clears the player's error when it starts.
+    const failed = subscriptions.find((r) => r.status === 'rejected');
+    if (failed) errors.report('player', failed.reason);
     return () => offs.forEach((off) => off());
   }
 
