@@ -38,6 +38,9 @@ found_on = "https://campus-clermont.net/soutenir/"
 * `match`: the recipes' `Match` (07). `match.stations` is required: stations missing from Radio-Browser are not
   accepted for now.
 * `donate.found_on`: the page of the station's website that links to `donate.url`, the proof. The bot fills it in.
+* `donate.checked_by_hand`, instead of `found_on`, **maintainer only**: when the website doesn't link to the page
+  (common with small stations), how and when the maintainer checked it another way (an e-mail from the station's
+  address, the association registry). CI refuses it in a pull request from anyone else.
 * Nothing else in `schema = 1`. A logo, `ad_free` and `listener_supported` come later, each with its own proof.
 
 Licences: ODbL 1.0 / DbCL 1.0 for the entries, MPL 2.0 for the schema and tooling, like the recipes.
@@ -50,17 +53,22 @@ URL and ticks the licence box. A bot checks it and opens the pull request. Only 
 * `lint.py`: `https://` only, no URL shortener, no tracking parameters; `found_on` on the domain of `homepage`;
   the donation domain is the station's own or one of `platforms.toml` (maintainer only): HelloAsso, Liberapay,
   Ko-fi, Patreon, Tipeee, Open Collective, Donorbox. PayPal is not accepted for now. One entry per station.
-* On a pull request, CI reads `found_on` and looks for `donate.url` in it: found, the pull request is marked
-  *verified*; not found, it waits for a human review. A changed `donate.url` or `homepage` is always reviewed by
-  hand.
+* The bot opens a pull request only when the station's website links to the page (HelloAsso's `…/widget` links
+  count as the form they embed). Otherwise it labels the issue *manual-check* and explains why; the maintainer may
+  then add the entry with `checked_by_hand`. Every pull request is merged by the maintainer, and the bot labels
+  what to look at: *new-station* (is `homepage`, taken from Radio-Browser, official?), *link-change*,
+  *homepage-change*.
 * **Every day**, CI checks every published link:
+  * an entry checked by hand has no page to read again: only `donate.url` is checked;
   * a link no longer found on `found_on` is **left out of the published list at once**, and comes back by itself
     as soon as it is found again (the files in `stations/` don't change);
   * an issue is opened after 7 days of failure;
-  * if more than 20 % of the links fail the same day, nothing is left out and one issue is opened: the problem is
-    on CI's side (blocked runner, network);
-  * a donation URL that redirects to a domain that is not allowed, or a donation or homepage domain that no longer
-    answers or shows a parking page, is left out at once and an issue is opened at once.
+  * if more than 20 % of the links (and at least 10) fail the same day, nothing new is left out and one issue is
+    opened: the problem is on CI's side (blocked runner, network);
+  * a donation URL that redirects to a domain that is not allowed, or a page that no longer answers at all, is
+    left out and an issue is opened at once. Parking pages are not detected yet.
+  * The state (which links are out, since when) is published next to the list, `v1/status.json`, and read back
+    by the next run.
 
 ### 2.4 In the app
 * `v1/stations.json` (`id`, `name`, `match`, `donate`) is downloaded once a day with `If-None-Match` and cached,
