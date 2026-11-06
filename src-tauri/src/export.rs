@@ -166,7 +166,19 @@ fn csv(columns: &[&str], rows: impl Iterator<Item = Vec<String>>) -> String {
     out
 }
 
+/// Characters that make a spreadsheet read a cell as a formula (OWASP "CSV injection").
+const FORMULA_TRIGGERS: [char; 6] = ['=', '+', '-', '@', '\t', '\r'];
+
 fn csv_field(field: &str) -> String {
+    // Titles come from radio streams: a cell like `=HYPERLINK(...)` must stay text. A leading `'`
+    // tells the spreadsheet so, and is not displayed.
+    let neutralized;
+    let field = if field.starts_with(FORMULA_TRIGGERS) {
+        neutralized = format!("'{field}");
+        neutralized.as_str()
+    } else {
+        field
+    };
     if field.contains([',', '"', '\n', '\r']) || field.starts_with(' ') || field.ends_with(' ') {
         format!("\"{}\"", field.replace('"', "\"\""))
     } else {
@@ -260,5 +272,24 @@ mod tests {
         assert_eq!(csv_field("a\nb"), "\"a\nb\"");
         assert_eq!(csv_field(" padded"), "\" padded\"");
         assert_eq!(csv_field("plain"), "plain");
+    }
+
+    #[test]
+    fn formula_cells_are_neutralized() {
+        assert_eq!(csv_field("=1+1"), "'=1+1");
+        assert_eq!(csv_field("+33 1 23"), "'+33 1 23");
+        assert_eq!(
+            csv_field("-M- - Qui de nous deux"),
+            "'-M- - Qui de nous deux"
+        );
+        assert_eq!(csv_field("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(csv_field("\tcmd"), "'\tcmd");
+        assert_eq!(
+            csv_field("=HYPERLINK(\"http://x\",\"a\")"),
+            "\"'=HYPERLINK(\"\"http://x\"\",\"\"a\"\")\""
+        );
+        assert_eq!(csv_field("Air - Sexy Boy"), "Air - Sexy Boy");
+        let out = history(&[entry("=cmd|' /C calc'!A0", None, None)], Format::Csv);
+        assert!(out.contains(",'=cmd|' /C calc'!A0,'=cmd|' /C calc'!A0,"));
     }
 }
