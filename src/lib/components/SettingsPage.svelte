@@ -10,11 +10,13 @@
     type HistorySummary,
     type LocalRecipes,
   } from '../api';
+  import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { checkCustom, MAX_CUSTOM, SERVICE_GROUPS, TRACK_SERVICES } from '../trackLinks';
   import { trackServices } from '../trackServices.svelte';
   import { ui } from '../ui.svelte';
+  import ErrorBanner from './ErrorBanner.svelte';
   import OrderedSources, { type SourceItem } from './OrderedSources.svelte';
   import styles from './SettingsPage.module.css';
 
@@ -107,22 +109,24 @@
       coverSources = await api.setCoverSources(sources);
     } catch (e) {
       coverSources = before;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
   onMount(async () => {
     back?.focus();
-    trackServices.load();
+    // An error left from an earlier visit is stale.
+    errors.clear('settings');
+    trackServices.load('settings');
     loadSummary();
     api
       .getCoverSources()
       .then((s) => (coverSources = s))
-      .catch((e) => (player.error = errorMessage(e)));
+      .catch((e) => errors.report('settings', e));
     api
       .getAutostart()
       .then((enabled) => (autostart = enabled))
-      .catch((e) => (player.error = errorMessage(e)));
+      .catch((e) => errors.report('settings', e));
     try {
       [clickCounting, identify, webTitles, trackNotifications, constantVolume] = await Promise.all([
         api.getClickCounting(),
@@ -132,7 +136,7 @@
         api.getConstantVolume(),
       ]);
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
     version = await getVersion().catch(() => null);
   });
@@ -144,7 +148,7 @@
       if (!enabled) player.clickNotice = false;
     } catch (e) {
       clickCounting = !enabled;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -154,7 +158,7 @@
       await api.setAutostart(enabled);
     } catch (e) {
       autostart = !enabled;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -164,7 +168,7 @@
       await api.setTrackNotifications(enabled);
     } catch (e) {
       trackNotifications = !enabled;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -174,7 +178,7 @@
       await api.setConstantVolume(enabled);
     } catch (e) {
       constantVolume = !enabled;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -184,7 +188,7 @@
       await api.setWebTitles(enabled);
     } catch (e) {
       webTitles = !enabled;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -203,7 +207,7 @@
     try {
       await api.openRecipesFolder();
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -228,7 +232,7 @@
     try {
       summary = await api.getHistorySummary();
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -240,7 +244,7 @@
       const file = await api.exportHistory('history', format);
       dataStatus = `${tracks(file.count)} saved to Downloads: ${file.file_name}`;
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     } finally {
       exporting = false;
     }
@@ -264,7 +268,7 @@
       confirmingClear = false;
       await loadSummary();
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     } finally {
       clearing = false;
     }
@@ -276,7 +280,7 @@
       await api.setTrackIdentification(enabled);
     } catch (e) {
       identify = !enabled;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 </script>
@@ -298,7 +302,7 @@
     <h1 class={styles.heading} id="settings-title">Settings</h1>
   </header>
 
-  {#if player.error}<p class={styles.error} role="alert">{player.error}</p>{/if}
+  <div class={styles.error}><ErrorBanner area="settings" /></div>
 
   <div class={styles.body}>
     <section class={styles.group} aria-labelledby="settings-startup">

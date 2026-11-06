@@ -50,12 +50,7 @@
 }
 
 .error {
-  margin: 0.75rem 0.75rem 0;
-  padding: 0.5rem 0.7rem;
-  border-radius: 0.5rem;
-  background: var(--color-danger-bg);
-  color: var(--color-danger-text);
-  font-size: 0.8rem;
+  padding: 0 0.75rem;
 }
 
 .body {

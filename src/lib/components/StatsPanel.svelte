@@ -1,8 +1,8 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
   import { api, errorMessage, type Count, type Stats, type StationStats } from '../api';
+  import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
-  import { player } from '../player.svelte';
   import styles from './StatsPanel.module.css';
 
   const PERIODS = [
@@ -18,6 +18,8 @@
 
   let period = $state<number | undefined>(30);
   let stats = $state<Stats | null>(null);
+  /** Why the figures could not be read: shown in their place, gone once a reload works. */
+  let loadError = $state<string | null>(null);
   let stationOrder = $state<'likes' | 'rate'>('likes');
   // Id of the latest request: an older response is ignored.
   let requestId = 0;
@@ -26,9 +28,11 @@
     const mine = ++requestId;
     try {
       const next = await api.getStats(days);
-      if (mine === requestId) stats = next;
+      if (mine !== requestId) return;
+      stats = next;
+      loadError = null;
     } catch (e) {
-      if (mine === requestId) player.error = errorMessage(e);
+      if (mine === requestId) loadError = errorMessage(e);
     }
   }
 
@@ -38,11 +42,12 @@
   });
 
   async function enableIdentification() {
+    errors.clear('history');
     try {
       await api.setTrackIdentification(true);
       await load(period);
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('history', e);
     }
   }
 
@@ -147,7 +152,9 @@
   {/each}
 </div>
 
-{#if stats}
+{#if loadError}
+  <p class={styles.loadError} role="alert">{loadError}</p>
+{:else if stats}
   <div class={styles.tiles}>
     <div class={styles.tile}>
       <span class={styles.big}>{hours(stats.totals.listening_hours)}</span>listened

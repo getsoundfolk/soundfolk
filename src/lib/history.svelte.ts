@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Likes shared between the player and the History tab.
-import { api, errorMessage, type HistoryEntry } from './api';
+import { api, type HistoryEntry } from './api';
+import { errors, type ErrorArea } from './errors.svelte';
 import { player } from './player.svelte';
 
 class HistoryStore {
@@ -22,12 +23,16 @@ class HistoryStore {
     try {
       this.latest = (await api.getListeningHistory(1))[0] ?? null;
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('history', e);
     }
   }
 
-  /** Likes a history entry's track, or unlikes a track by its key. */
-  async toggleLike(track: { track_key: string; liked: boolean; historyId?: number }) {
+  /** Likes a history entry's track, or unlikes a track by its key. A failure is shown in `area`,
+   *  the one the ♥ was clicked in. */
+  async toggleLike(
+    track: { track_key: string; liked: boolean; historyId?: number },
+    area: ErrorArea,
+  ) {
     try {
       if (track.liked) await api.unlikeTrack(track.track_key);
       else if (track.historyId !== undefined) await api.likeTrack(track.historyId);
@@ -35,7 +40,7 @@ class HistoryStore {
         this.latest = { ...this.latest, liked: !track.liked };
       this.version++;
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report(area, e);
     }
   }
 }

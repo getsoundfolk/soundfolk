@@ -9,8 +9,10 @@
     type Playable,
     type Station,
   } from '../api';
+  import { errors } from '../errors.svelte';
   import { player } from '../player.svelte';
   import AddStationForm from './AddStationForm.svelte';
+  import ErrorBanner from './ErrorBanner.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
   import StationRow from './StationRow.svelte';
   import styles from './StationBrowser.module.css';
@@ -72,18 +74,19 @@
     try {
       personal = await api.listPersonalStations();
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('stations', e);
     }
   };
   onMount(loadPersonal);
 
   async function removePersonal(station: PersonalStation) {
+    errors.clear('stations');
     try {
       await api.removePersonalStation(station.station_id);
       if (player.isFavorite(station.station_id)) await player.toggleFavorite(fromPersonal(station));
       await loadPersonal();
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('stations', e);
     }
   }
 
@@ -224,6 +227,7 @@
         </ul>
       {/if}
     {:else}
+      <ErrorBanner area="stations" />
       <AddStationForm onadded={loadPersonal} />
       {#if personal.length === 0}
         <p class={styles.empty}>No personal stations. They stay on this device.</p>

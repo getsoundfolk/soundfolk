@@ -1,15 +1,17 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
-  import { api, errorMessage } from '../api';
+  import { api } from '../api';
+  import { errors } from '../errors.svelte';
   import { player } from '../player.svelte';
   import styles from './ClickNotice.module.css';
 
   async function disable() {
+    errors.clear('player');
     try {
       await api.setClickCounting(false);
       player.clickNotice = false;
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('player', e);
     }
   }
 </script>

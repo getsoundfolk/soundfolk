@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Which services a track's "Find this track on" menu lists, shared by the menu and the settings.
-import { api, errorMessage, type CustomService } from './api';
-import { player } from './player.svelte';
+import { api, type CustomService } from './api';
+import { errors, type ErrorArea } from './errors.svelte';
 import { customToService, DEFAULT_SERVICE_IDS, TRACK_SERVICES } from './trackLinks';
 
 const isCustom = (id: string) => id.startsWith('custom:');
@@ -24,7 +24,8 @@ class TrackServicesStore {
     );
   });
 
-  load() {
+  /** Loads the selection once; a failure is shown in `area`, and the next call tries again. */
+  load(area: ErrorArea) {
     this.#loaded ??= Promise.all([api.getTrackServices(), api.getCustomTrackServices()])
       .then(([ids, custom]) => {
         if (ids) this.ids = ids;
@@ -32,7 +33,7 @@ class TrackServicesStore {
       })
       .catch((e) => {
         this.#loaded = null;
-        player.error = errorMessage(e);
+        errors.report(area, e);
       });
     return this.#loaded;
   }
@@ -65,7 +66,7 @@ class TrackServicesStore {
       await api.setCustomTrackServices(this.custom);
     } catch (e) {
       this.custom = before;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 
@@ -76,7 +77,7 @@ class TrackServicesStore {
       await api.setTrackServices(ids);
     } catch (e) {
       this.ids = before;
-      player.error = errorMessage(e);
+      errors.report('settings', e);
     }
   }
 }

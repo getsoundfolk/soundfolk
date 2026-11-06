@@ -130,6 +130,14 @@
   text-align: center;
 }
 
+.loadError {
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.4;
+  color: var(--color-error);
+  text-align: center;
+}
+
 .bars {
   display: flex;
   flex-direction: column;

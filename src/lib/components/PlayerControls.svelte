@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { api, type DonationLink } from '../api';
+  import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
@@ -17,9 +18,9 @@
     error: 'Error',
   } as const;
 
-  const status = $derived(player.error ? 'error' : player.state.status);
+  const status = $derived(errors.player ? 'error' : player.state.status);
   const message = $derived(
-    player.error ??
+    errors.player ??
       ('message' in player.state ? player.state.message : LABELS[player.state.status]),
   );
   // Current title if the stream announces one, otherwise the selected station.
@@ -172,7 +173,7 @@
         aria-pressed={track.liked}
         aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
         data-on={track.liked}
-        onclick={() => history.toggleLike({ ...track, historyId: track.id })}
+        onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
         >{track.liked ? '♥' : '♡'}</button
       >
     {/if}

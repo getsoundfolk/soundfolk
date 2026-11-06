@@ -3,16 +3,18 @@
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { api, errorMessage, type HistoryEntry, type LikedTrack } from '../api';
+  import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { displayTitle, shareText } from '../trackLinks';
   import { trackServices } from '../trackServices.svelte';
+  import ErrorBanner from './ErrorBanner.svelte';
   import styles from './HistoryPanel.module.css';
   import StatsPanel from './StatsPanel.svelte';
 
   const LIMIT = 200;
 
-  trackServices.load();
+  trackServices.load('history');
 
   type View = 'all' | 'liked' | 'stats';
   const VIEWS: { id: View; label: string }[] = [
@@ -39,6 +41,8 @@
   let text = $state('');
   let rows = $state<Row[]>([]);
   let loaded = $state(false);
+  /** Why the list could not be read: shown in its place, gone once a reload works. */
+  let loadError = $state<string | null>(null);
   /**
    * Row whose action menu is open, and where. The menu is fixed to the window so the scrolling
    * panel cannot clip it; it opens on the side of the button with more room.
@@ -85,9 +89,11 @@
         current === 'all'
           ? (await api.getListeningHistory(LIMIT, q)).map(fromEntry)
           : (await api.listLikes(LIMIT, q)).map(fromLike);
-      if (mine === requestId) rows = next;
+      if (mine !== requestId) return;
+      rows = next;
+      loadError = null;
     } catch (e) {
-      if (mine === requestId) player.error = errorMessage(e);
+      if (mine === requestId) loadError = errorMessage(e);
     } finally {
       if (mine === requestId) loaded = true;
     }
@@ -136,11 +142,12 @@
   /** Runs a menu action: closes the menu, reports a failure. */
   async function act(action: () => Promise<unknown>, done?: string) {
     menu = null;
+    errors.clear('history');
     try {
       await action();
       if (done) notify(done);
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('history', e);
     }
   }
 
@@ -180,6 +187,7 @@
   async function exportAs(format: 'csv' | 'json') {
     if (exporting || view === 'stats') return;
     exporting = true;
+    errors.clear('history');
     try {
       const list = view === 'all' ? 'history' : 'likes';
       const file = await api.exportHistory(list, format, text.trim() || undefined);
@@ -188,7 +196,7 @@
         4000,
       );
     } catch (e) {
-      player.error = errorMessage(e);
+      errors.report('history', e);
     } finally {
       exporting = false;
     }
@@ -227,8 +235,12 @@
   {/if}
 </div>
 
+<ErrorBanner area="history" />
+
 {#if view === 'stats'}
   <StatsPanel />
+{:else if loadError}
+  <p class={styles.loadError} role="alert">{loadError}</p>
 {:else if loaded && rows.length === 0}
   <p class={styles.empty}>
     {#if text.trim()}
@@ -252,7 +264,7 @@
               aria-pressed={row.liked}
               aria-label={row.liked ? `Unlike ${row.title}` : `Like ${row.title}`}
               data-on={row.liked}
-              onclick={() => history.toggleLike(row)}>{row.liked ? '♥' : '♡'}</button
+              onclick={() => history.toggleLike(row, 'history')}>{row.liked ? '♥' : '♡'}</button
             >
 
             <!-- svelte-ignore a11y_no_static_element_interactions -->

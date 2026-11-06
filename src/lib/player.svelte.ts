@@ -3,7 +3,6 @@
 import { listen } from '@tauri-apps/api/event';
 import {
   api,
-  errorMessage,
   type Cover,
   type Favorite,
   type NowPlaying,
@@ -13,6 +12,7 @@ import {
   type StationChange,
   type TitleStatus,
 } from './api';
+import { errors } from './errors.svelte';
 
 class PlayerStore {
   state = $state<PlayerState>({ status: 'idle' });
@@ -24,8 +24,6 @@ class PlayerStore {
   /** Sound cut by the speaker button; the slider keeps its level to come back to. Not saved. */
   muted = $state(false);
   favorites = $state<Favorite[]>([]);
-  /** Error from a command (not a playback error, which arrives via `state`). */
-  error = $state<string | null>(null);
   clickNotice = $state(false);
   /** Where the title of the current playback comes from (station sheet). */
   titleStatus = $state<TitleStatus | null>(null);
@@ -149,11 +147,11 @@ class PlayerStore {
   }
 
   private async run(action: () => Promise<unknown>) {
-    this.error = null;
+    errors.clear('player');
     try {
       await action();
     } catch (e) {
-      this.error = errorMessage(e);
+      errors.report('player', e);
     }
   }
 }
