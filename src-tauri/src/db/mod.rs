@@ -381,7 +381,7 @@ type Migration = fn(&Connection) -> rusqlite::Result<()>;
 
 /// Schema migrations, in order: the database is at version `n` (`PRAGMA user_version`) once the
 /// first `n` have run. Append only; never edit or reorder one that has shipped.
-const MIGRATIONS: &[Migration] = &[baseline, history_and_likes_indexes];
+const MIGRATIONS: &[Migration] = &[baseline, history_and_likes_indexes, history_station_names];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
 const LATEST: u32 = MIGRATIONS.len() as u32;
@@ -438,6 +438,18 @@ fn history_and_likes_indexes(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_history_station ON listening_history (station_id);
          CREATE INDEX IF NOT EXISTS idx_likes_history ON likes (history_id);",
+    )
+}
+
+/// Version 3: history rows logged without a station name take the name of the favorite or
+/// personal station of the same ID, once, instead of every read joining both tables for them.
+/// New rows get that name when they are logged (see `history::known_station_name`).
+fn history_station_names(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "UPDATE listening_history SET station_name = COALESCE(
+             (SELECT name FROM favorites f WHERE f.station_id = listening_history.station_id),
+             (SELECT name FROM personal_stations p WHERE p.station_id = listening_history.station_id))
+         WHERE station_name IS NULL;",
     )
 }
 
@@ -595,6 +607,40 @@ pub(super) mod tests {
             )
             .unwrap();
         assert!(plan.contains("idx_likes_history"), "{plan}");
+    }
+
+    #[test]
+    fn version_2_history_takes_the_known_station_names() {
+        let conn = Connection::open_in_memory().unwrap();
+        baseline(&conn).unwrap();
+        history_and_likes_indexes(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO favorites (station_id, name, stream_url) VALUES ('fav', 'Fav', 'u1');
+             INSERT INTO personal_stations (station_id, name, stream_url) VALUES ('own', 'Own', 'u2');
+             INSERT INTO listening_history (station_id, station_name, track_title) VALUES
+                 ('fav', NULL, 't1'), ('own', NULL, 't2'), ('fav', 'Kept', 't3'), ('none', NULL, 't4');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "user_version", 2).unwrap();
+        let db = Database::init(conn).unwrap();
+        let conn = db.conn();
+        assert_eq!(user_version(&conn), LATEST);
+        let names: Vec<Option<String>> = conn
+            .prepare("SELECT station_name FROM listening_history ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(
+            names,
+            [
+                Some("Fav".into()),
+                Some("Own".into()),
+                Some("Kept".into()),
+                None
+            ]
+        );
     }
 
     #[test]

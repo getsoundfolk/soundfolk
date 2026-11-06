@@ -48,11 +48,24 @@ pub struct LikedTrack {
     pub search_query: String,
 }
 
-/// Station name, falling back to the favorite or personal station of the same ID (rows logged
-/// before the name was recorded).
-const STATION_NAME: &str = "COALESCE(h.station_name, f.name, p.name)";
-const STATION_JOINS: &str = "LEFT JOIN favorites f ON f.station_id = h.station_id
-     LEFT JOIN personal_stations p ON p.station_id = h.station_id";
+/// The name to log a station under: the one given, else that of the favorite or personal station
+/// of the same ID (the rows logged before that are filled by the version 3 migration).
+fn known_station_name(
+    conn: &rusqlite::Connection,
+    station_id: &str,
+    given: Option<&str>,
+) -> rusqlite::Result<Option<String>> {
+    if let Some(name) = given {
+        return Ok(Some(name.to_owned()));
+    }
+    conn.query_row(
+        "SELECT COALESCE(
+             (SELECT name FROM favorites WHERE station_id = ?1),
+             (SELECT name FROM personal_stations WHERE station_id = ?1))",
+        params![station_id],
+        |r| r.get(0),
+    )
+}
 
 /// `LIKE` pattern matching `text` anywhere, with the wildcards in `text` escaped (`ESCAPE '\'`).
 fn contains_pattern(text: &str) -> String {
@@ -124,9 +137,10 @@ impl Database {
         track_title: &str,
         continuing: bool,
     ) -> rusqlite::Result<bool> {
-        let parsed = tracks::parse(track_title, station_name);
-        let key = tracks::track_key(&parsed);
         let conn = self.conn();
+        let station_name = known_station_name(&conn, station_id, station_name)?;
+        let parsed = tracks::parse(track_title, station_name.as_deref());
+        let key = tracks::track_key(&parsed);
         if continuing && same_as_last(&conn, station_id, track_title, &key)?.is_some() {
             return Ok(false);
         }
@@ -174,6 +188,7 @@ impl Database {
             tx.commit()?;
             return Ok(false);
         }
+        let station_name = known_station_name(&tx, station_id, station_name)?;
         tx.execute(
             "INSERT INTO listening_history
                  (station_id, station_name, track_title, artist, title, track_key, title_source, played_at)
@@ -227,18 +242,17 @@ impl Database {
     ) -> rusqlite::Result<Vec<HistoryEntry>> {
         let pattern = query.filter(|q| !q.trim().is_empty()).map(contains_pattern);
         let conn = self.conn();
-        let mut stmt = conn.prepare(&format!(
-            "SELECT h.id, h.station_id, {STATION_NAME}, h.track_title, h.artist, h.title, h.track_key,
+        let mut stmt = conn.prepare(
+            "SELECT h.id, h.station_id, h.station_name, h.track_title, h.artist, h.title, h.track_key,
                     h.played_at, l.track_key IS NOT NULL
              FROM listening_history h
-             {STATION_JOINS}
              LEFT JOIN likes l ON l.track_key = h.track_key
              WHERE ?2 IS NULL
                 OR h.track_title LIKE ?2 ESCAPE '\\'
                 OR h.artist LIKE ?2 ESCAPE '\\'
-                OR {STATION_NAME} LIKE ?2 ESCAPE '\\'
-             ORDER BY h.id DESC LIMIT ?1"
-        ))?;
+                OR h.station_name LIKE ?2 ESCAPE '\\'
+             ORDER BY h.id DESC LIMIT ?1",
+        )?;
         let rows = stmt.query_map(params![limit, pattern], |row| {
             let parsed = parsed_from(row, 4, 5, 3)?;
             Ok(HistoryEntry {
@@ -286,14 +300,11 @@ impl Database {
     /// that is already liked keeps the first like.
     pub fn like_track(&self, history_id: i64) -> rusqlite::Result<bool> {
         let inserted = self.conn().execute(
-            &format!(
-                "INSERT INTO likes (track_key, artist, title, raw_title, station_id, station_name, history_id)
-                 SELECT h.track_key, h.artist, h.title, h.track_title, h.station_id, {STATION_NAME}, h.id
-                 FROM listening_history h
-                 {STATION_JOINS}
-                 WHERE h.id = ?1 AND h.track_key IS NOT NULL
-                 ON CONFLICT(track_key) DO NOTHING"
-            ),
+            "INSERT INTO likes (track_key, artist, title, raw_title, station_id, station_name, history_id)
+             SELECT track_key, artist, title, track_title, station_id, station_name, id
+             FROM listening_history
+             WHERE id = ?1 AND track_key IS NOT NULL
+             ON CONFLICT(track_key) DO NOTHING",
             params![history_id],
         )?;
         Ok(inserted > 0)
@@ -347,10 +358,10 @@ impl Database {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         {
-            let mut select = tx.prepare(&format!(
-                "SELECT h.id, h.track_title, {STATION_NAME} FROM listening_history h {STATION_JOINS}
-                 WHERE h.title_source IS NULL"
-            ))?;
+            let mut select = tx.prepare(
+                "SELECT id, track_title, station_name FROM listening_history
+                 WHERE title_source IS NULL",
+            )?;
             let rows: Vec<(i64, String, Option<String>)> = select
                 .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
                 .collect::<rusqlite::Result<_>>()?;
@@ -640,13 +651,17 @@ mod tests {
     }
 
     #[test]
-    fn history_without_a_name_falls_back_to_the_favorite() {
+    fn history_without_a_name_takes_the_favorite_name() {
         let db = Database::open_in_memory().unwrap();
         db.add_favorite(&fav("a")).unwrap();
         db.log_track("a", None, "title", true).unwrap();
         db.log_track("b", None, "title", true).unwrap();
         let history = db.recent_history(10, None).unwrap();
         assert_eq!(history[0].station_name, None);
+        assert_eq!(history[1].station_name.as_deref(), Some("Radio a"));
+        // Stored with the row: renaming or removing the favorite later leaves it.
+        db.remove_favorite("a").unwrap();
+        let history = db.recent_history(10, None).unwrap();
         assert_eq!(history[1].station_name.as_deref(), Some("Radio a"));
     }
 
