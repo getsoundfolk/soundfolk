@@ -255,17 +255,19 @@ else per station:
 | Logo or cover image | No logos for now (soundfolk-stations scope). |
 
 * `curators` must include the author of the pull request that creates the list, or the repository maintainer. A
-  pull request changing a list whose curators do not include its author is labelled *list-of-another*, for the
-  maintainer to ask them.
+  pull request changing a list whose curators do not include its author gets a warning in CI, for the maintainer
+  to ask them.
 * Licence: ODbL / DbCL, like the rest of the repository.
 
 ### 6.2 Checks
-* `lint.py`: schema, sizes, UUID syntax, no UUID twice. In a pull request, CI comments the Radio-Browser name of
-  each UUID added or moved.
+* `lint.py`: schema, sizes, UUID syntax, no UUID twice, `use` and `genres` from `vocab.toml`. In a pull request,
+  CI writes in the job summary the Radio-Browser name, country and stream state of every station of the lists that
+  changed (a comment would need write access, which pull requests from forks don't get).
 * **Daily CI**, same rules as 12 §2.3: a UUID no longer in Radio-Browser is left out of the published list and an
   issue is opened at once. An item whose stream does not answer is left out (the source file does not change) and
-  comes back when it answers again; an issue after 7 days. A list that falls under 5 published items is published
-  anyway, with an issue.
+  comes back when it answers again; an issue after 7 days. "Does not answer" means from CI and from Radio-Browser's
+  own checkers (`lastcheckok`): a stream blocked outside its country fails from a US runner only, and stays in. A
+  list that falls under 5 published items is published anyway, with an issue.
 * The same "more than 20 % failing at once" guard as donations.
 * **A stable list is not stale.** A list nobody edited for years is fine as long as the daily check passes: age
   alone never triggers anything in the app.
