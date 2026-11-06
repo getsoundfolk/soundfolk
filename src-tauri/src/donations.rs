@@ -6,7 +6,8 @@
 //! * At startup, the copy cached by the last download is used right away (offline included).
 //! * The list is downloaded again when that copy is a day old (see `daily_list.rs`), whatever the
 //!   privacy settings: it is part of the catalog, and GitHub sees the IP address once a day at most.
-//! * A list that does not parse, or of another `version`, is ignored and the cached one stays.
+//! * A list that does not parse, or of another `version`, is ignored and the cached one stays;
+//!   entries this version cannot read are skipped one by one, like the recipes'.
 //!
 //! `SOUNDFOLK_STATIONS_URL` replaces the list's address (a fork's list, a local file server).
 
@@ -30,11 +31,12 @@ const FILES: Files = Files {
 #[derive(Debug, Deserialize)]
 struct List {
     version: u32,
-    stations: Vec<Entry>,
+    /// Read one by one by [`parse`].
+    stations: Vec<serde_json::Value>,
 }
 
 /// One station of the list. Unknown keys are ignored: new optional fields keep `v1`. Not inside
-/// `match`, which is a recipe's (the list's schema forbids other keys there too).
+/// `match`, which is a recipe's: an entry with another key there is skipped.
 #[derive(Debug, Clone, Deserialize)]
 struct Entry {
     #[serde(rename = "match")]
@@ -58,7 +60,11 @@ fn parse(text: &str) -> Result<Vec<Entry>, String> {
             list.version
         ));
     }
-    Ok(list.stations)
+    Ok(list
+        .stations
+        .into_iter()
+        .filter_map(|entry| serde_json::from_value(entry).ok())
+        .collect())
 }
 
 /// The domain of an `https://` URL, without `www.`; `None` for anything else.
@@ -207,6 +213,21 @@ mod tests {
         assert!(parse(r#"{"version": 2, "stations": []}"#).is_err());
         assert!(parse("<html>").is_err());
         assert_eq!(parse(r#"{"version": 1, "stations": []}"#).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn entries_this_version_cannot_read_are_skipped() {
+        let entries = parse(
+            r#"{"version": 1, "stations": [
+                {"match": {"stations": ["a"], "homepages": ["x.example"]}, "donate": "https://x.example/"},
+                {"match": {"stations": ["b"]}, "donate": 3},
+                "not an entry",
+                {"match": {"stations": ["c"]}, "donate": "https://c.example/", "future": 1}
+            ]}"#,
+        )
+        .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].donate, "https://c.example/");
     }
 
     #[test]
