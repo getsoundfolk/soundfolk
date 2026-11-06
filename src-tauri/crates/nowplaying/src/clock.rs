@@ -29,7 +29,7 @@ fn seconds_of_day(time: Time) -> i64 {
 
 /// The offsets for which `start` (local) is between `window + tolerance` before `reference` and
 /// `tolerance` after it (clocks are never perfectly in sync).
-pub fn candidate_offsets(
+pub(crate) fn candidate_offsets(
     start: Time,
     reference: Timestamp,
     window: SignedDuration,
@@ -50,7 +50,7 @@ pub fn candidate_offsets(
 }
 
 /// The instant of `local` with this offset, on the day that puts it closest to `reference`.
-pub fn to_instant(local: Time, offset: Offset, reference: Timestamp) -> Timestamp {
+pub(crate) fn to_instant(local: Time, offset: Offset, reference: Timestamp) -> Timestamp {
     let reference = reference.as_second();
     let local_now = (reference + i64::from(offset)).rem_euclid(DAY_SECS);
     let mut delta = (seconds_of_day(local) - local_now).rem_euclid(DAY_SECS);
@@ -61,7 +61,7 @@ pub fn to_instant(local: Time, offset: Offset, reference: Timestamp) -> Timestam
 }
 
 /// Time from `a` to `b` on a 24-hour clock (`23:58` → `00:03` is 5 minutes).
-pub fn forward_gap(a: Time, b: Time) -> SignedDuration {
+pub(crate) fn forward_gap(a: Time, b: Time) -> SignedDuration {
     SignedDuration::from_secs((seconds_of_day(b) - seconds_of_day(a)).rem_euclid(DAY_SECS))
 }
 

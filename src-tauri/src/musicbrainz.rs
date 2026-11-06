@@ -132,7 +132,7 @@ impl MusicBrainz {
     }
 
     /// Best recording for an artist and a title, if one is trustworthy.
-    pub async fn find_recording(
+    async fn find_recording(
         &self,
         artist: &str,
         title: &str,

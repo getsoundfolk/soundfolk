@@ -22,7 +22,7 @@ use crate::recipe::{Extract, Fields, Recipe, Test};
 use crate::{extract, Snapshot, Timestamp};
 
 /// Largest fixture the repository accepts.
-pub const MAX_BYTES: usize = 64 * 1024;
+const MAX_BYTES: usize = 64 * 1024;
 /// Upcoming tracks kept in an excerpt: the one `next_title` checks.
 const NEXT_KEPT: usize = 1;
 /// Slack over the excerpt before a fixture counts as oversized (formatting, header comment).
@@ -78,7 +78,7 @@ pub fn prepare(
 }
 
 /// The fixture's file extension.
-pub fn extension(extract: &Extract) -> &'static str {
+fn extension(extract: &Extract) -> &'static str {
     match extract {
         Extract::Html(_) => "html",
         Extract::Json(_) => "json",
@@ -88,7 +88,7 @@ pub fn extension(extract: &Extract) -> &'static str {
 
 /// The recipe file for the repository: schema line pointing to the repository's schema, earlier
 /// tests removed, `test` appended.
-pub fn with_test(recipe_text: &str, test: &Test) -> String {
+fn with_test(recipe_text: &str, test: &Test) -> String {
     #[derive(Serialize)]
     struct Tests<'a> {
         test: [&'a Test; 1],
@@ -117,7 +117,7 @@ pub fn with_test(recipe_text: &str, test: &Test) -> String {
 }
 
 /// The part of `page` the recipe reads, checked to read the same as the whole page.
-pub fn excerpt(recipe: &Recipe, url: &str, page: &str, at: Timestamp) -> Result<String, String> {
+fn excerpt(recipe: &Recipe, url: &str, page: &str, at: Timestamp) -> Result<String, String> {
     let whole = extract::read(recipe, page).map_err(|e| e.to_string())?;
     if whole.current.is_none() {
         return Err("nothing is on air on the page: try again while a track is playing".into());

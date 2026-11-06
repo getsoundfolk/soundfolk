@@ -48,7 +48,7 @@ pub struct CoverSource {
 }
 
 /// The order and switches of a fresh install: only what needs nothing more to leave the device.
-pub fn default_sources() -> Vec<CoverSource> {
+fn default_sources() -> Vec<CoverSource> {
     vec![
         CoverSource {
             id: SourceId::Station,

@@ -119,7 +119,7 @@ pub fn track_key(parsed: &ParsedTitle) -> String {
 }
 
 /// Comparison key of an artist name.
-pub fn artist_key(artist: &str) -> String {
+fn artist_key(artist: &str) -> String {
     let lower = artist.to_lowercase();
     let main = [" feat. ", " feat ", " ft. ", " ft ", " featuring "]
         .iter()

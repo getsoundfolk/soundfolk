@@ -16,7 +16,7 @@ export type TrackInfo = {
 };
 
 /** Where the title comes from: the stream itself, the station's web page, or the server's status. */
-export type TitleSource = 'icy' | 'stream_tags' | 'recipe' | 'server';
+type TitleSource = 'icy' | 'stream_tags' | 'recipe' | 'server';
 
 export type NowPlaying = {
   station: string | null;
@@ -40,7 +40,7 @@ export type Cover = {
 export type CoverSourceId = 'station' | 'cover_art_archive';
 export type CoverSource = { id: CoverSourceId; enabled: boolean };
 
-export type Health =
+type Health =
   | { status: 'ok' }
   | { status: 'unreachable'; last_ok: string | null }
   | { status: 'unsupported'; reason: string };
@@ -61,7 +61,7 @@ export interface Station {
   health: Health;
 }
 
-export interface SearchPage {
+interface SearchPage {
   stations: Station[];
   /** Offset of the next page, or `null` when there are no more results. */
   next_offset: number | null;
@@ -115,7 +115,7 @@ export interface HistorySummary {
   since: string | null;
 }
 
-export interface ExportedFile {
+interface ExportedFile {
   path: string;
   file_name: string;
   count: number;
@@ -165,7 +165,7 @@ export interface DonationLink {
   domain: string;
 }
 
-export interface SearchQuery {
+interface SearchQuery {
   text?: string;
   country_code?: string;
   tag?: string;
@@ -283,7 +283,7 @@ export interface Playable {
 }
 
 /** A now-playing recipe (`<id>.toml`): shipped with the app, from the shared list, or in the user's folder. */
-export interface RecipeRef {
+interface RecipeRef {
   id: string;
   name: string;
   origin: 'bundled' | 'shared' | 'local';
@@ -320,7 +320,7 @@ export function recipeRequestLink(station: Playable): string {
 }
 
 /** The station's local recipe file exists but cannot be used. */
-export interface LocalRecipeError {
+interface LocalRecipeError {
   path: string;
   error: string;
 }
@@ -366,7 +366,7 @@ export interface StationChange extends Playable {
 }
 
 /** What a failed command rejects with (`AppError` in error.rs). */
-export interface AppError {
+interface AppError {
   kind: 'database' | 'network' | 'catalog' | 'io' | 'other';
   message: string;
 }
