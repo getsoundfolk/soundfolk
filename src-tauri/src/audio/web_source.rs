@@ -388,7 +388,8 @@ impl WebTitles {
     }
 
     /// The station's local file that cannot be used: the one replacing the matching shipped
-    /// recipe, or an invalid file naming this stream or station.
+    /// recipe, or an invalid file naming this stream or station. No file is read: the async title
+    /// tasks call it, so it works from the text kept when the recipes were loaded.
     pub fn local_error_for(&self, station: &StationRef, stream: &str) -> Option<LocalError> {
         let set = self.recipes.current();
         let by_id = set
@@ -404,11 +405,7 @@ impl WebTitles {
                     .is_some_and(|id| text.contains(&id.to_ascii_lowercase()))
         };
         by_id
-            .or_else(|| {
-                set.errors()
-                    .iter()
-                    .find(|e| std::fs::read_to_string(&e.path).is_ok_and(|text| mentions(&text)))
-            })
+            .or_else(|| set.errors().iter().find(|e| mentions(&e.text)))
             .map(|e| LocalError {
                 path: e.path.display().to_string(),
                 error: e.error.clone(),
@@ -996,6 +993,11 @@ mod tests {
         };
         let error = web.local_error(&session).unwrap();
         assert!(error.path.ends_with("my-radio.toml"));
+
+        // Told from the text kept at load time: no file is read again (the async title tasks
+        // ask this on every status update).
         std::fs::remove_dir_all(&dir).unwrap();
+        let error = web.local_error(&session).unwrap();
+        assert!(error.path.ends_with("my-radio.toml"));
     }
 }

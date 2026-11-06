@@ -2,7 +2,9 @@
 //! Tauri commands exposed to the frontend (`invoke("play_stream", { url })`, ...).
 //!
 //! They are `async` so they run off the main thread: opening the audio output
-//! can take a few hundred ms and must not freeze the window.
+//! can take a few hundred ms and must not freeze the window. Their blocking work (SQLite, files,
+//! waiting for the audio engine) goes to Tokio's blocking pool through [`blocking`] and
+//! [`with_db`], so it never holds one of the runtime's few workers either.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,7 +23,7 @@ use crate::db::{
     Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType,
     Stats,
 };
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::export;
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 use crate::recipes::{self, Origin};
@@ -36,7 +38,9 @@ pub struct OnAir {
     pub url: String,
 }
 
-/// The trait takes `&mut self`: the engine lives behind a `Mutex` in the Tauri state.
+/// The trait takes `&mut self`: the engine lives behind a `Mutex` in the Tauri state. The lock is
+/// held only to send a command, never while the engine opens a sound output: it orders the
+/// commands (see `crate::favorite_repair`), it does not wait for them.
 pub struct AudioState {
     engine: Mutex<DesktopAudioEngine>,
     /// Station currently playing, shared with the listener that logs titles.
@@ -133,7 +137,26 @@ pub async fn play_stream(
     station_id: Option<String>,
     station_name: Option<String>,
 ) -> AppResult<PlayOutcome> {
-    start_station(&app, url, station_id, station_name)
+    blocking(move || start_station(&app, url, station_id, station_name)).await
+}
+
+/// Runs blocking work (SQLite, files, waiting for the audio engine) on Tokio's blocking pool: an
+/// async command must not hold a runtime worker while it waits for the database lock or the disk.
+pub(crate) async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| AppError::from(format!("Task interrupted: {e}")))?
+}
+
+/// [`blocking`] with the database (a cheap clone that shares the connection).
+pub(crate) async fn with_db<T: Send + 'static>(
+    db: &Database,
+    work: impl FnOnce(&Database) -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    let db = db.clone();
+    blocking(move || work(&db)).await
 }
 
 /// Plays a station, from the window or from the system media controls.
@@ -186,7 +209,10 @@ pub(crate) fn start_station(
         .unwrap_or_else(|p| p.into_inner()) = pending_click;
     // A recipe saved since the last check applies from this playback.
     app.state::<WebTitlesState>().0.reload_recipes();
-    audio.engine().play(&url, station)?;
+    // The engine lock orders the request against the other commands; the answer is awaited
+    // without it, so the volume or the player state never wait for a sound output to open.
+    let reply = audio.engine().play(&url, station)?;
+    reply.wait()?;
     Ok(PlayOutcome { show_click_notice })
 }
 
@@ -267,9 +293,8 @@ pub async fn set_volume(audio: State<'_, AudioState>, volume: f32) -> AppResult<
 /// Volume saved by `save_volume`, or `None` if the user never moved the slider.
 #[tauri::command]
 pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
-    let saved = db
-        .get_str(SETTING_VOLUME)?
-        .and_then(|v| v.parse::<f32>().ok());
+    let saved = with_db(&db, |db| Ok(db.get_str(SETTING_VOLUME)?)).await?;
+    let saved = saved.and_then(|v| v.parse::<f32>().ok());
     Ok(saved.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0)))
 }
 
@@ -280,7 +305,8 @@ pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> 
     if !volume.is_finite() {
         return Err("Invalid volume".to_owned().into());
     }
-    Ok(db.set_str(SETTING_VOLUME, &volume.clamp(0.0, 1.0).to_string())?)
+    let volume = volume.clamp(0.0, 1.0).to_string();
+    with_db(&db, move |db| Ok(db.set_str(SETTING_VOLUME, &volume)?)).await
 }
 
 #[tauri::command]
@@ -308,19 +334,22 @@ pub async fn get_now_playing(audio: State<'_, AudioState>) -> AppResult<NowPlayi
 
 #[tauri::command]
 pub async fn get_click_counting(db: State<'_, Database>) -> AppResult<bool> {
-    Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)
+    with_db(&db, |db| Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)).await
 }
 
 #[tauri::command]
 pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppResult<()> {
-    // If the user sets counting themselves, the notice no longer needs to be shown.
-    db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
-    Ok(db.set_bool(SETTING_CLICK_COUNTING, enabled)?)
+    with_db(&db, move |db| {
+        // If the user sets counting themselves, the notice no longer needs to be shown.
+        db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
+        Ok(db.set_bool(SETTING_CLICK_COUNTING, enabled)?)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_web_titles(db: State<'_, Database>) -> AppResult<bool> {
-    Ok(db.get_bool(SETTING_WEB_TITLES, true)?)
+    with_db(&db, |db| Ok(db.get_bool(SETTING_WEB_TITLES, true)?)).await
 }
 
 /// Applies from the next station played.
@@ -330,7 +359,7 @@ pub async fn set_web_titles(
     web: State<'_, WebTitlesState>,
     enabled: bool,
 ) -> AppResult<()> {
-    db.set_bool(SETTING_WEB_TITLES, enabled)?;
+    with_db(&db, move |db| Ok(db.set_bool(SETTING_WEB_TITLES, enabled)?)).await?;
     web.0.set_enabled(enabled);
     Ok(())
 }
@@ -340,22 +369,28 @@ pub async fn set_web_titles(
 #[tauri::command]
 pub async fn get_autostart(app: AppHandle) -> AppResult<bool> {
     use tauri_plugin_autostart::ManagerExt;
-    Ok(app
-        .autolaunch()
-        .is_enabled()
-        .map_err(|e| format!("Launch at login unknown: {e}"))?)
+    blocking(move || {
+        Ok(app
+            .autolaunch()
+            .is_enabled()
+            .map_err(|e| format!("Launch at login unknown: {e}"))?)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> AppResult<()> {
     use tauri_plugin_autostart::ManagerExt;
-    let launch = app.autolaunch();
-    let changed = if enabled {
-        launch.enable()
-    } else {
-        launch.disable()
-    };
-    Ok(changed.map_err(|e| format!("Launch at login not changed: {e}"))?)
+    blocking(move || {
+        let launch = app.autolaunch();
+        let changed = if enabled {
+            launch.enable()
+        } else {
+            launch.disable()
+        };
+        Ok(changed.map_err(|e| format!("Launch at login not changed: {e}"))?)
+    })
+    .await
 }
 
 // ── Recipes ──────────────────────────────────────────────────────────────────
@@ -370,8 +405,12 @@ pub async fn get_title_status(web: State<'_, WebTitlesState>) -> AppResult<Title
 /// back, typically from the editor): no polling of the folder.
 #[tauri::command]
 pub async fn reload_recipes(web: State<'_, WebTitlesState>) -> AppResult<()> {
-    web.0.reload_recipes();
-    Ok(())
+    let web = web.0.clone();
+    blocking(move || {
+        web.reload_recipes();
+        Ok(())
+    })
+    .await
 }
 
 /// Reads the station's recipe page now and says what it finds.
@@ -381,7 +420,12 @@ pub async fn test_recipe(
     url: String,
     station_id: Option<String>,
 ) -> AppResult<RecipeTest> {
-    web.0.reload_recipes();
+    let titles = web.0.clone();
+    blocking(move || {
+        titles.reload_recipes();
+        Ok(())
+    })
+    .await?;
     let station = StationRef {
         id: station_id.filter(|id| is_catalog_id(id)),
     };
@@ -400,7 +444,20 @@ pub async fn edit_recipe(
     name: Option<String>,
     homepage: Option<String>,
 ) -> AppResult<String> {
-    let recipes = web.0.recipes().clone();
+    let web = web.0.clone();
+    blocking(move || edit_recipe_file(&app, &web, url, station_id, name, homepage)).await
+}
+
+/// [`edit_recipe`]'s file work, on a blocking thread.
+fn edit_recipe_file(
+    app: &AppHandle,
+    web: &WebTitles,
+    url: String,
+    station_id: Option<String>,
+    name: Option<String>,
+    homepage: Option<String>,
+) -> AppResult<String> {
+    let recipes = web.recipes().clone();
     let dir = recipes_folder(&recipes)?;
     let station = StationRef {
         id: station_id.filter(|id| is_catalog_id(id)),
@@ -419,7 +476,7 @@ pub async fn edit_recipe(
             }
             path
         }
-        None => match web.0.local_error_for(&station, &url) {
+        None => match web.local_error_for(&station, &url) {
             Some(broken) => broken.path.into(),
             None => {
                 let name = name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
@@ -452,7 +509,7 @@ pub async fn edit_recipe(
     };
     // Written by the app, not by the user: no "saved" notice for it.
     recipes.reload_if_changed();
-    open_path(&app, &path)?;
+    open_path(app, &path)?;
     Ok(path.display().to_string())
 }
 
@@ -476,30 +533,32 @@ pub async fn share_recipe(
     url: String,
     station_id: Option<String>,
 ) -> AppResult<SharedRecipe> {
-    use tauri_plugin_clipboard_manager::ClipboardExt;
-    use tauri_plugin_opener::OpenerExt;
-
-    web.0.reload_recipes();
-    let recipes = web.0.recipes().clone();
-    let station = StationRef {
-        id: station_id.filter(|id| is_catalog_id(id)),
-    };
-    let entry = recipes
-        .current()
-        .find(station.id.as_deref(), &url)
-        .cloned()
-        .ok_or_else(|| "No recipe matches this station.".to_owned())?;
-    let path = match (&entry.origin, &entry.path) {
-        (Origin::Local, Some(path)) => path.clone(),
-        _ => {
-            return Err(
-                "Only your own recipes can be shared: edit this one locally first."
-                    .to_owned()
-                    .into(),
-            )
-        }
-    };
-    let text = std::fs::read_to_string(&path)?;
+    let titles = web.0.clone();
+    let (entry, text) = blocking(move || {
+        titles.reload_recipes();
+        let station = StationRef {
+            id: station_id.filter(|id| is_catalog_id(id)),
+        };
+        let entry = titles
+            .recipes()
+            .current()
+            .find(station.id.as_deref(), &url)
+            .cloned()
+            .ok_or_else(|| "No recipe matches this station.".to_owned())?;
+        let path = match (&entry.origin, &entry.path) {
+            (Origin::Local, Some(path)) => path.clone(),
+            _ => {
+                return Err(
+                    "Only your own recipes can be shared: edit this one locally first."
+                        .to_owned()
+                        .into(),
+                )
+            }
+        };
+        let text = std::fs::read_to_string(&path)?;
+        Ok((entry, text))
+    })
+    .await?;
     let page_url = entry.recipe.fetch.url.clone();
     let (page, date) = web
         .0
@@ -507,18 +566,29 @@ pub async fn share_recipe(
         .await
         .map_err(|e| format!("Could not read the page: {e}."))?;
     let at = date.unwrap_or_else(soundfolk_nowplaying::Timestamp::now);
-    let shared = soundfolk_nowplaying::fixture::prepare(
-        &entry.id,
-        &text,
-        &entry.recipe,
-        &page_url,
-        &page,
-        at,
-    )
-    .map_err(|e| format!("Not ready to share: {e}."))?;
+    let recipes = web.0.recipes().clone();
+    blocking(move || share_recipe_files(&app, &recipes, entry, &text, &page_url, &page, at)).await
+}
+
+/// [`share_recipe`]'s file work once the page is read, on a blocking thread.
+fn share_recipe_files(
+    app: &AppHandle,
+    recipes: &recipes::Recipes,
+    entry: recipes::Entry,
+    text: &str,
+    page_url: &str,
+    page: &str,
+    at: soundfolk_nowplaying::Timestamp,
+) -> AppResult<SharedRecipe> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    use tauri_plugin_opener::OpenerExt;
+
+    let shared =
+        soundfolk_nowplaying::fixture::prepare(&entry.id, text, &entry.recipe, page_url, page, at)
+            .map_err(|e| format!("Not ready to share: {e}."))?;
 
     // A copy laid out as in the repository, for a pull request by hand.
-    let folder = recipes_folder(&recipes)?.join("to-share");
+    let folder = recipes_folder(recipes)?.join("to-share");
     std::fs::create_dir_all(folder.join("stations"))?;
     std::fs::create_dir_all(folder.join("fixtures"))?;
     std::fs::write(
@@ -589,8 +659,12 @@ pub async fn get_local_recipes(web: State<'_, WebTitlesState>) -> AppResult<Loca
 /// Opens the local recipes folder in the file manager (created if needed).
 #[tauri::command]
 pub async fn open_recipes_folder(app: AppHandle, web: State<'_, WebTitlesState>) -> AppResult<()> {
-    let dir = recipes_folder(web.0.recipes())?;
-    open_path(&app, &dir)
+    let web = web.0.clone();
+    blocking(move || {
+        let dir = recipes_folder(web.recipes())?;
+        open_path(&app, &dir)
+    })
+    .await
 }
 
 /// The local recipes folder, created with the JSON Schema next to the recipes (completion and
@@ -622,7 +696,7 @@ fn open_path(app: &AppHandle, path: &std::path::Path) -> AppResult<()> {
 /// Ids of the services shown in a track's menu, or `None` if the user never chose.
 #[tauri::command]
 pub async fn get_track_services(db: State<'_, Database>) -> AppResult<Option<Vec<String>>> {
-    Ok(db.get_list(SETTING_TRACK_SERVICES)?)
+    with_db(&db, |db| Ok(db.get_list(SETTING_TRACK_SERVICES)?)).await
 }
 
 #[tauri::command]
@@ -631,13 +705,18 @@ pub async fn set_track_services(db: State<'_, Database>, ids: Vec<String>) -> Ap
         .into_iter()
         .filter(|id| !id.is_empty() && !id.contains(','))
         .collect();
-    Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?)
+    with_db(
+        &db,
+        move |db| Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?),
+    )
+    .await
 }
 
 /// Sites the user added. A stored list that no longer passes the checks is dropped, not trusted.
 #[tauri::command]
 pub async fn get_custom_track_services(db: State<'_, Database>) -> AppResult<Vec<CustomService>> {
-    let Some(json) = db.get_str(SETTING_CUSTOM_TRACK_SERVICES)? else {
+    let Some(json) = with_db(&db, |db| Ok(db.get_str(SETTING_CUSTOM_TRACK_SERVICES)?)).await?
+    else {
         return Ok(Vec::new());
     };
     let stored: Vec<CustomService> = serde_json::from_str(&json).unwrap_or_default();
@@ -655,7 +734,10 @@ pub async fn set_custom_track_services(
 ) -> AppResult<()> {
     let services = track_services::validate_all(services)?;
     let json = serde_json::to_string(&services).map_err(|e| e.to_string())?;
-    Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
+    with_db(&db, move |db| {
+        Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
+    })
+    .await
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
@@ -666,8 +748,8 @@ pub async fn search_stations(
     db: State<'_, Database>,
     mut query: SearchQuery,
 ) -> AppResult<SearchPage> {
-    query.favorites = db
-        .list_favorites()?
+    query.favorites = with_db(&db, |db| Ok(db.list_favorites()?))
+        .await?
         .into_iter()
         .map(|f| f.station_id)
         .collect();
@@ -693,7 +775,12 @@ pub async fn resolve_station(
     station_id: String,
     name: Option<String>,
 ) -> AppResult<ResolvedStation> {
-    if let Some(p) = db.personal_station(&station_id)? {
+    let id = station_id.clone();
+    let (personal, favorites) = with_db(&db, move |db| {
+        Ok((db.personal_station(&id)?, db.list_favorites()?))
+    })
+    .await?;
+    if let Some(p) = personal {
         return Ok(ResolvedStation {
             id: p.station_id,
             name: p.name,
@@ -701,11 +788,7 @@ pub async fn resolve_station(
             genre: p.genre,
         });
     }
-    if let Some(f) = db
-        .list_favorites()?
-        .into_iter()
-        .find(|f| f.station_id == station_id)
-    {
+    if let Some(f) = favorites.into_iter().find(|f| f.station_id == station_id) {
         return Ok(ResolvedStation {
             id: f.station_id,
             name: f.name,
@@ -748,7 +831,7 @@ pub async fn add_personal_station(
     url: String,
     name: String,
 ) -> AppResult<PersonalStation> {
-    let name = name.trim();
+    let name = name.trim().to_owned();
     if name.is_empty() {
         return Err("A station needs a name.".to_owned().into());
     }
@@ -767,12 +850,15 @@ pub async fn add_personal_station(
         .await
         .map_err(|e| format!("Stream test interrupted: {e}"))??;
 
-    Ok(db.add_personal_station(name, stream.as_str(), None)?)
+    with_db(&db, move |db| {
+        Ok(db.add_personal_station(&name, stream.as_str(), None)?)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn list_personal_stations(db: State<'_, Database>) -> AppResult<Vec<PersonalStation>> {
-    Ok(db.list_personal_stations()?)
+    with_db(&db, |db| Ok(db.list_personal_stations()?)).await
 }
 
 #[tauri::command]
@@ -780,24 +866,24 @@ pub async fn remove_personal_station(
     db: State<'_, Database>,
     station_id: String,
 ) -> AppResult<bool> {
-    Ok(db.remove_personal_station(&station_id)?)
+    with_db(&db, move |db| Ok(db.remove_personal_station(&station_id)?)).await
 }
 
 // ── Favorites ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
 pub async fn add_favorite(db: State<'_, Database>, favorite: Favorite) -> AppResult<()> {
-    Ok(db.add_favorite(&favorite)?)
+    with_db(&db, move |db| Ok(db.add_favorite(&favorite)?)).await
 }
 
 #[tauri::command]
 pub async fn remove_favorite(db: State<'_, Database>, station_id: String) -> AppResult<bool> {
-    Ok(db.remove_favorite(&station_id)?)
+    with_db(&db, move |db| Ok(db.remove_favorite(&station_id)?)).await
 }
 
 #[tauri::command]
 pub async fn list_favorites(db: State<'_, Database>) -> AppResult<Vec<Favorite>> {
-    Ok(db.list_favorites()?)
+    with_db(&db, |db| Ok(db.list_favorites()?)).await
 }
 
 // ── History & reports ────────────────────────────────────────────────────────
@@ -808,19 +894,26 @@ pub async fn get_listening_history(
     limit: Option<u32>,
     query: Option<String>,
 ) -> AppResult<Vec<HistoryEntry>> {
-    Ok(db.recent_history(limit.unwrap_or(50).min(500), query.as_deref())?)
+    let limit = limit.unwrap_or(50).min(500);
+    with_db(&db, move |db| {
+        Ok(db.recent_history(limit, query.as_deref())?)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn get_history_summary(db: State<'_, Database>) -> AppResult<HistorySummary> {
-    Ok(db.history_summary()?)
+    with_db(&db, |db| Ok(db.history_summary()?)).await
 }
 
 #[tauri::command]
 pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
-    // Station levels (Constant volume) say which stations were heard too.
-    db.clear_station_levels()?;
-    Ok(db.clear_history()?)
+    with_db(&db, |db| {
+        // Station levels (Constant volume) say which stations were heard too.
+        db.clear_station_levels()?;
+        Ok(db.clear_history()?)
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -837,6 +930,18 @@ pub struct ExportedFile {
 pub async fn export_history(
     app: AppHandle,
     db: State<'_, Database>,
+    list: export::List,
+    format: export::Format,
+    query: Option<String>,
+) -> AppResult<ExportedFile> {
+    let db = db.inner().clone();
+    blocking(move || export_file(&app, &db, list, format, query)).await
+}
+
+/// [`export_history`]'s queries and file, on a blocking thread.
+fn export_file(
+    app: &AppHandle,
+    db: &Database,
     list: export::List,
     format: export::Format,
     query: Option<String>,
@@ -896,7 +1001,7 @@ pub async fn like_track(
     waker: State<'_, IdentifyWaker>,
     history_id: i64,
 ) -> AppResult<bool> {
-    let liked = db.like_track(history_id)?;
+    let liked = with_db(&db, move |db| Ok(db.like_track(history_id)?)).await?;
     waker.0.notify_one();
     Ok(liked)
 }
@@ -904,13 +1009,13 @@ pub async fn like_track(
 /// Stats over the last `days` days, or all time.
 #[tauri::command]
 pub async fn get_stats(db: State<'_, Database>, days: Option<u32>) -> AppResult<Stats> {
-    Ok(db.stats(days)?)
+    with_db(&db, move |db| Ok(db.stats(days)?)).await
 }
 
 /// Whether liked tracks are identified on MusicBrainz (off by default).
 #[tauri::command]
 pub async fn get_track_identification(db: State<'_, Database>) -> AppResult<bool> {
-    Ok(db.get_bool(SETTING_IDENTIFY, false)?)
+    with_db(&db, |db| Ok(db.get_bool(SETTING_IDENTIFY, false)?)).await
 }
 
 #[tauri::command]
@@ -919,7 +1024,7 @@ pub async fn set_track_identification(
     waker: State<'_, IdentifyWaker>,
     enabled: bool,
 ) -> AppResult<()> {
-    db.set_bool(SETTING_IDENTIFY, enabled)?;
+    with_db(&db, move |db| Ok(db.set_bool(SETTING_IDENTIFY, enabled)?)).await?;
     waker.0.notify_one();
     Ok(())
 }
@@ -929,7 +1034,7 @@ pub struct CoversState(pub Arc<Covers>);
 
 #[tauri::command]
 pub async fn get_cover_sources(db: State<'_, Database>) -> AppResult<Vec<CoverSource>> {
-    Ok(covers::load_sources(&db)?)
+    with_db(&db, |db| Ok(covers::load_sources(db)?)).await
 }
 
 /// Saves the order and switches, and chooses the cover of the track on air again.
@@ -939,7 +1044,7 @@ pub async fn set_cover_sources(
     covers: State<'_, CoversState>,
     sources: Vec<CoverSource>,
 ) -> AppResult<Vec<CoverSource>> {
-    let saved = covers::save_sources(&db, sources)?;
+    let saved = with_db(&db, move |db| Ok(covers::save_sources(db, sources)?)).await?;
     covers.0.refresh();
     Ok(saved)
 }
@@ -952,7 +1057,7 @@ pub async fn get_cover(covers: State<'_, CoversState>) -> AppResult<Cover> {
 
 #[tauri::command]
 pub async fn unlike_track(db: State<'_, Database>, track_key: String) -> AppResult<bool> {
-    Ok(db.unlike_track(&track_key)?)
+    with_db(&db, move |db| Ok(db.unlike_track(&track_key)?)).await
 }
 
 #[tauri::command]
@@ -961,7 +1066,8 @@ pub async fn list_likes(
     limit: Option<u32>,
     query: Option<String>,
 ) -> AppResult<Vec<LikedTrack>> {
-    Ok(db.list_likes(limit.unwrap_or(200).min(1000), query.as_deref())?)
+    let limit = limit.unwrap_or(200).min(1000);
+    with_db(&db, move |db| Ok(db.list_likes(limit, query.as_deref())?)).await
 }
 
 #[tauri::command]
@@ -971,7 +1077,10 @@ pub async fn report_station(
     report_type: ReportType,
     comment: Option<String>,
 ) -> AppResult<i64> {
-    Ok(db.add_report(&station_id, report_type, comment.as_deref())?)
+    with_db(&db, move |db| {
+        Ok(db.add_report(&station_id, report_type, comment.as_deref())?)
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -997,5 +1106,44 @@ mod last_station_tests {
         let db = Database::open_in_memory().unwrap();
         db.set_str(SETTING_LAST_STATION, "{not json").unwrap();
         assert!(saved_station(&db).is_none());
+    }
+}
+
+#[cfg(test)]
+mod blocking_tests {
+    use super::*;
+
+    /// One runtime thread: if the work ran on it, the timer below could not fire before the work
+    /// gives up waiting, and the work would be done first.
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocking_work_leaves_the_runtime_free() {
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let work = tokio::spawn(blocking(move || {
+            Ok(released.recv_timeout(Duration::from_secs(5)).is_ok())
+        }));
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!work.is_finished());
+        release.send(()).unwrap();
+        assert!(
+            work.await.unwrap().unwrap(),
+            "the work was not released by the runtime"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_panic_in_blocking_work_is_an_error_not_a_crash() {
+        let result: AppResult<()> = blocking(|| panic!("broken")).await;
+        assert!(result.unwrap_err().to_string().contains("interrupted"));
+    }
+
+    #[tokio::test]
+    async fn database_work_sees_the_same_connection() {
+        let db = Database::open_in_memory().unwrap();
+        with_db(&db, |db| Ok(db.set_bool(SETTING_CLICK_COUNTING, false)?))
+            .await
+            .unwrap();
+        assert!(!db.get_bool(SETTING_CLICK_COUNTING, true).unwrap());
+        let read = with_db(&db, |db| Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)).await;
+        assert!(!read.unwrap());
     }
 }

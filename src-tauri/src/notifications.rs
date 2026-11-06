@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
 
 use crate::audio::NowPlaying;
+use crate::commands::with_db;
 use crate::db::Database;
 use crate::error::AppResult;
 use crate::tracks::{self, ParsedTitle};
@@ -181,7 +182,10 @@ fn init(_identifier: &str) {}
 
 #[tauri::command]
 pub async fn get_track_notifications(db: State<'_, Database>) -> AppResult<bool> {
-    Ok(db.get_bool(SETTING_TRACK_NOTIFICATIONS, false)?)
+    with_db(&db, |db| {
+        Ok(db.get_bool(SETTING_TRACK_NOTIFICATIONS, false)?)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -190,7 +194,10 @@ pub async fn set_track_notifications(
     notifications: State<'_, TrackNotifications>,
     enabled: bool,
 ) -> AppResult<()> {
-    db.set_bool(SETTING_TRACK_NOTIFICATIONS, enabled)?;
+    with_db(&db, move |db| {
+        Ok(db.set_bool(SETTING_TRACK_NOTIFICATIONS, enabled)?)
+    })
+    .await?;
     notifications.enabled.store(enabled, Ordering::Relaxed);
     Ok(())
 }

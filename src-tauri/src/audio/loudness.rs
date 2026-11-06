@@ -16,7 +16,8 @@
 //!   ignored (gates).
 //! * A boost never takes the recent peak above −1 dBFS: no limiter, no clipping.
 
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use ebur128::{EbuR128, Mode};
@@ -98,6 +99,58 @@ pub trait LevelMemory: Send + Sync {
     /// Starting point for an unknown station (the median of the stations learned), if any.
     fn guess(&self) -> Option<f64>;
     fn remember(&self, station: &str, level: &StoredLevel);
+}
+
+/// A [`LevelMemory`] whose writes run on their own thread, in order. The decoder thread saves a
+/// level every minute and when a playback ends: it must never wait for the database, since the
+/// ring buffer's two seconds are all that keep the sound going meanwhile. Reads stay direct: they
+/// happen once, when a playback starts, on the engine thread.
+pub(crate) struct WriteBehind {
+    inner: Arc<dyn LevelMemory>,
+    writes: mpsc::Sender<(String, StoredLevel)>,
+}
+
+impl WriteBehind {
+    /// `memory` with its writes moved to a `level-writer` thread, or `memory` itself if that
+    /// thread cannot start. The thread ends once the returned memory is dropped and the writes
+    /// sent before are done.
+    pub(crate) fn wrap(memory: Arc<dyn LevelMemory>) -> Arc<dyn LevelMemory> {
+        let (writes, pending) = mpsc::channel::<(String, StoredLevel)>();
+        let writer = memory.clone();
+        let started = thread::Builder::new()
+            .name("level-writer".into())
+            .spawn(move || {
+                for (station, level) in pending {
+                    writer.remember(&station, &level);
+                }
+            });
+        match started {
+            Ok(_) => Arc::new(Self {
+                inner: memory,
+                writes,
+            }),
+            Err(e) => {
+                tracing::warn!("level-writer thread not started, levels saved in place: {e}");
+                memory
+            }
+        }
+    }
+}
+
+impl LevelMemory for WriteBehind {
+    fn recall(&self, station: &str) -> Option<StoredLevel> {
+        self.inner.recall(station)
+    }
+
+    fn guess(&self) -> Option<f64> {
+        self.inner.guess()
+    }
+
+    fn remember(&self, station: &str, level: &StoredLevel) {
+        if self.writes.send((station.to_owned(), *level)).is_err() {
+            tracing::warn!("station level not saved: the level-writer thread is gone");
+        }
+    }
 }
 
 /// What the estimate is doing.
@@ -491,6 +544,95 @@ impl Drop for StationLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Records the writes; `remember` waits until `open` is sent something (a slow database).
+    struct SlowMemory {
+        open: Mutex<mpsc::Receiver<()>>,
+        written: Mutex<Vec<(String, f64)>>,
+        done: Mutex<mpsc::Sender<()>>,
+    }
+
+    impl LevelMemory for SlowMemory {
+        fn recall(&self, station: &str) -> Option<StoredLevel> {
+            (station == "known").then_some(StoredLevel {
+                loudness_lufs: -20.0,
+                peak_dbfs: -3.0,
+                measured_secs: 60.0,
+            })
+        }
+        fn guess(&self) -> Option<f64> {
+            Some(-18.0)
+        }
+        fn remember(&self, station: &str, level: &StoredLevel) {
+            self.open.lock().unwrap().recv().unwrap();
+            let mut written = self.written.lock().unwrap();
+            written.push((station.to_owned(), level.loudness_lufs));
+            self.done.lock().unwrap().send(()).unwrap();
+        }
+    }
+
+    #[test]
+    fn writes_never_wait_for_the_memory_and_keep_their_order() {
+        let (open, wait_open) = mpsc::channel();
+        let (done, wait_done) = mpsc::channel();
+        let slow = Arc::new(SlowMemory {
+            open: Mutex::new(wait_open),
+            written: Mutex::new(Vec::new()),
+            done: Mutex::new(done),
+        });
+        let memory = WriteBehind::wrap(slow.clone());
+        let level = |lufs| StoredLevel {
+            loudness_lufs: lufs,
+            peak_dbfs: -1.0,
+            measured_secs: 30.0,
+        };
+
+        // The memory is blocked: both calls still return at once.
+        let started = Instant::now();
+        memory.remember("a", &level(-23.0));
+        memory.remember("b", &level(-14.0));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        assert!(slow.written.lock().unwrap().is_empty());
+
+        // Reads go straight to the memory.
+        assert_eq!(memory.recall("known").map(|l| l.loudness_lufs), Some(-20.0));
+        assert_eq!(memory.guess(), Some(-18.0));
+
+        for _ in 0..2 {
+            open.send(()).unwrap();
+            wait_done.recv_timeout(Duration::from_secs(5)).unwrap();
+        }
+        assert_eq!(
+            *slow.written.lock().unwrap(),
+            [("a".to_owned(), -23.0), ("b".to_owned(), -14.0)]
+        );
+    }
+
+    #[test]
+    fn writes_sent_before_the_memory_is_dropped_still_land() {
+        let (open, wait_open) = mpsc::channel();
+        let (done, wait_done) = mpsc::channel();
+        let slow = Arc::new(SlowMemory {
+            open: Mutex::new(wait_open),
+            written: Mutex::new(Vec::new()),
+            done: Mutex::new(done),
+        });
+        let memory = WriteBehind::wrap(slow.clone());
+        memory.remember(
+            "a",
+            &StoredLevel {
+                loudness_lufs: -16.0,
+                peak_dbfs: -1.0,
+                measured_secs: 30.0,
+            },
+        );
+        // A playback ends as the app quits: its last save is queued, then the memory goes.
+        drop(memory);
+        open.send(()).unwrap();
+        wait_done.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert_eq!(*slow.written.lock().unwrap(), [("a".to_owned(), -16.0)]);
+    }
 
     const RATE: u32 = 48_000;
 

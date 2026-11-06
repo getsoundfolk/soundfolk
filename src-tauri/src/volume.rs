@@ -5,7 +5,7 @@
 use tauri::{AppHandle, Manager, State};
 
 use crate::audio::{LevelMemory, StoredLevel};
-use crate::commands::AudioState;
+use crate::commands::{with_db, AudioState};
 use crate::db::Database;
 use crate::error::AppResult;
 
@@ -14,8 +14,9 @@ pub const SETTING_CONSTANT_VOLUME: &str = "constant_volume";
 /// quieter than its own mastering) is mild.
 pub const CONSTANT_VOLUME_DEFAULT: bool = true;
 
-/// Station levels in the database. Called from the decoder thread, when a playback starts and
-/// every minute while it plays: errors are logged, never shown.
+/// Station levels in the database. Read on the engine thread when a playback starts, written
+/// every minute while it plays from the engine's `level-writer` thread: errors are logged, never
+/// shown.
 pub struct DatabaseLevels(pub AppHandle);
 
 impl LevelMemory for DatabaseLevels {
@@ -56,7 +57,10 @@ pub fn constant_volume(db: &Database) -> bool {
 
 #[tauri::command]
 pub async fn get_constant_volume(db: State<'_, Database>) -> AppResult<bool> {
-    Ok(db.get_bool(SETTING_CONSTANT_VOLUME, CONSTANT_VOLUME_DEFAULT)?)
+    with_db(&db, |db| {
+        Ok(db.get_bool(SETTING_CONSTANT_VOLUME, CONSTANT_VOLUME_DEFAULT)?)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -65,7 +69,10 @@ pub async fn set_constant_volume(
     audio: State<'_, AudioState>,
     enabled: bool,
 ) -> AppResult<()> {
-    db.set_bool(SETTING_CONSTANT_VOLUME, enabled)?;
+    with_db(&db, move |db| {
+        Ok(db.set_bool(SETTING_CONSTANT_VOLUME, enabled)?)
+    })
+    .await?;
     audio.engine().set_normalize(enabled);
     Ok(())
 }

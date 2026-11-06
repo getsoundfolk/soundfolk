@@ -185,7 +185,14 @@ fn look_up(app: AppHandle, watched: Watched, error: String) {
         let gone = matches!(found, Ok(None));
         let error = match found {
             Ok(Some(station)) if station.url != watched.url && station.is_supported() => {
-                match retry(&app, &watched, station.url) {
+                // Starting a station waits for the sound output: off the async runtime.
+                let (retry_app, retry_watched) = (app.clone(), watched.clone());
+                let retried = tauri::async_runtime::spawn_blocking(move || {
+                    retry(&retry_app, &retry_watched, station.url)
+                })
+                .await
+                .unwrap_or_else(|e| Err(format!("retry interrupted: {e}")));
+                match retried {
                     Ok(()) => return,
                     Err(e) => {
                         tracing::warn!("cannot play the favorite's new address: {e}");

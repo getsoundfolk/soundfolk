@@ -6,7 +6,7 @@
 //! prevents concurrent reads (future sync worker) from blocking writes.
 
 use std::path::Path;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -187,8 +187,10 @@ pub struct PersonalStation {
     pub genre: Option<String>,
 }
 
+/// Cheap to clone: the clones share the connection (for work moved to a blocking thread).
+#[derive(Clone)]
 pub struct Database {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl Database {
@@ -214,7 +216,7 @@ impl Database {
         migrate(&conn)?;
         conn.execute_batch(INDEXES)?;
         let db = Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         };
         db.reparse_history_if_outdated()?;
         db.close_abandoned_sessions()?;
@@ -431,6 +433,14 @@ pub(super) mod tests {
             genre: Some("ambient".into()),
             added_at: None,
         }
+    }
+
+    #[test]
+    fn clones_share_the_connection() {
+        let db = Database::open_in_memory().unwrap();
+        let clone = db.clone();
+        clone.add_favorite(&fav("a")).unwrap();
+        assert_eq!(db.list_favorites().unwrap().len(), 1);
     }
 
     #[test]

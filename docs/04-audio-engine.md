@@ -6,8 +6,11 @@ isolated per target platform, while the Rust backend and the Tauri interface see
 
 ```rust
 pub trait AudioEngine {
-    /// `station` (its Radio-Browser UUID) helps find the title of streams that do not announce it.
-    fn play(&mut self, url: &str, station: StationRef) -> Result<(), String>;
+    /// Hands the station to the engine and returns at once; `PlayReply::wait` blocks until the
+    /// sound output is open (or failed to), so callers wait off the async runtime and without
+    /// holding a lock. `station` (its Radio-Browser UUID) helps find the title of streams that do
+    /// not announce it.
+    fn play(&mut self, url: &str, station: StationRef) -> Result<PlayReply, String>;
     /// On a live stream, pausing mutes the sound but keeps consuming the stream,
     /// so `resume` picks up on air, not where the pause happened.
     fn pause(&mut self) -> Result<(), String>;

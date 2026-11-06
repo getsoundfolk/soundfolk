@@ -42,8 +42,10 @@ pub use web_source::{RecipeTest, TitleStatus, WebEvent, WebTitles};
 
 /// Common facade for all platforms (see `docs/04-audio-engine.md`).
 pub trait AudioEngine {
+    /// Hands the station to the engine and returns at once; [`PlayReply::wait`] gives the outcome
+    /// (opening the sound output can take a few hundred ms). Requests play in the order made.
     /// `station` helps find the title of streams that do not announce it.
-    fn play(&mut self, url: &str, station: StationRef) -> Result<(), String>;
+    fn play(&mut self, url: &str, station: StationRef) -> Result<PlayReply, String>;
     /// Pause of a live stream: the sound is muted but the stream keeps being consumed,
     /// so `resume` picks up **live**, not where playback was paused.
     fn pause(&mut self) -> Result<(), String>;
@@ -530,8 +532,14 @@ impl DesktopAudioEngine {
 
     /// Where station levels are remembered, for *Constant volume*. Without it, every station
     /// starts as unknown.
+    /// Its writes run on their own thread ([`loudness::WriteBehind`]): the decoder never waits
+    /// for them.
     pub fn set_level_memory(&self, memory: Arc<dyn LevelMemory>) {
-        if self.levels.set(memory).is_err() {
+        if self
+            .levels
+            .set(loudness::WriteBehind::wrap(memory))
+            .is_err()
+        {
             tracing::warn!("station level memory already set");
         }
     }
@@ -566,8 +574,23 @@ impl DesktopAudioEngine {
     }
 }
 
+/// The engine's answer to [`AudioEngine::play`], once it has opened the sound output (or failed
+/// to).
+#[must_use = "the playback may still fail: wait for the answer"]
+pub struct PlayReply(mpsc::Receiver<Result<(), String>>);
+
+impl PlayReply {
+    /// Blocks until the engine answers (opening the sound output can take a few hundred ms):
+    /// call it from a blocking thread, never from an async task.
+    pub fn wait(self) -> Result<(), String> {
+        self.0
+            .recv()
+            .map_err(|_| "The audio engine is stopped".to_string())?
+    }
+}
+
 impl AudioEngine for DesktopAudioEngine {
-    fn play(&mut self, url: &str, station: StationRef) -> Result<(), String> {
+    fn play(&mut self, url: &str, station: StationRef) -> Result<PlayReply, String> {
         let url: Url = url
             .trim()
             .parse()
@@ -584,8 +607,7 @@ impl AudioEngine for DesktopAudioEngine {
                 reply,
             })
             .map_err(|_| "The audio engine is stopped".to_string())?;
-        wait.recv()
-            .map_err(|_| "The audio engine is stopped".to_string())?
+        Ok(PlayReply(wait))
     }
 
     fn pause(&mut self) -> Result<(), String> {
@@ -838,6 +860,56 @@ mod tests {
     use super::*;
 
     #[test]
+    fn play_reply_gives_the_engine_answer() {
+        let (reply, wait) = mpsc::channel();
+        reply.send(Err("No sound output".to_owned())).unwrap();
+        assert_eq!(PlayReply(wait).wait(), Err("No sound output".to_owned()));
+
+        let (reply, wait) = mpsc::channel();
+        reply.send(Ok(())).unwrap();
+        assert_eq!(PlayReply(wait).wait(), Ok(()));
+
+        // The engine thread is gone: no answer will come.
+        let (reply, wait) = mpsc::channel::<Result<(), String>>();
+        drop(reply);
+        assert_eq!(
+            PlayReply(wait).wait(),
+            Err("The audio engine is stopped".to_owned())
+        );
+    }
+
+    /// The request returns before the engine has answered: the caller may drop its locks and
+    /// wait elsewhere.
+    #[test]
+    fn play_returns_before_the_engine_answers() {
+        let (commands, received) = mpsc::channel();
+        let mut engine = DesktopAudioEngine {
+            commands,
+            controls: Arc::new(Controls::new()),
+            status: Arc::new(Status {
+                state: Mutex::new(PlayerState::Idle),
+                listener: Arc::new(|_| {}),
+                now_playing: Mutex::new(NowPlaying::default()),
+                now_playing_listener: Arc::new(|_| {}),
+            }),
+            levels: Levels::default(),
+        };
+        assert!(engine
+            .play("ftp://example.org/live", StationRef { id: None })
+            .is_err());
+
+        let pending = engine
+            .play(" https://example.org/live ", StationRef { id: None })
+            .unwrap();
+        let Ok(Command::Play { url, reply, .. }) = received.try_recv() else {
+            panic!("no play command sent");
+        };
+        assert_eq!(url.as_str(), "https://example.org/live");
+        reply.send(Ok(())).unwrap();
+        assert_eq!(pending.wait(), Ok(()));
+    }
+
+    #[test]
     fn cancel_runs_hook_once_even_if_registered_late() {
         let cancel = Cancel::default();
         let hits = Arc::new(AtomicU32::new(0));
@@ -1014,6 +1086,8 @@ mod tests {
                 "https://live.aurafm.org/Frequence7",
                 StationRef { id: None },
             )
+            .unwrap()
+            .wait()
             .unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while std::time::Instant::now() < deadline {
@@ -1085,6 +1159,8 @@ mod tests {
                 "https://live.aurafm.org/Frequence7",
                 StationRef { id: None },
             )
+            .unwrap()
+            .wait()
             .unwrap();
         let wait_for = |what: &dyn Fn() -> bool, secs: u64| {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
@@ -1174,6 +1250,8 @@ mod tests {
                 "http://stream.metacast.eu/radio1rock.ogg",
                 StationRef { id: None },
             )
+            .unwrap()
+            .wait()
             .unwrap();
         let secs = std::env::var("SOUNDFOLK_OGG_SECS")
             .ok()
@@ -1249,7 +1327,11 @@ mod tests {
             web,
         );
         engine.set_volume(0.0).unwrap();
-        engine.play(&url, StationRef { id: None }).unwrap();
+        engine
+            .play(&url, StationRef { id: None })
+            .unwrap()
+            .wait()
+            .unwrap();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(40);
         while std::time::Instant::now() < deadline && served.load(Ordering::SeqCst) < 8 {
             thread::sleep(std::time::Duration::from_millis(200));
@@ -1312,7 +1394,11 @@ mod tests {
             web,
         );
         engine.set_volume(0.0).unwrap();
-        engine.play(&url, StationRef { id: None }).unwrap();
+        engine
+            .play(&url, StationRef { id: None })
+            .unwrap()
+            .wait()
+            .unwrap();
         thread::sleep(std::time::Duration::from_secs(15));
         let seen = states.lock().unwrap().clone();
         engine.stop().unwrap();
@@ -1401,7 +1487,11 @@ mod tests {
         engine.set_level_memory(memory.clone());
         engine.set_volume(0.0).unwrap();
         for url in streams.split_whitespace() {
-            engine.play(url, StationRef { id: None }).unwrap();
+            engine
+                .play(url, StationRef { id: None })
+                .unwrap()
+                .wait()
+                .unwrap();
             let mut gains = Vec::new();
             for _ in 0..seconds {
                 thread::sleep(Duration::from_secs(1));

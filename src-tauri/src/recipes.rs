@@ -53,6 +53,10 @@ pub struct FileError {
     pub id: String,
     pub path: PathBuf,
     pub error: String,
+    /// The file's text as read when the set was loaded (empty if unreadable), to tell which
+    /// station a broken file is for without reading it again.
+    #[serde(skip)]
+    pub text: String,
 }
 
 /// The recipes in use, highest priority first.
@@ -276,9 +280,11 @@ impl Recipes {
         let mut errors = Vec::new();
         for path in &files {
             let id = file_id(path);
-            let result = std::fs::read_to_string(path)
+            let text = std::fs::read_to_string(path);
+            let result = text
+                .as_ref()
                 .map_err(|e| e.to_string())
-                .and_then(|text| parse(&text));
+                .and_then(|text| parse(text));
             match result {
                 Ok(recipe) => local.push(Entry {
                     id,
@@ -292,6 +298,7 @@ impl Recipes {
                         id,
                         path: path.clone(),
                         error,
+                        text: text.unwrap_or_default(),
                     });
                 }
             }
