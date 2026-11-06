@@ -8,16 +8,16 @@
 .input {
   width: 100%;
   padding: 0.5rem 0.7rem;
-  border: 1px solid #34343f;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  background: #121216;
+  background: var(--color-bg);
   color: inherit;
   font: inherit;
   font-size: 0.85rem;
 }
 
 .input:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
 
@@ -26,15 +26,15 @@
   padding: 0.5rem 1rem;
   border: 0;
   border-radius: 0.5rem;
-  background: #f0a028;
-  color: #1a1204;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
 .button:hover:not(:disabled) {
-  background: #ffb443;
+  background: var(--color-accent-hover);
 }
 
 .button:disabled {
@@ -46,9 +46,9 @@
 .error {
   margin: 0;
   font-size: 0.75rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .error {
-  color: #ff8a80;
+  color: var(--color-error);
 }

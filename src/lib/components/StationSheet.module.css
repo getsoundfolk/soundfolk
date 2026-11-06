@@ -3,15 +3,15 @@
   width: min(32rem, calc(100vw - 2rem));
   max-height: calc(100vh - 2rem);
   padding: 0;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.875rem;
-  background: #1a1a21;
-  color: #ececf1;
+  background: var(--color-surface);
+  color: var(--color-text);
   overflow-y: auto;
 }
 
 .sheet::backdrop {
-  background: rgb(0 0 0 / 0.55);
+  background: var(--color-backdrop);
 }
 
 .header {
@@ -20,7 +20,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.75rem 0.9rem;
-  border-bottom: 1px solid #2c2c36;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .title {
@@ -37,14 +37,14 @@
   border: 0;
   border-radius: 0.5rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   cursor: pointer;
 }
 
 .close:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .details {
@@ -63,7 +63,7 @@
 }
 
 .details dt {
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .details dd {
@@ -75,7 +75,7 @@
 .mono {
   font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
   font-size: 0.76rem;
-  color: #c4c4d0;
+  color: var(--color-text-soft);
   user-select: text;
 }
 
@@ -84,12 +84,12 @@
   flex-direction: column;
   gap: 0.55rem;
   padding: 0.8rem 0.9rem 1rem;
-  border-top: 1px solid #2c2c36;
+  border-top: 1px solid var(--color-border);
 }
 
 .sectionTitle {
   margin: 0;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -105,19 +105,19 @@
 }
 
 .hint {
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.78rem;
 }
 
 .warning {
-  color: #f3b3b8;
+  color: var(--color-danger-text);
   font-size: 0.78rem;
   overflow-wrap: anywhere;
 }
 
 .saved {
   margin: 0;
-  color: #9ee0b0;
+  color: var(--color-success-text);
   font-size: 0.78rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -131,17 +131,17 @@
 
 .button {
   padding: 0.4rem 0.8rem;
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--color-border-control);
   border-radius: 0.5rem;
-  background: #20202a;
-  color: #ececf1;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
 }
 
 .button:hover:not(:disabled) {
-  border-color: #55556a;
+  border-color: var(--color-border-hover);
 }
 
 .button:disabled {
@@ -153,7 +153,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: #f0a028;
+  color: var(--color-accent);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -166,7 +166,7 @@
 .close:focus-visible,
 .button:focus-visible,
 .link:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -175,9 +175,9 @@
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.65rem 0.75rem;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.6rem;
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .result p {
@@ -189,5 +189,5 @@
 .label {
   display: inline-block;
   min-width: 5.5rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }

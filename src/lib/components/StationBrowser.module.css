@@ -4,15 +4,15 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.875rem;
-  background: #1a1a21;
+  background: var(--color-surface);
   overflow: hidden;
 }
 
 .tabs {
   display: flex;
-  border-bottom: 1px solid #2c2c36;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .tab {
@@ -21,23 +21,23 @@
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.85rem;
   cursor: pointer;
 }
 
 .tab:hover {
-  color: #ececf1;
+  color: var(--color-text);
 }
 
 .tab[aria-selected='true'] {
-  border-bottom-color: #f0a028;
-  color: #ececf1;
+  border-bottom-color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .tab:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
 
@@ -45,7 +45,7 @@
   margin-left: 0.3rem;
   padding: 0 0.4rem;
   border-radius: 0.6rem;
-  background: #34343f;
+  background: var(--color-surface-higher);
   font-size: 0.7rem;
 }
 
@@ -62,16 +62,16 @@
 .search {
   width: 100%;
   padding: 0.55rem 0.7rem;
-  border: 1px solid #34343f;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  background: #121216;
+  background: var(--color-bg);
   color: inherit;
   font: inherit;
   font-size: 0.85rem;
 }
 
 .search:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
 
@@ -84,18 +84,18 @@
 .error {
   margin: 0.5rem 0;
   font-size: 0.85rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   text-align: center;
 }
 
 .error {
-  color: #ff8a80;
+  color: var(--color-error);
 }
 
 .more {
   align-self: center;
   padding: 0.45rem 1rem;
-  border: 1px solid #34343f;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
   background: transparent;
   color: inherit;
@@ -105,7 +105,7 @@
 }
 
 .more:hover:not(:disabled) {
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .more:disabled {

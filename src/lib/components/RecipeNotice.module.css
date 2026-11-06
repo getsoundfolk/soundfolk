@@ -11,15 +11,15 @@
   max-width: 34rem;
   margin-left: auto;
   padding: 0.6rem 0.7rem 0.6rem 0.85rem;
-  border: 1px solid #2f4a37;
+  border: 1px solid var(--color-success-border);
   border-radius: 0.7rem;
-  background: #17261c;
-  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35);
+  background: var(--color-success-bg);
+  box-shadow: 0 0.5rem 1.5rem var(--color-shadow);
 }
 
 .notice[data-ok='false'] {
-  border-color: #5a2c32;
-  background: #2a171a;
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
 }
 
 .text {
@@ -32,7 +32,7 @@
 
 .file {
   display: block;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.72rem;
 }
 
@@ -40,16 +40,16 @@
   flex: none;
   border: 0;
   background: none;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   cursor: pointer;
 }
 
 .close:hover {
-  color: #ececf1;
+  color: var(--color-text);
 }
 
 .close:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }

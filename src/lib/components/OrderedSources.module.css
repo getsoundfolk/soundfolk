@@ -2,9 +2,9 @@
 .box {
   /* Holds the visually hidden live region, which would otherwise escape the scrolling settings and lengthen the page. */
   position: relative;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.7rem;
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .head {
@@ -24,12 +24,12 @@
 
 .title,
 .name {
-  color: #ececf1;
+  color: var(--color-text);
   font-size: 0.88rem;
 }
 
 .detail {
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.76rem;
   line-height: 1.45;
 }
@@ -40,15 +40,15 @@
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.78rem;
   cursor: pointer;
 }
 
 .reset:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .list {
@@ -62,8 +62,8 @@
   align-items: flex-start;
   gap: 0.55rem;
   padding: 0.75rem 0.9rem 0.75rem 0.4rem;
-  border-top: 1px solid #2c2c36;
-  background: #20202a;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
 }
 
 .row:last-child {
@@ -73,8 +73,8 @@
 .row[data-dragged='true'] {
   position: relative;
   z-index: 1;
-  background: #262632;
-  box-shadow: 0 0.3rem 1rem rgb(0 0 0 / 0.35);
+  background: var(--color-surface-overlay);
+  box-shadow: 0 0.3rem 1rem var(--color-shadow);
 }
 
 .handle {
@@ -85,7 +85,7 @@
   border: 0;
   border-radius: 0.35rem;
   background: transparent;
-  color: #74748a;
+  color: var(--color-text-subtle);
   font-size: 1rem;
   line-height: 1;
   cursor: grab;
@@ -93,8 +93,8 @@
 }
 
 .handle:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .row[data-dragged='true'] .handle {
@@ -109,8 +109,8 @@
   height: 1.5rem;
   margin-top: 0.1rem;
   border-radius: 50%;
-  background: #2c2c36;
-  color: #c4c4d2;
+  background: var(--color-surface-high);
+  color: var(--color-text-soft);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -135,8 +135,8 @@
 .badge {
   padding: 0.1rem 0.45rem;
   border-radius: 0.35rem;
-  background: #2c2c36;
-  color: #c4c4d2;
+  background: var(--color-surface-high);
+  color: var(--color-text-soft);
   font-size: 0.64rem;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -152,7 +152,7 @@
   height: 1.3rem;
   margin: 0.1rem 0 0;
   border-radius: 999px;
-  background: #3a3a46;
+  background: var(--color-surface-control);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -165,12 +165,12 @@
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
-  background: #ececf1;
+  background: var(--color-knob);
   transition: transform 0.15s;
 }
 
 .toggle:checked {
-  background: #f0a028;
+  background: var(--color-accent);
 }
 
 .toggle:checked::after {
@@ -180,7 +180,7 @@
 .handle:focus-visible,
 .reset:focus-visible,
 .toggle:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 

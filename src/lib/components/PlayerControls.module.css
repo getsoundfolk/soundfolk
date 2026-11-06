@@ -4,9 +4,9 @@
   flex-direction: column;
   gap: 0.75rem;
   padding: 1rem 1.1rem;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.875rem;
-  background: #1a1a21;
+  background: var(--color-surface);
 }
 
 .top {
@@ -25,8 +25,8 @@
   height: 3.5rem;
   overflow: hidden;
   border-radius: 0.5rem;
-  background: #2c2c36;
-  color: #5a5a66;
+  background: var(--color-surface-high);
+  color: var(--color-disabled);
 }
 
 .cover {
@@ -72,12 +72,12 @@
 
 .subline {
   font-size: 0.8rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .next {
   font-size: 0.75rem;
-  color: #74748a;
+  color: var(--color-text-subtle);
 }
 
 .like {
@@ -87,7 +87,7 @@
   border: 0;
   border-radius: 0.5rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 1.15rem;
   line-height: 1;
@@ -95,16 +95,16 @@
 }
 
 .like:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .like[data-on='true'] {
-  color: #ff6b81;
+  color: var(--color-like);
 }
 
 .like:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -124,17 +124,17 @@
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: #f0a028;
-  color: #1a1204;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   cursor: pointer;
 }
 
 .button:hover:not(:disabled) {
-  background: #ffb443;
+  background: var(--color-accent-hover);
 }
 
 .button:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--color-focus-contrast);
   outline-offset: 2px;
 }
 
@@ -144,8 +144,8 @@
 }
 
 .button[data-active='true'] {
-  background: #3a3a46;
-  color: #ececf1;
+  background: var(--color-surface-control);
+  color: var(--color-text);
 }
 
 .volume {
@@ -166,21 +166,21 @@
   border: 0;
   border-radius: 0.5rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 
 .speaker:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .speaker[aria-pressed='true'] {
-  color: #ff8a80;
+  color: var(--color-error);
 }
 
 .speaker:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -188,7 +188,7 @@
    full size on hover or while dragging, so at rest the bar reads as a level. */
 .slider {
   --track: 0.3rem;
-  --fill-color: #f0a028;
+  --fill-color: var(--color-accent);
   flex: 1;
   min-width: 0;
   height: 1.5rem;
@@ -200,13 +200,17 @@
 }
 
 .slider[data-muted='true'] {
-  --fill-color: #5a5a66;
+  --fill-color: var(--color-disabled);
 }
 
 .slider::-webkit-slider-runnable-track {
   height: var(--track);
   border-radius: 999px;
-  background: linear-gradient(to right, var(--fill-color) var(--fill), #34343f var(--fill));
+  background: linear-gradient(
+    to right,
+    var(--fill-color) var(--fill),
+    var(--color-surface-higher) var(--fill)
+  );
   transition: height 0.12s ease;
 }
 
@@ -216,8 +220,8 @@
   margin-top: calc((var(--track) - 0.85rem) / 2);
   border: 0;
   border-radius: 50%;
-  background: #ececf1;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  background: var(--color-knob);
+  box-shadow: 0 1px 3px var(--color-shadow-knob);
   transform: scale(0.75);
   transition:
     transform 0.12s ease,
@@ -229,7 +233,7 @@
 .slider::-moz-range-track {
   height: var(--track);
   border-radius: 999px;
-  background: #34343f;
+  background: var(--color-surface-higher);
 }
 
 .slider::-moz-range-progress {
@@ -243,8 +247,8 @@
   height: 0.85rem;
   border: 0;
   border-radius: 50%;
-  background: #ececf1;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  background: var(--color-knob);
+  box-shadow: 0 1px 3px var(--color-shadow-knob);
 }
 
 .slider:hover,
@@ -260,7 +264,7 @@
 }
 
 .slider:hover:not([data-muted='true']) {
-  --fill-color: #ffb443;
+  --fill-color: var(--color-accent-hover);
 }
 
 .slider:focus-visible {
@@ -268,7 +272,7 @@
 }
 
 .slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px rgb(240 160 40 / 0.45);
+  box-shadow: 0 0 0 3px var(--color-accent-ring);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -284,36 +288,36 @@
   gap: 0.5rem;
   margin: 0;
   font-size: 0.82rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .dot {
   width: 0.6rem;
   height: 0.6rem;
   border-radius: 50%;
-  background: #5a5a66;
+  background: var(--color-disabled);
 }
 
 .status[data-status='playing'] .dot {
-  background: #3ddc84;
+  background: var(--color-success);
 }
 
 .status[data-status='connecting'] .dot,
 .status[data-status='reconnecting'] .dot {
-  background: #f0a028;
+  background: var(--color-accent);
   animation: pulse 1s ease-in-out infinite;
 }
 
 .status[data-status='paused'] .dot {
-  background: #8aa4ff;
+  background: var(--color-info);
 }
 
 .status[data-status='error'] {
-  color: #ff8a80;
+  color: var(--color-error);
 }
 
 .status[data-status='error'] .dot {
-  background: #ff5252;
+  background: var(--color-error-strong);
 }
 
 /* "Remove it from your favorites?" under the error of a favorite gone from the catalog. */
@@ -323,25 +327,25 @@
   gap: 0.5rem;
   margin: 0;
   font-size: 0.82rem;
-  color: #c9c9d4;
+  color: var(--color-text-soft);
 }
 
 .answer {
   padding: 0.2rem 0.7rem;
-  border: 1px solid #4a4a56;
+  border: 1px solid var(--color-border-bold);
   border-radius: 0.4rem;
   background: transparent;
-  color: #ececf1;
+  color: var(--color-text);
   font: inherit;
   cursor: pointer;
 }
 
 .answer:hover {
-  background: #3a3a46;
+  background: var(--color-surface-control);
 }
 
 .answer:focus-visible {
-  outline: 2px solid #fff;
+  outline: 2px solid var(--color-focus-contrast);
   outline-offset: 2px;
 }
 
@@ -363,22 +367,22 @@
   flex: none;
   height: 2rem;
   padding: 0 0.6rem;
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--color-border-control);
   border-radius: 0.5rem;
   background: transparent;
-  color: #c9c9d6;
+  color: var(--color-text-soft);
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
 }
 
 .donate:hover {
-  border-color: #f0a028;
-  color: #ececf1;
+  border-color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .donate:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -389,15 +393,15 @@
   border: 0;
   border-radius: 0.5rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 1.15rem;
   line-height: 1;
   cursor: pointer;
 }
 
 .gear:hover:not(:disabled) {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .gear:disabled {
@@ -406,6 +410,6 @@
 }
 
 .gear:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }

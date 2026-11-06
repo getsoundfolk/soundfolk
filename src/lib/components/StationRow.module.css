@@ -9,11 +9,11 @@
 }
 
 .row:hover {
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .row[data-active='true'] {
-  background: #272733;
+  background: var(--color-surface-hover);
 }
 
 .play,
@@ -30,18 +30,18 @@
   width: 2rem;
   height: 2rem;
   border-radius: 50%;
-  background: #f0a028;
-  color: #1a1204;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font-size: 0.7rem;
 }
 
 .play:hover {
-  background: #ffb443;
+  background: var(--color-accent-hover);
 }
 
 .play:focus-visible,
 .icon:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -66,20 +66,20 @@
 
 .meta {
   font-size: 0.75rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .warning {
   font-size: 0.72rem;
-  color: #f0a028;
+  color: var(--color-accent);
 }
 
 .badge {
   margin-left: 0.4rem;
   padding: 0.05rem 0.4rem;
   border-radius: 0.6rem;
-  background: #34343f;
-  color: #c9c9d6;
+  background: var(--color-surface-higher);
+  color: var(--color-text-soft);
   font-size: 0.65rem;
   font-weight: 500;
   vertical-align: middle;
@@ -89,15 +89,15 @@
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 0.4rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 1.05rem;
 }
 
 .icon:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .icon[data-on='true'] {
-  color: #f0a028;
+  color: var(--color-accent);
 }

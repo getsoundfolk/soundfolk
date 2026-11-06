@@ -4,9 +4,9 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.875rem;
-  background: #1a1a21;
+  background: var(--color-surface);
   overflow: hidden;
 }
 
@@ -15,7 +15,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #2c2c36;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .back {
@@ -26,20 +26,20 @@
   border: 0;
   border-radius: 0.5rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.85rem;
   cursor: pointer;
 }
 
 .back:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .back:focus-visible,
 .toggle:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -53,8 +53,8 @@
   margin: 0.75rem 0.75rem 0;
   padding: 0.5rem 0.7rem;
   border-radius: 0.5rem;
-  background: #3a1f22;
-  color: #f3b3b8;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
   font-size: 0.8rem;
 }
 
@@ -78,7 +78,7 @@
 
 .groupTitle {
   margin: 0;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -87,7 +87,7 @@
 
 .groupIntro {
   margin: 0;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.8rem;
   line-height: 1.45;
 }
@@ -98,14 +98,14 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.8rem 0.9rem;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.7rem;
-  background: #20202a;
+  background: var(--color-surface-raised);
   cursor: pointer;
 }
 
 .option:hover {
-  border-color: #3a3a46;
+  border-color: var(--color-border-control);
 }
 
 .text {
@@ -116,12 +116,12 @@
 }
 
 .name {
-  color: #ececf1;
+  color: var(--color-text);
   font-size: 0.88rem;
 }
 
 .detail {
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.76rem;
   line-height: 1.45;
 }
@@ -135,7 +135,7 @@
   height: 1.3rem;
   margin: 0.1rem 0 0;
   border-radius: 999px;
-  background: #3a3a46;
+  background: var(--color-surface-control);
   cursor: pointer;
   transition: background 0.15s;
 }
@@ -148,12 +148,12 @@
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
-  background: #ececf1;
+  background: var(--color-knob);
   transition: transform 0.15s;
 }
 
 .toggle:checked {
-  background: #f0a028;
+  background: var(--color-accent);
 }
 
 .toggle:checked::after {
@@ -167,9 +167,9 @@
   gap: 0.55rem;
   margin: 0;
   padding: 0.8rem 0.9rem;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.7rem;
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 /* Floated, a legend is laid out inside the box instead of cutting through its border. */
@@ -197,27 +197,27 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.3rem 0.65rem;
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--color-border-control);
   border-radius: 999px;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.8rem;
   cursor: pointer;
   user-select: none;
 }
 
 .chip:hover {
-  border-color: #55556a;
-  color: #ececf1;
+  border-color: var(--color-border-hover);
+  color: var(--color-text);
 }
 
 .chip:has(input:checked) {
-  border-color: #f0a028;
-  background: rgb(240 160 40 / 0.12);
-  color: #ececf1;
+  border-color: var(--color-accent);
+  background: var(--color-accent-tint);
+  color: var(--color-text);
 }
 
 .chip:has(input:focus-visible) {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -231,7 +231,7 @@
 .chip:has(input:checked)::before {
   content: '✓';
   font-size: 0.72rem;
-  color: #f0a028;
+  color: var(--color-accent);
 }
 
 /* A user site: its chip, and a × to remove it. */
@@ -248,7 +248,7 @@
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: #7c7c8c;
+  color: var(--color-text-subtle);
   font: inherit;
   font-size: 0.95rem;
   line-height: 1;
@@ -256,25 +256,25 @@
 }
 
 .remove:hover {
-  background: #3a1f22;
-  color: #f3b3b8;
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
 }
 
 .addSite {
   align-self: flex-start;
   padding: 0.3rem 0.65rem;
-  border: 1px dashed #3a3a46;
+  border: 1px dashed var(--color-border-control);
   border-radius: 999px;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
 }
 
 .addSite:hover {
-  border-color: #f0a028;
-  color: #ececf1;
+  border-color: var(--color-accent);
+  color: var(--color-text);
 }
 
 .siteForm {
@@ -288,40 +288,40 @@
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.76rem;
 }
 
 .field input {
   padding: 0.45rem 0.6rem;
-  border: 1px solid #3a3a46;
+  border: 1px solid var(--color-border-control);
   border-radius: 0.5rem;
-  background: #1a1a21;
-  color: #ececf1;
+  background: var(--color-surface);
+  color: var(--color-text);
   font: inherit;
   font-size: 0.84rem;
 }
 
 .field input:focus {
-  border-color: #f0a028;
+  border-color: var(--color-accent);
   outline: none;
 }
 
 .hint {
   margin: 0;
-  color: #7c7c8c;
+  color: var(--color-text-subtle);
   font-size: 0.74rem;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 .hint code {
-  color: #c9c9d6;
+  color: var(--color-text-soft);
 }
 
 .formError {
   margin: 0;
-  color: #f3b3b8;
+  color: var(--color-danger-text);
   font-size: 0.76rem;
 }
 
@@ -336,8 +336,8 @@
   padding: 0.35rem 0.9rem;
   border: 0;
   border-radius: 0.5rem;
-  background: #f0a028;
-  color: #1a1a21;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
   font: inherit;
   font-size: 0.82rem;
   font-weight: 600;
@@ -352,7 +352,7 @@
 .remove:focus-visible,
 .addSite:focus-visible,
 .primary:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -362,7 +362,7 @@
   align-items: center;
   gap: 1rem;
   margin: 0;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font-size: 0.76rem;
 }
 
@@ -370,7 +370,7 @@
   padding: 0;
   border: 0;
   background: none;
-  color: #f0a028;
+  color: var(--color-accent);
   font: inherit;
   cursor: pointer;
 }
@@ -380,7 +380,7 @@
 }
 
 .link:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -388,9 +388,9 @@
   display: flex;
   flex-direction: column;
   margin: 0;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.7rem;
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .about div {
@@ -402,16 +402,16 @@
 }
 
 .about div + div {
-  border-top: 1px solid #2c2c36;
+  border-top: 1px solid var(--color-border);
 }
 
 .about dt {
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .about dd {
   margin: 0;
-  color: #ececf1;
+  color: var(--color-text);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -422,7 +422,7 @@
 }
 
 .recipeError {
-  color: #f3b3b8;
+  color: var(--color-danger-text);
   font-size: 0.74rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -440,13 +440,13 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.8rem 0.9rem;
-  border: 1px solid #2c2c36;
+  border: 1px solid var(--color-border);
   border-radius: 0.7rem;
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .dataRow[data-danger='true'] {
-  border-color: #6b3a3a;
+  border-color: var(--color-danger-border);
 }
 
 .dataActions {
@@ -457,14 +457,14 @@
 }
 
 .link:disabled {
-  color: #5c5c6a;
+  color: var(--color-disabled);
   cursor: default;
   text-decoration: none;
 }
 
 .warning {
   margin-top: 0.35rem;
-  color: #f3b3b8;
+  color: var(--color-danger-text);
   font-size: 0.78rem;
   line-height: 1.45;
 }
@@ -473,8 +473,8 @@
   padding: 0.35rem 0.9rem;
   border: 0;
   border-radius: 0.5rem;
-  background: #d9534f;
-  color: #fff;
+  background: var(--color-danger);
+  color: var(--color-on-danger);
   font: inherit;
   font-size: 0.82rem;
   font-weight: 600;
@@ -487,6 +487,6 @@
 }
 
 .danger:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }

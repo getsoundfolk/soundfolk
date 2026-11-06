@@ -1,13 +1,73 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 :root {
+  /* Surfaces, darkest to lightest. */
+  --color-bg: #121216;
+  --color-surface: #1a1a21;
+  --color-surface-raised: #20202a;
+  --color-surface-overlay: #262632;
+  --color-surface-hover: #272733;
+  --color-surface-high: #2c2c36;
+  --color-surface-higher: #34343f;
+  --color-surface-control: #3a3a46;
+
+  /* Borders. */
+  --color-border: #2c2c36;
+  --color-border-strong: #34343f;
+  --color-border-control: #3a3a46;
+  --color-border-bold: #4a4a56;
+  --color-border-hover: #55556a;
+
+  /* Text, brightest to dimmest. */
+  --color-text: #ececf1;
+  --color-text-soft: #c9c9d6;
+  --color-text-muted: #9a9aab;
+  --color-text-subtle: #7c7c8c;
+  --color-disabled: #5a5a66;
+
+  /* Accent: buttons, focus rings, selection. */
+  --color-accent: #f0a028;
+  --color-accent-hover: #ffb443;
+  --color-on-accent: #1a1204;
+  --color-accent-tint: rgb(240 160 40 / 0.12);
+  --color-accent-ring: rgb(240 160 40 / 0.45);
+  --color-focus: var(--color-accent);
+  --color-focus-contrast: #fff;
+  --color-knob: var(--color-text);
+  --color-like: #ff6b81;
+
+  /* Status. */
+  --color-success: #3ddc84;
+  --color-success-text: #9ee0b0;
+  --color-success-bg: #17261c;
+  --color-success-border: #2f4a37;
+  --color-info: #8aa4ff;
+  --color-warning-bg: #2a2214;
+  --color-warning-border: #4a3a1c;
+  --color-warning-border-strong: #5a4a2c;
+  --color-error: #ff8a80;
+  --color-error-strong: #ff5252;
+  --color-error-bg: #2a171a;
+  --color-error-border: #5a2c32;
+  --color-danger: #d9534f;
+  --color-on-danger: #fff;
+  --color-danger-text: #f3b3b8;
+  --color-danger-bg: #3a1f22;
+  --color-danger-border: #6b3a3a;
+
+  /* Shadows and backdrops. */
+  --color-shadow: rgb(0 0 0 / 0.35);
+  --color-shadow-strong: rgb(0 0 0 / 0.45);
+  --color-shadow-knob: rgb(0 0 0 / 0.5);
+  --color-backdrop: rgb(0 0 0 / 0.55);
+
   color-scheme: dark;
   font-family:
     system-ui,
     -apple-system,
     'Segoe UI',
     sans-serif;
-  background: #121216;
-  color: #ececf1;
+  background: var(--color-bg);
+  color: var(--color-text);
 }
 
 *,

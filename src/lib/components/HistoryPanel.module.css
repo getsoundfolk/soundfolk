@@ -10,7 +10,7 @@
   gap: 0.25rem;
   padding: 0.2rem;
   border-radius: 0.55rem;
-  background: #121216;
+  background: var(--color-bg);
 }
 
 .view {
@@ -19,27 +19,27 @@
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.8rem;
   cursor: pointer;
 }
 
 .view:hover {
-  color: #ececf1;
+  color: var(--color-text);
 }
 
 .view[aria-checked='true'] {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .filter {
   width: 100%;
   padding: 0.5rem 0.7rem;
-  border: 1px solid #34343f;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
-  background: #121216;
+  background: var(--color-bg);
   color: inherit;
   font: inherit;
   font-size: 0.82rem;
@@ -48,7 +48,7 @@
 .view:focus-visible,
 .filter:focus-visible,
 .like:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 1px;
 }
 
@@ -59,7 +59,7 @@
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 1.05rem;
   line-height: 1;
@@ -67,12 +67,12 @@
 }
 
 .like:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .like[data-on='true'] {
-  color: #ff6b81;
+  color: var(--color-like);
 }
 
 .group {
@@ -87,7 +87,7 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #7c7c8c;
+  color: var(--color-text-subtle);
 }
 
 .list {
@@ -105,7 +105,7 @@
 }
 
 .row:hover {
-  background: #20202a;
+  background: var(--color-surface-raised);
 }
 
 .text {
@@ -130,7 +130,7 @@
 
 .meta {
   font-size: 0.75rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
 }
 
 .actions {
@@ -144,7 +144,7 @@
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 1.1rem;
   line-height: 1;
@@ -153,14 +153,14 @@
 
 .more:hover,
 .more[aria-expanded='true'] {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .more:focus-visible,
 .item:focus-visible,
 .export:focus-visible {
-  outline: 2px solid #f0a028;
+  outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
 
@@ -174,16 +174,16 @@
   flex-direction: column;
   width: 12rem;
   padding: 0.35rem;
-  border: 1px solid #34343f;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.7rem;
-  background: #20202a;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+  background: var(--color-surface-raised);
+  box-shadow: 0 8px 24px var(--color-shadow-strong);
 }
 
 .heading {
   margin: 0.25rem 0.5rem 0.2rem;
   font-size: 0.7rem;
-  color: #7c7c8c;
+  color: var(--color-text-subtle);
 }
 
 .item {
@@ -191,7 +191,7 @@
   border: 0;
   border-radius: 0.4rem;
   background: transparent;
-  color: #c9c9d6;
+  color: var(--color-text-soft);
   font: inherit;
   font-size: 0.82rem;
   text-align: left;
@@ -199,21 +199,21 @@
 }
 
 .item:hover {
-  background: #2c2c36;
-  color: #ececf1;
+  background: var(--color-surface-high);
+  color: var(--color-text);
 }
 
 .separator {
   width: 100%;
   margin: 0.3rem 0;
   border: 0;
-  border-top: 1px solid #34343f;
+  border-top: 1px solid var(--color-border-strong);
 }
 
 .empty {
   margin: 0.5rem 0;
   font-size: 0.85rem;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   text-align: center;
 }
 
@@ -227,18 +227,18 @@
 
 .export {
   padding: 0.4rem 0.9rem;
-  border: 1px solid #34343f;
+  border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
   background: transparent;
-  color: #9a9aab;
+  color: var(--color-text-muted);
   font: inherit;
   font-size: 0.78rem;
   cursor: pointer;
 }
 
 .export:hover:not(:disabled) {
-  background: #20202a;
-  color: #ececf1;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
 }
 
 .export:disabled {
@@ -254,8 +254,8 @@
   margin: 0;
   padding: 0.45rem 0.9rem;
   border-radius: 0.5rem;
-  background: #34343f;
-  color: #ececf1;
+  background: var(--color-surface-higher);
+  color: var(--color-text);
   font-size: 0.8rem;
   opacity: 0;
   pointer-events: none;
