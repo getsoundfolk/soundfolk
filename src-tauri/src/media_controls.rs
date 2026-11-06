@@ -10,7 +10,6 @@
 //! Linux only for now: Windows needs the window's HWND and macOS the main thread's run loop.
 //! Elsewhere [`SystemMedia`] does nothing. The tray menu drives the player through [`control`] too,
 //! so that it can never behave differently from the media keys.
-#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
 
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -58,6 +57,8 @@ impl SystemMedia {
 }
 
 /// What the desktop displays: the station as the title, the track on air as the artist.
+// Only the Linux backend shows it; the tests run everywhere.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 #[derive(Debug, PartialEq)]
 struct Display {
     title: Option<String>,
@@ -68,6 +69,7 @@ struct Display {
 /// `station` is the name the user knows the station by; the stream's `icy-name` is the fallback.
 /// A title that is only the station name (sent by some radios between tracks) is not a track.
 /// The track is rebuilt as `Artist - Title`, without the station signature some radios append.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
     let station = station
         .or(now_playing.station.as_deref())
@@ -207,6 +209,8 @@ mod linux {
 }
 
 /// What the desktop's media controls and the tray menu ask the player to do.
+// The tray only sends Toggle, Next and Previous: elsewhere than Linux nothing else is built.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 #[derive(Debug, Clone, Copy)]
 pub enum Command {
     Play,
