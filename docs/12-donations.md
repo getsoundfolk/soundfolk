@@ -53,11 +53,11 @@ URL and ticks the licence box. A bot checks it and opens the pull request. Only 
 * `lint.py`: `https://` only, no URL shortener, no tracking parameters; `found_on` on the domain of `homepage`;
   the donation domain is the station's own or one of `platforms.toml` (maintainer only): HelloAsso, Liberapay,
   Ko-fi, Patreon, Tipeee, Open Collective, Donorbox. PayPal is not accepted for now. One entry per station.
-* The bot opens a pull request only when the station's website links to the page (HelloAsso's `…/widget` links
-  count as the form they embed). Otherwise it labels the issue *manual-check* and explains why; the maintainer may
-  then add the entry with `checked_by_hand`. Every pull request is merged by the maintainer, and the bot labels
-  what to look at: *new-station* (is `homepage`, taken from Radio-Browser, official?), *link-change*,
-  *homepage-change*.
+* The bot opens a pull request only when the station's website links to the page. HelloAsso's `…/widget` links
+  count as the form they embed, and the bot replaces a widget link given as `donate.url` by its form. Otherwise
+  it labels the issue *manual-check* and explains why; the maintainer may then add the entry with
+  `checked_by_hand`. Every pull request is merged by the maintainer, and the bot labels what to look at:
+  *new-station* (is `homepage`, taken from Radio-Browser, official?), *link-change*, *homepage-change*.
 * **Every day**, CI checks every published link:
   * an entry checked by hand has no page to read again: only `donate.url` is checked;
   * a link no longer found on `found_on` is **left out of the published list at once**, and comes back by itself
