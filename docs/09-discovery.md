@@ -64,11 +64,15 @@ need our own data (§5.2).
 
 One screen, one level (06 §1), never empty (06 §3). From top to bottom:
 
-1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language). The chips
-   are shared with search: what is selected in one is selected in the other.
+1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language), plus **Use**,
+   which only curated lists have ([14-curated-lists.md](14-curated-lists.md) §6.5). The chips are shared with
+   search: what is selected in one is selected in the other. They filter the rows too: a row stays when its
+   collection or list matches.
 2. **Scan** — next to Surprise me (§4.2).
-3. **Collections** — horizontal rows of stations, one per collection (§5), personal ones first.
-4. The search box, which turns the screen into the search results of 08 as soon as text is typed.
+3. **Collections** — horizontal rows of stations, one per collection (§5): personal ones first, then the curated
+   lists (§5.2), then the rule collections. A list's row shows its title, "by @login" and one line of description.
+4. The search box, which turns the screen into the search results of 08 as soon as text is typed: the matching
+   curated lists first, as one row, then the stations.
 
 The station sheet gets **More like this** (§6).
 
@@ -149,18 +153,12 @@ First set, in this order on screen:
 
 Rows are fetched as they scroll into view, not all at the opening of the screen.
 
-### 5.2 Hand-picked collections (later, server side)
-"Ad-free, listener-supported", "French community radios", "Hidden gems" (06 §3) cannot be expressed as catalog
-filters: they need a list of station UUIDs chosen by people. That list belongs to `soundfolk.fm`, not to the app:
-a stored list shipped with a release would go stale, and a fix would wait for the next release.
-
-* The app fetches the lists at the first opening of Discover, keeps them for the day (06 §6: no visible maintenance).
-* Dead stations in a list are skipped like in search (warning, ranked last), and reported to whoever maintains it.
-* The *ad-free* and *listener-supported* badges of 06 §5 come from the same data.
-* Until that server exists, station data Soundfolk adds to the catalog (donation links first) lives in
-  `getsoundfolk/soundfolk-stations`: see [12-donations.md](12-donations.md) §2.
-
-Who maintains the lists (us, the folkers, both) is an open question (§9).
+### 5.2 Curated lists
+"French community radios" or "Ambient for focus" cannot be expressed as catalog filters: they need stations chosen
+by people. Specified in [14-curated-lists.md](14-curated-lists.md): lists live in `getsoundfolk/soundfolk-stations`,
+are fetched once a day, and each one is a row here, filtered by the same chips (14 §7, option D). "See all" opens the
+list's screen, in the curator's order. The *No commercial ads* badge is a station attribute, not a list (14 §5); its
+row is a rule collection over that attribute.
 
 ### 5.3 Hidden gems
 The vision promises a community that "digs for hidden gems" (01). Before there is a community, the app can find the
@@ -224,7 +222,7 @@ The history already knows which artists each station plays (stats: "tracks heard
 - [ ] Tests: floor and exclusions on a fixed batch, tag specificity and overlap ranking, deferred session rule.
 
 **Frontend**
-- [ ] Discover tab (06 §1): Surprise me + chips, Scan, collection rows, search box.
+- [ ] Discover tab (06 §1): Surprise me + chips, Scan, collection rows (curated lists included, 14 §7), search box.
 - [ ] Collection definitions next to the genre list, translated.
 - [ ] Scan bar and its state machine (step, keep, next, stop back to the previous station).
 - [ ] "Another one" in the player after a surprise, on media "next" too.
@@ -235,7 +233,7 @@ The history already knows which artists each station plays (stats: "tracks heard
 
 **Later**
 - [ ] Elsewhere (§4.3).
-- [ ] Hand-picked collections and badges from `soundfolk.fm` (§5.2).
+- [ ] Curated lists and the *No commercial ads* badge: see [14-curated-lists.md](14-curated-lists.md) §8.
 - [ ] Catalog gems and the shared station → artists index (§5.3, §6.2).
 
 ---
@@ -246,6 +244,5 @@ The history already knows which artists each station plays (stats: "tracks heard
   a station they forgot to add to favorites. Alternative: exclude only stations heard for more than a few minutes.
 * 64 kbit/s as the floor, 128 for genre rows: same question as 08 §8 about codecs.
 * Scan interval: is 15 s enough to judge a station that is between two tracks or in an ad break?
-* Hand-picked lists: who curates, how are they reviewed, and how does a folker suggest a station without an account?
 * Should Discover replace the Search tab now (three destinations of 06 §1), or come as a fourth tab until Listen
   exists?

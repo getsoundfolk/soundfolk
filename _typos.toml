@@ -11,3 +11,5 @@ extend-exclude = ["*.tsv"]
 frequence = "frequence"
 # Cadena SER, a Spanish network
 ser = "ser"
+# RTS Espace 2, a Swiss public station
+espace = "espace"

@@ -12,8 +12,9 @@ these.
 
 ## 1. Navigation
 * **Three labelled destinations**, no more:
-  * **Listen:** resume the last station, then favorites (catalog and personal stations together);
-  * **Discover:** search, filters and curated collections;
+  * **Listen:** resume the last station, then favorites (catalog and personal stations together), later the
+    listener's own lists ([14-curated-lists.md](14-curated-lists.md) §7);
+  * **Discover:** search, filters and collections, published curated lists included, under one set of chips;
   * **History:** tracks heard, likes and stats.
 * Settings live in a menu, not in the main navigation.
 * **One navigation level.** No tabs inside tabs, no icon bar repeating the same actions. A screen may have filters, not
