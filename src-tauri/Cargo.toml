@@ -83,6 +83,8 @@ unicode-normalization = "0.1"
 soundfolk-nowplaying = { path = "crates/nowplaying" }
 # HTTP `Date` headers and timestamps
 jiff = { version = "0.2", default-features = false, features = ["std"] }
+# Station pages in another charset than UTF-8 (Latin-1 and the like), decoded as a browser does
+encoding_rs = "0.8"
 
 # One running copy only: launching Soundfolk again brings the existing window forward
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
