@@ -69,5 +69,5 @@ these.
 * A given list always uses the same layout. Grid vs. list is a single, global choice, if offered at all.
 
 ## 9. Respect while listening
-* Donation suggestions follow the rules of the donation nudge: shown when playback stops or at the next launch, never
-  during playback, never modal, always dismissible for good.
+* Donation suggestions ([12-donations.md](12-donations.md) §4): shown when playback stops or at the next launch,
+  never during playback, never modal, at most once a month, and they can be turned off for good.

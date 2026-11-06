@@ -157,6 +157,8 @@ a stored list shipped with a release would go stale, and a fix would wait for th
 * The app fetches the lists at the first opening of Discover, keeps them for the day (06 §6: no visible maintenance).
 * Dead stations in a list are skipped like in search (warning, ranked last), and reported to whoever maintains it.
 * The *ad-free* and *listener-supported* badges of 06 §5 come from the same data.
+* Until that server exists, station data Soundfolk adds to the catalog (donation links first) lives in
+  `getsoundfolk/soundfolk-stations`: see [12-donations.md](12-donations.md) §2.
 
 Who maintains the lists (us, the folkers, both) is an open question (§9).
 
