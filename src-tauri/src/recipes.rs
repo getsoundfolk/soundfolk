@@ -14,7 +14,6 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
 
@@ -126,7 +125,8 @@ pub struct Recipes {
     local_dir: Option<PathBuf>,
     bundled: Vec<Entry>,
     current: RwLock<Arc<RecipeSet>>,
-    generation: AtomicU64,
+    /// Incremented every time the recipes in use change.
+    generation: tokio::sync::watch::Sender<u64>,
     layers: Mutex<Layers>,
 }
 
@@ -151,7 +151,7 @@ impl Recipes {
             local_dir,
             bundled,
             current: RwLock::default(),
-            generation: AtomicU64::new(0),
+            generation: tokio::sync::watch::Sender::new(0),
             layers: Mutex::default(),
         };
         recipes.reload_if_changed();
@@ -172,7 +172,12 @@ impl Recipes {
 
     /// Incremented every time the recipes in use change.
     pub fn generation(&self) -> u64 {
-        self.generation.load(Ordering::SeqCst)
+        *self.generation.borrow()
+    }
+
+    /// Sees each change of [`Recipes::generation`] made after this call.
+    pub fn changes(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.generation.subscribe()
     }
 
     /// The shipped TOML of a recipe.
@@ -242,7 +247,7 @@ impl Recipes {
             errors: layers.errors.clone(),
         };
         *self.current.write().unwrap_or_else(|p| p.into_inner()) = Arc::new(set);
-        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.generation.send_modify(|g| *g += 1);
     }
 
     /// Reloads the local folder if a file appeared, changed or disappeared. Returns the files that

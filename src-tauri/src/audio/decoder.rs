@@ -236,7 +236,9 @@ fn blame(job: &Job, sound_just_stopped: bool, failure: &Failure) -> Blame {
 fn wait_before_retry(job: &Job, delay: Duration, message: &str) -> bool {
     let mut net = job.net.clone();
     net.mark_unchanged();
-    let start = Instant::now();
+    let deadline = tokio::time::Instant::now() + delay;
+    // Without network news (the watch thread is gone), only the delay and the stop are waited for.
+    let mut watched = true;
     loop {
         if job.cancel.is_cancelled() {
             return false;
@@ -244,11 +246,21 @@ fn wait_before_retry(job: &Job, delay: Duration, message: &str) -> bool {
         let state = *net.borrow_and_update();
         job.reporter
             .reconnecting(if state.online { message } else { NO_NETWORK });
-        if state.online && start.elapsed() >= delay {
+        if state.online && tokio::time::Instant::now() >= deadline {
             return true;
         }
-        thread::sleep(Duration::from_millis(100));
-        if net.has_changed().unwrap_or(false) && net.borrow().online {
+        // Offline, the delay does not count: only the network coming back ends the wait.
+        let changed = job.runtime.block_on(async {
+            tokio::select! {
+                () = job.cancel.cancelled() => false,
+                news = net.changed(), if watched => {
+                    watched = news.is_ok();
+                    watched
+                }
+                () = tokio::time::sleep_until(deadline), if state.online => false,
+            }
+        });
+        if changed && net.borrow().online {
             tracing::info!("network back or changed: reconnecting now");
             return !job.cancel.is_cancelled();
         }
@@ -388,22 +400,31 @@ impl Watchdog {
         let net = guard.net.clone();
         let fired = guard.fired.clone();
         Self(runtime.spawn(async move {
+            let mut net = net;
+            // Nothing to check before a change; returns at once if one came since the opening.
+            let changed =
+                |now: &NetState| now.wake != opened_at.wake || now.network != opened_at.network;
+            if net.wait_for(changed).await.is_err() {
+                return; // the network is no longer watched
+            }
+            // Then the stream has until STALL_AFTER_CHANGE without data: wait exactly that long
+            // after the last data received, again and again while data keeps coming.
             loop {
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                let idle = activity.idle();
+                if idle < STALL_AFTER_CHANGE {
+                    tokio::time::sleep(STALL_AFTER_CHANGE - idle).await;
+                    continue;
+                }
                 let now = *net.borrow();
                 let why = if now.wake != opened_at.wake {
                     Interrupt::Wake
-                } else if now.network != opened_at.network {
-                    Interrupt::Network
                 } else {
-                    continue;
+                    Interrupt::Network
                 };
-                if activity.idle() >= STALL_AFTER_CHANGE {
-                    tracing::info!("{why}, and the stream stopped receiving: reconnecting");
-                    *fired.lock().unwrap_or_else(|p| p.into_inner()) = Some(why);
-                    stop();
-                    return;
-                }
+                tracing::info!("{why}, and the stream stopped receiving: reconnecting");
+                *fired.lock().unwrap_or_else(|p| p.into_inner()) = Some(why);
+                stop();
+                return;
             }
         }))
     }

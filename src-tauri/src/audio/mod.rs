@@ -246,6 +246,8 @@ impl Status {
 pub(crate) struct Cancel {
     flag: AtomicBool,
     hooks: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
+    /// The flag again, for the tasks that wait for it ([`Cancel::cancelled`]).
+    done: tokio::sync::watch::Sender<bool>,
 }
 
 impl Cancel {
@@ -253,10 +255,17 @@ impl Cancel {
         self.flag.load(Ordering::SeqCst)
     }
 
+    /// Returns once the session is cancelled (at once if it already is).
+    pub(crate) async fn cancelled(&self) {
+        // `self` holds the sender, so the channel cannot close while this waits.
+        let _ = self.done.subscribe().wait_for(|&done| done).await;
+    }
+
     fn cancel(&self) {
         // The flag is set before taking the lock, so a hook registered after the drain
         // sees it and runs itself: every hook runs exactly once.
         self.flag.store(true, Ordering::SeqCst);
+        self.done.send_replace(true);
         let hooks = std::mem::take(&mut *self.hooks.lock().unwrap_or_else(|p| p.into_inner()));
         for hook in hooks {
             hook();
@@ -295,6 +304,8 @@ pub(crate) struct StreamMeta {
     icy_title: Mutex<Option<String>>,
     /// Set once the stream is open.
     opened: Mutex<Option<OpenedInfo>>,
+    /// Bumped each time one of the above changes, for the web title task that waits for it.
+    changes: tokio::sync::watch::Sender<()>,
 }
 
 impl Default for StreamMeta {
@@ -304,6 +315,7 @@ impl Default for StreamMeta {
             inband_title: AtomicBool::new(false),
             icy_title: Mutex::new(None),
             opened: Mutex::new(None),
+            changes: tokio::sync::watch::Sender::new(()),
         }
     }
 }
@@ -334,6 +346,16 @@ impl StreamMeta {
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .clone()
+    }
+
+    /// Sees each change made after this call: subscribe before reading what it guards, so a
+    /// change between the reading and the waiting is not lost.
+    pub(crate) fn changes(&self) -> tokio::sync::watch::Receiver<()> {
+        self.changes.subscribe()
+    }
+
+    fn changed(&self) {
+        self.changes.send_replace(());
     }
 }
 
@@ -390,6 +412,7 @@ impl Reporter {
                 ..Default::default()
             };
         });
+        self.stream.changed();
     }
 
     /// Artist and title from the stream's own tags (Vorbis comments).
@@ -411,6 +434,7 @@ impl Reporter {
                 ..Default::default()
             };
         });
+        self.stream.changed();
     }
 
     /// What a web source says is on air. Ignored once the stream announced a title itself.
@@ -461,6 +485,7 @@ impl Reporter {
             inband,
             server,
         });
+        self.stream.changed();
     }
 
     pub(crate) fn stream_meta(&self) -> &StreamMeta {
@@ -1060,6 +1085,51 @@ mod tests {
             }
         );
         assert!(reporter.stream_meta().has_inband_title());
+    }
+
+    #[tokio::test]
+    async fn cancelled_returns_once_the_session_is_cancelled() {
+        let cancel = Arc::new(Cancel::default());
+        let waiter = tokio::spawn({
+            let cancel = cancel.clone();
+            async move { cancel.cancelled().await }
+        });
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        assert!(!waiter.is_finished());
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), waiter)
+            .await
+            .expect("still waiting after the cancel")
+            .unwrap();
+        // Already cancelled: returns at once.
+        tokio::time::timeout(Duration::from_secs(1), cancel.cancelled())
+            .await
+            .unwrap();
+    }
+
+    #[test]
+    fn what_the_stream_learns_is_signalled() {
+        let reporter = Reporter {
+            status: Arc::new(Status {
+                state: Mutex::new(PlayerState::Idle),
+                listener: Arc::new(|_| {}),
+                now_playing: Mutex::new(NowPlaying::default()),
+                now_playing_listener: Arc::new(|_| {}),
+            }),
+            controls: Arc::new(Controls::new()),
+            cancel: Arc::new(Cancel::default()),
+            stream: Arc::new(StreamMeta::default()),
+        };
+        let mut changes = reporter.stream_meta().changes();
+        assert!(!changes.has_changed().unwrap());
+        reporter.stream_opened(true, None);
+        assert!(changes.has_changed().unwrap());
+        changes.mark_unchanged();
+        reporter.title("A - B".into());
+        assert!(changes.has_changed().unwrap());
+        changes.mark_unchanged();
+        reporter.stream_tags(None, "C".into());
+        assert!(changes.has_changed().unwrap());
     }
 
     #[test]

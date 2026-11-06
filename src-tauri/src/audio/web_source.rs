@@ -29,6 +29,7 @@ use soundfolk_nowplaying::clock::Offset;
 use soundfolk_nowplaying::tracker::{OnAir, Policy, Scheduled, Tracker};
 use soundfolk_nowplaying::{extract, RawTrack, SignedDuration, Snapshot, Start, Timestamp};
 use stream_download::http::reqwest::{header, Client, Url};
+use tokio::sync::watch;
 
 use super::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
 use crate::recipes::{Change, Entry, Origin, Recipes};
@@ -44,8 +45,9 @@ const MAX_PAGE_BYTES: usize = 2 * 1024 * 1024;
 const INBAND_GRACE: Duration = Duration::from_secs(20);
 /// Longest wait for the stream to open before giving up on the server's status page.
 const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
-/// The task checks for cancellation (stop, other station) and recipe changes this often.
-const TICK: Duration = Duration::from_millis(500);
+/// Longest wait for a time read on the wall clock: the timers stop while the computer sleeps, the
+/// wall clock does not, so a wait counted before a sleep would end late after it.
+const CLOCK_CHECK: Duration = Duration::from_secs(5);
 /// An ICY title the server API does not know yet is looked up once more after this (the API may
 /// lag behind the stream, a cache in front of it too).
 const DETAILS_RETRY: Duration = Duration::from_secs(10);
@@ -471,6 +473,7 @@ impl WebTitles {
             return;
         };
         let mut server: Option<Option<Adapter>> = None;
+        let mut changes = Changes::new(&self.recipes, &reporter, &cancel);
         loop {
             if cancel.is_cancelled() {
                 return;
@@ -521,7 +524,7 @@ impl WebTitles {
                         && !cancel.is_cancelled()
                         && !reporter.stream_meta().has_inband_title()
                     {
-                        tokio::time::sleep(TICK).await;
+                        changes.next(None).await;
                     }
                 }
             }
@@ -596,6 +599,7 @@ impl WebTitles {
             .and_then(|last| last.checked_add(floor).ok())
             .map_or_else(Timestamp::now, |earliest| earliest.max(Timestamp::now()));
         let mut generation = generation;
+        let mut changes = Changes::new(&self.recipes, reporter, cancel);
 
         while !cancel.is_cancelled() && !reporter.stream_meta().has_inband_title() {
             if self.recipes.generation() != generation {
@@ -663,8 +667,7 @@ impl WebTitles {
             }
 
             let wake = pending.front().map_or(next_fetch, |s| s.at.min(next_fetch));
-            let wait = wake.duration_since(now).unsigned_abs().min(TICK);
-            tokio::time::sleep(wait).await;
+            changes.next(Some(until(wake, now))).await;
         }
         if reporter.stream_meta().has_inband_title() && !cancel.is_cancelled() {
             self.update_status(session, |s| s.state = SourceState::Stream);
@@ -699,6 +702,7 @@ impl WebTitles {
         // The ICY title being looked up, when to try, and the lookups left.
         let mut target: Option<(String, Timestamp, u8)> = None;
         let mut confirmed = false;
+        let mut changes = Changes::new(&self.recipes, reporter, cancel);
         while !cancel.is_cancelled() {
             let now = Timestamp::now();
             let heard = reporter.stream_meta().icy_title();
@@ -756,7 +760,15 @@ impl WebTitles {
                 }
                 continue;
             }
-            tokio::time::sleep(TICK).await;
+            // Next: a new ICY title, or the lookup to try again once due.
+            let retry = target
+                .as_ref()
+                .filter(|(_, _, left)| *left > 0)
+                .map(|(_, at, _)| {
+                    let wake = earliest.map_or(*at, |e| e.max(*at));
+                    until(wake, now)
+                });
+            changes.next(retry).await;
         }
     }
 
@@ -769,6 +781,7 @@ impl WebTitles {
         cancel: &Cancel,
     ) -> Option<Adapter> {
         let meta = reporter.stream_meta();
+        let mut changes = Changes::new(&self.recipes, reporter, cancel);
         let opened = loop {
             if cancel.is_cancelled() {
                 return None;
@@ -776,19 +789,17 @@ impl WebTitles {
             if let Some(opened) = meta.opened() {
                 break opened;
             }
-            tokio::time::sleep(TICK).await;
             // `opened` is set by the decoder; give up if it never comes (failed connection).
-            if reporter_age(reporter) > OPEN_TIMEOUT {
-                return None;
-            }
+            let left = OPEN_TIMEOUT.checked_sub(reporter_age(reporter))?;
+            changes.next(Some(left)).await;
         };
         if opened.inband {
             // The stream can carry titles: give it time to announce one.
-            while opened.at.elapsed() < INBAND_GRACE {
+            while let Some(left) = INBAND_GRACE.checked_sub(opened.at.elapsed()) {
                 if cancel.is_cancelled() || meta.has_inband_title() {
                     return None;
                 }
-                tokio::time::sleep(TICK).await;
+                changes.next(Some(left)).await;
             }
             if meta.has_inband_title() {
                 return None;
@@ -975,6 +986,52 @@ fn seed(key: &str) -> u64 {
 
 fn reporter_age(reporter: &Reporter) -> Duration {
     reporter.stream_meta().created.elapsed()
+}
+
+/// From `now` to `wake` (nothing if already past), at most [`CLOCK_CHECK`].
+fn until(wake: Timestamp, now: Timestamp) -> Duration {
+    wake.duration_since(now)
+        .max(SignedDuration::ZERO)
+        .unsigned_abs()
+        .min(CLOCK_CHECK)
+}
+
+/// What a title task waits for besides time: the playback ending (stop, other station), the
+/// stream opening or announcing a title, the recipes changing. Create it before reading what it
+/// watches: a change made in between then ends the next wait at once instead of being missed.
+struct Changes<'a> {
+    cancel: &'a Cancel,
+    stream: watch::Receiver<()>,
+    recipes: watch::Receiver<u64>,
+}
+
+impl<'a> Changes<'a> {
+    fn new(recipes: &Recipes, reporter: &Reporter, cancel: &'a Cancel) -> Self {
+        Self {
+            cancel,
+            stream: reporter.stream_meta().changes(),
+            recipes: recipes.changes(),
+        }
+    }
+
+    /// Returns on the next change, or once `timeout` has passed (`None`: no limit). The caller
+    /// checks again what it waits for: a change may concern something else.
+    async fn next(&mut self, timeout: Option<Duration>) {
+        let timeout = async {
+            match timeout {
+                Some(timeout) => tokio::time::sleep(timeout).await,
+                None => std::future::pending().await,
+            }
+        };
+        // Both senders outlive the task (the reporter and the recipes it holds): `changed` does
+        // not fail.
+        tokio::select! {
+            () = self.cancel.cancelled() => {}
+            _ = self.stream.changed() => {}
+            _ = self.recipes.changed() => {}
+            () = timeout => {}
+        }
+    }
 }
 
 #[cfg(test)]
