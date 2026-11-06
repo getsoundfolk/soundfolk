@@ -307,48 +307,55 @@ fn station_stats(conn: &Connection, days: Option<u32>) -> rusqlite::Result<Vec<S
 }
 
 /// Listening hours per weekday and per hour of the day, in local time.
+///
+/// Sessions are cut at each local hour; SQLite's `localtime` gives the UTC offset in force at
+/// each cut, so a daylight-saving change (even within a session) lands in the right hour.
 fn listening_profile(
     conn: &Connection,
     days: Option<u32>,
 ) -> rusqlite::Result<([f64; 7], [f64; 24])> {
-    // Offset of local time from UTC now (changes of daylight-saving time are ignored).
-    let offset: i64 = conn.query_row(
-        "SELECT strftime('%s', 'now', 'localtime') - strftime('%s', 'now')",
-        [],
-        |r| r.get(0),
-    )?;
     let mut stmt = conn.prepare(&format!(
-        "SELECT strftime('%s', started_at), strftime('%s', COALESCE(ended_at, CURRENT_TIMESTAMP))
-         FROM listening_sessions WHERE {}",
-        since("started_at")
+        "WITH RECURSIVE
+         sessions(start, end) AS (
+             SELECT CAST(strftime('%s', started_at) AS INTEGER),
+                    CAST(strftime('%s', COALESCE(ended_at, CURRENT_TIMESTAMP)) AS INTEGER)
+             FROM listening_sessions WHERE {}
+         ),
+         -- `next` is the start of the following local hour.
+         chunks(t, next, end) AS (
+             SELECT start, start + 3600 - {local_start} % 3600, end FROM sessions WHERE start < end
+             UNION ALL
+             SELECT next, next + 3600 - {local_next} % 3600, end FROM chunks WHERE next < end
+         )
+         SELECT (CAST(strftime('%w', t, 'unixepoch', 'localtime') AS INTEGER) + 6) % 7,
+                CAST(strftime('%H', t, 'unixepoch', 'localtime') AS INTEGER),
+                SUM(MIN(next, end) - t)
+         FROM chunks GROUP BY 1, 2",
+        since("started_at"),
+        local_start = local_seconds("start"),
+        local_next = local_seconds("next"),
     ))?;
     let mut by_weekday = [0.0; 7];
     let mut by_hour = [0.0; 24];
     let rows = stmt.query_map(params![days], |r| {
         Ok((
-            r.get::<_, String>(0)?.parse().unwrap_or(0),
-            r.get::<_, String>(1)?.parse().unwrap_or(0),
+            r.get::<_, u8>(0)? as usize,
+            r.get::<_, u8>(1)? as usize,
+            r.get::<_, i64>(2)?,
         ))
     })?;
     for row in rows {
-        let (start, end): (i64, i64) = row?;
-        spread(start + offset, end + offset, &mut by_weekday, &mut by_hour);
+        let (weekday, hour, secs) = row?;
+        let hours = secs as f64 / 3600.0;
+        by_weekday[weekday] += hours;
+        by_hour[hour] += hours;
     }
     Ok((by_weekday, by_hour))
 }
 
-/// Adds the hours between two local Unix times to the weekday (Monday first) and hour buckets.
-fn spread(start: i64, end: i64, by_weekday: &mut [f64; 7], by_hour: &mut [f64; 24]) {
-    let mut t = start;
-    while t < end {
-        let next = (t.div_euclid(3600) + 1) * 3600;
-        let chunk = (next.min(end) - t) as f64 / 3600.0;
-        let day = t.div_euclid(86_400);
-        // 1970-01-01 was a Thursday (index 3 when Monday is 0).
-        by_weekday[(day + 3).rem_euclid(7) as usize] += chunk;
-        by_hour[(t.rem_euclid(86_400) / 3600) as usize] += chunk;
-        t = next;
-    }
+/// SQL: the Unix time in `column`, shifted to local wall-clock time.
+fn local_seconds(column: &str) -> String {
+    format!("CAST(strftime('%s', {column}, 'unixepoch', 'localtime') AS INTEGER)")
 }
 
 #[cfg(test)]
@@ -357,16 +364,53 @@ mod tests {
     use crate::musicbrainz::{Album, ArtistInfo, RecordingMatch};
 
     #[test]
-    fn spreads_sessions_over_hours_and_days() {
-        let (mut days, mut hours) = ([0.0; 7], [0.0; 24]);
-        // 2026-11-02 (a Monday) 23:30 → Tuesday 01:00.
-        let start = 1_793_662_200; // 2026-11-02T23:30:00Z
-        spread(start, start + 5400, &mut days, &mut hours);
-        assert_eq!(days[0], 0.5);
-        assert_eq!(days[1], 1.0);
-        assert_eq!(hours[23], 0.5);
-        assert_eq!(hours[0], 1.0);
-        assert_eq!(hours.iter().sum::<f64>(), 1.5);
+    fn spreads_sessions_over_local_hours_and_days() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        // Across the end of summer time in Europe (2026-10-25 01:00 UTC) and a Sunday → Monday
+        // midnight in most zones; whatever the test machine's zone, compare with a count made
+        // minute by minute.
+        conn.execute_batch(
+            "INSERT INTO listening_sessions (station_id, started_at, ended_at)
+             VALUES ('fip', '2026-10-24 22:30:00', '2026-10-25 03:15:00'),
+                    ('fip', '2026-10-25 21:45:00', '2026-10-26 00:30:00')",
+        )
+        .unwrap();
+        let (by_weekday, by_hour) = listening_profile(&conn, None).unwrap();
+
+        let (mut weekday_minutes, mut hour_minutes) = ([0u32; 7], [0u32; 24]);
+        let mut stmt = conn
+            .prepare(
+                "WITH RECURSIVE m(t, end) AS (
+                     SELECT CAST(strftime('%s', started_at) AS INTEGER),
+                            CAST(strftime('%s', ended_at) AS INTEGER)
+                     FROM listening_sessions
+                     UNION ALL SELECT t + 60, end FROM m WHERE t + 60 < end
+                 )
+                 SELECT (CAST(strftime('%w', t, 'unixepoch', 'localtime') AS INTEGER) + 6) % 7,
+                        CAST(strftime('%H', t, 'unixepoch', 'localtime') AS INTEGER)
+                 FROM m",
+            )
+            .unwrap();
+        let minutes = stmt
+            .query_map([], |r| {
+                Ok((r.get::<_, u8>(0)? as usize, r.get::<_, u8>(1)? as usize))
+            })
+            .unwrap();
+        for minute in minutes {
+            let (weekday, hour) = minute.unwrap();
+            weekday_minutes[weekday] += 1;
+            hour_minutes[hour] += 1;
+        }
+        let in_minutes = |hours: &[f64]| {
+            hours
+                .iter()
+                .map(|h| (h * 60.0).round() as u32)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(in_minutes(&by_weekday), weekday_minutes);
+        assert_eq!(in_minutes(&by_hour), hour_minutes);
+        assert_eq!(by_hour.iter().sum::<f64>(), 7.5);
     }
 
     fn like(db: &Database, station: &str, raw: &str) -> String {
