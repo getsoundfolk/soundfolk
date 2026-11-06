@@ -6,9 +6,9 @@ spec of 09 §5.2, with the ad-free attribute it depends on. Not built: §1–3 c
 the decisions, §5–8 are the plan, §9 what is left to decide.
 
 **Today:** nothing built. Before this document, 09 §5.2 put hand-picked collections on `soundfolk.fm`, fetched
-daily, and left "who curates" open; it now points here. [12-donations.md](12-donations.md) built the first piece of shared station data
-(`getsoundfolk/soundfolk-stations`, donation links only) and its whole chain: one file per station, proof, bot,
-daily CI check, `v1/stations.json` fetched once a day with `If-None-Match`.
+daily, and left "who curates" open; it now points here. [12-donations.md](12-donations.md) built the first piece of
+shared station data (`getsoundfolk/soundfolk-stations`, donation links only) and its whole chain: one file per
+station, proof, bot, daily CI check, `v1/stations.json` fetched once a day with `If-None-Match`.
 
 ---
 
@@ -62,7 +62,8 @@ A brainstorm (pasted from a chat assistant, 2026-11-06) proposed:
 ### 3.2 The data model
 * **A list keyed only by Radio-Browser UUID breaks.** UUIDs disappear when an entry is deleted and re-created, and
   personal stations have none. The recipes and soundfolk-stations already use `match` (`stations` UUIDs +
-  `streams` host/path): a list item should reuse it, or point at a soundfolk-stations entry.
+  `streams` host/path): a list item should reuse it, or point at a soundfolk-stations entry. (Settled otherwise
+  in §6.1: a UUID alone, with the daily check catching the ones that disappear.)
 * **A `version` per list plus a `manifest.json`** duplicates what HTTP already gives: one file, `ETag` /
   `If-None-Match`, once a day, like `v1/stations.json` (12 §2.4). Per-list versions add a sync protocol for a file
   that will weigh a few tens of kB.
@@ -117,16 +118,17 @@ the user). Each line says where it applies below.
 | Definition | "No commercial ads" (§5.1). Sponsor mentions without price or call to buy, self-promotion and donation drives are accepted. |
 | Proof | Station's own statement, or a maintainer check; plus the daily 11 §2.6 URL check, which can only remove. |
 | Curation | The maintainer writes the first lists, then pull requests from anyone. The maintainer alone merges, as for donations. |
-| Credit | Each list names the GitHub login of whoever answers for it; the app shows it. |
+| Credit | Each list names the GitHub logins of its curators (1 to 3); the app shows them. |
+| Format | TOML source written by hand, JSON published by CI; fields in §6.1 and §6.3. |
 | List criteria | The curator's own. Ads do not matter in a list: a station with local sponsorship belongs in a list if the curator says so. The ad-free badge stays on stations (§5). |
 | Size | 5 to 40 stations per list (the rule); 10 to 15 for the launch lists (the aim). |
 | Launch lists | Four, written by the maintainer (§6.6): `fr-community-radios` first, then `ambient-focus`, `eclectic-discovery`, `public-cultural`. |
 | List filters | Designed now, so the list format carries what they need (§6.5). |
 | Navigation | Lists are Discover rows under the same chips as stations; personal lists (v2) in Listen (§7, option D). |
-| Items | A Radio-Browser UUID is required. `streams` only finds the station again if its UUID disappears. |
+| Items | One Radio-Browser UUID per station, nothing else (§6.1). |
 | In the app | "In these lists": chips on the station sheet; in the player, one discreet "In N lists" link, hidden when N = 0. |
 | Order | The curator's order. |
-| Translations | English and French at least; fallback to English. |
+| Title language | Title and description written once, in one language the curator picks for the list's listeners (French for French community radios, English for an international list), shown as is everywhere, like a playlist name. The vocabulary of `use` and `genres` is translated by the app. |
 | Personal lists | v2, independent of favorites. |
 | Sharing | No `soundfolk://` scheme. Lists are proposed by pull request or a prefilled issue. |
 | M3U | Export offered (a published list in v1, personal lists in v2). |
@@ -185,105 +187,202 @@ statement = "https://somafm.com/about/"   # page of the station's own website sa
 ## 6. Thematic lists
 
 ### 6.1 Source
-`lists/<id>.toml` in soundfolk-stations:
+`lists/<id>.toml` in soundfolk-stations. TOML because people write and review these files by hand in pull requests:
+comments, no trailing-comma errors, one short block per station in a diff. The app never reads TOML: CI publishes
+JSON (§6.3), as for the donation links.
 
 ```toml
 #:schema ../list.schema.json
 schema = 1
-title = { en = "French community radios", fr = "Radios associatives françaises" }
-description = { en = "…", fr = "…" }
-maintainer = "raphaelh"                # GitHub login shown in the app
-checked = 2026-11-06                   # last full review by hand
-use = ["discovery", "culture"]         # what the list is for, from vocab.toml (§6.5), 1 to 3
-genres = []                            # genre families from vocab.toml, 0 to 3; empty = no dominant genre
-region = { fr = "France, all regions" } # optional, free text, only when places matter more than countries say
+title = "Radios associatives en France"
+description = "Des radios locales tenues par des associations en France, des vallées aux villes."
+curators = ["raphaelh"]
+checked = 2026-11-06
+use = ["discovery", "shows"]
+genres = []
 
-[[items]]
-station = "campus-clermont"            # a stations/<id>.toml entry, or:
-
-[[items]]
-match = { stations = ["<Radio-Browser UUID>"], streams = ["host/path"] }
+stations = [
+  "<Radio-Browser UUID>",  # Fréquence 7
+  "<Radio-Browser UUID>",  # Radio Campus Clermont-Ferrand
+]
 ```
 
-* The id is the file name. `title.en` and `description.en` are required, `fr` expected (lint warns).
-* An item points at a `stations/` entry, or carries its own `match` with at least one UUID.
-* 5 to 40 items, no duplicate station.
-* `use` and `genres` take ids from `vocab.toml` (§6.5); lint refuses an unknown id.
-* Countries and languages are **not written** by the curator: CI computes them from the stations (§6.3).
-* `maintainer` must be the author of the pull request that creates the list, or the repository maintainer.
-  A pull request changing someone else's list is labelled *list-of-another* for the maintainer to ask them.
+**List fields**
+
+| Field | Required | Type | Rule | Used for |
+|---|---|---|---|---|
+| (file name) | yes | `[a-z0-9-]` | Stable: renaming a list is a new list | id, links |
+| `schema` | yes | `1` | Another value is refused by the app | format version |
+| `title` | yes | text | One language, picked by the curator for the list's listeners; 40 characters at most | row header, chips |
+| `description` | yes | text | Same language as `title`; 140 characters at most, one sentence | row header, list screen, search |
+| `curators` | yes | logins | 1 to 3 GitHub logins; the first answers CI issues | "by @login", search |
+| `checked` | yes | date | Last full review by hand; never shown (06 §6) | yearly review (§6.2) |
+| `use` | yes | ids | 1 to 3, from `vocab.toml` | Use chip |
+| `genres` | yes | ids | 0 to 3, from `vocab.toml` (08 §3.1 families); empty = no dominant genre | Genre chip |
+
+**Stations:** `stations`, an array of Radio-Browser UUIDs, 5 to 40, in the curator's order, no UUID twice. Nothing
+else per station:
+* **No name field.** A comment after each UUID says which station it is, for whoever reads the file. In a pull
+  request, CI posts the Radio-Browser name of every UUID added or moved, so the reviewer sees at once a UUID pasted
+  from the wrong station. A name field would only repeat that check, and drift from Radio-Browser's name.
+  The app shows the Radio-Browser name as is, even an untidy one ("RADIO PRIMITIVE", "Fip Monde (metadata)"),
+  the same name the station has everywhere else in the app.
+* **No stream fallback.** A UUID that disappears from Radio-Browser (entry deleted, or re-created under a new UUID)
+  is caught by the daily check (§6.2): the station is left out and the curators get an issue, and they paste the new
+  UUID. How often that happens is not measured; a fallback can come if it turns out frequent.
+* **No reference to a `stations/` entry.** It would couple the two kinds of files for no gain: an entry has a UUID
+  too.
+* **Duplicates of the same station** (Radio-Browser often lists one station several times, by stream or bitrate):
+  the curator picks one UUID. CI publishes that entry's stream with it (§6.3), so the app also recognises a
+  duplicate playing the same stream, without the curator listing it.
+
+**Left out, and why**
+
+| Proposed field | Why not |
+|---|---|
+| `id` inside the file | Duplicates the file name; the two would drift. |
+| `version`, `created_at`, `updated_at` | Git history has them; the app syncs with the HTTP `ETag`, not per-list versions (§3.2); a date shown would be visible maintenance (06 §6). |
+| `author` next to `maintainers` | One field, `curators`: the creator who leaves stops answering, so credit goes to whoever maintains it. |
+| Free `tags` | Free tags are Radio-Browser's problem (09 §2): spelling variants, no translation. `use` and `genres` are a closed, translated vocabulary; text search covers the rest. |
+| `country` written by hand | Computed by CI from the stations (§6.3): Radio-Browser's country code is nearly always there and nearly always right (§6.3). A `WW` code does not exist in ISO 3166. |
+| `genres` computed | Radio-Browser's tags and languages are missing for a third of the stations (1,000 drawn at random, 2026-11-06: no tags 33 %, no language 35 %, no country code 1.5 %). The curator knows the list better. |
+| Ad-free count, "100 % ad-free" flag | Lists ignore ads (§4); the badge is on each station (§5). |
+| A note per station | Later (§4). It will need a per-station table instead of a plain array: a format change that the published JSON hides from the app (§6.3). |
+| `name` per station, stream fallback, `stations/` reference | Above. |
+| Titles in several languages | A list is an authored work, like a playlist name: written once, in the language its curator picks for its listeners, rather than an English title required from everyone. Optional translations can come later; unknown keys are ignored. |
+| `region` | Title and description already name the place ("Ardèche"), and search reads them. |
+| `languages` | It only matters for lists listened to for their speech, and every station would then have to speak the language, or the Language chip would mislead. At launch the one such list is French only, so Country and its French title already say it; the three others are music, where language does not matter. Country is not language (French in Belgium, Switzerland, Québec), so a `language` field, singular, with every station speaking it as its main language, can come with the first list that needs it; unknown keys are ignored. |
+| Logo or cover image | No logos for now (soundfolk-stations scope). |
+
+* `curators` must include the author of the pull request that creates the list, or the repository maintainer. A
+  pull request changing a list whose curators do not include its author is labelled *list-of-another*, for the
+  maintainer to ask them.
 * Licence: ODbL / DbCL, like the rest of the repository.
 
 ### 6.2 Checks
-* `lint.py`: schema, size, UUID present, `stations/` reference exists.
-* **Daily CI**, same rules as 12 §2.3: each UUID still resolves in Radio-Browser; if not, the first `streams` match
-  replaces it in the published file and an issue is opened. An item whose stream does not answer is left out of the
-  published list (the source file does not change) and comes back when it answers again; an issue after 7 days. A
-  list that falls under 5 published items is published anyway, with an issue.
+* `lint.py`: schema, sizes, UUID syntax, no UUID twice. In a pull request, CI comments the Radio-Browser name of
+  each UUID added or moved.
+* **Daily CI**, same rules as 12 §2.3: a UUID no longer in Radio-Browser is left out of the published list and an
+  issue is opened at once. An item whose stream does not answer is left out (the source file does not change) and
+  comes back when it answers again; an issue after 7 days. A list that falls under 5 published items is published
+  anyway, with an issue.
 * The same "more than 20 % failing at once" guard as donations.
 * **A stable list is not stale.** A list nobody edited for years is fine as long as the daily check passes: age
   alone never triggers anything in the app.
-* **Unanswered breakage:** a list issue opened by CI and left without an answer from the list's maintainer for
-  30 days goes to the repository maintainer, who fixes the list, takes it over (`maintainer` changes), or
+* **Unanswered breakage:** a list issue opened by CI and left without an answer from the list's curators for
+  30 days goes to the repository maintainer, who fixes the list, takes it over (`curators` changes), or
   unpublishes it.
-* **Yearly review:** once a year after `checked`, CI opens an issue for the list's maintainer, because the daily
+* **Yearly review:** once a year after `checked`, CI opens an issue for the list's curators, because the daily
   check cannot see everything (a station bought, a change of format, a show the list was built around that ended).
   Closing it means bumping `checked`, with no other change needed. Left unanswered, it changes nothing in the app.
 
 ### 6.3 Published
-`v1/lists.json`: `id`, `title`, `description`, `maintainer`, `checked`, `use`, `genres`, `region`, items as
-resolved `match` (stations references expanded), and two fields computed by CI from the stations' Radio-Browser
-entries: `countries` and `languages` (each kept when it covers at least 20 % of the items, so one Belgian station
-in a French list does not make it Belgian). Fetched once a day with `If-None-Match` through `daily_list.rs`,
-cached, held in memory, also when web titles are off (12 §2.4). `SOUNDFOLK_LISTS_URL` replaces the address.
+`v1/lists.json`, built by CI from `lists/` and `stations/`:
+
+```json
+{
+  "version": 1,
+  "lists": [
+    {
+      "id": "fr-community-radios",
+      "title": "Radios associatives en France",
+      "description": "…",
+      "curators": ["raphaelh"],
+      "use": ["discovery", "shows"],
+      "genres": [],
+      "countries": ["FR"],
+      "items": [
+        { "uuid": "<UUID>", "stream": "host/path" }
+      ]
+    }
+  ]
+}
+```
+
+* Lists sorted by id, for stable diffs; the app shows them by title, in alphabetical order with the listener's
+  locale collation ("Écoute" next to "Ecology"). No order file: nobody ranks one curator's list above another's,
+  and a new list needs no placing. Items in the curator's order, minus the ones left out by the daily check (§6.2).
+* `stream`: host and path of the entry's `url_resolved`, taken from Radio-Browser by CI, never written by hand. The
+  app matches a station by UUID, or by the same stream (duplicates, §6.1). `checked` is not published (no date in
+  the app).
+* `countries` is computed from the stations' Radio-Browser `countrycode` (ISO 3166-1 alpha-2), each country kept
+  when it covers at least 20 % of the stations (one Belgian station does not make a French list Belgian). A list
+  with no country above 20 % gets an empty array, and the chip skips it.
+  Checked on 1,000 stations drawn at random (2026-11-06): 1.5 % have no country code. Of the 419 whose homepage has
+  a country domain (`.fr`, `.de`, `.co.uk`…, vanity ones like `.fm` left out), 412 agree with it (98 %); of the 7
+  others, one is plainly wrong (a UK station marked Afghanistan, the first country of an alphabetical list), the
+  rest are real cases (Guadeloupe 1ère on `francetvinfo.fr`, a Belarus station on a `.ru` site, free hosting). Not
+  checkable this way: stations on generic domains (`.com`, `.org`), and web radios with no country of their own.
+  Genres are the curator's (§6.1): Radio-Browser lacks tags too often.
+* Fetched once a day with `If-None-Match` through `daily_list.rs`, cached, held in memory, also when web titles are
+  off (12 §2.4). `SOUNDFOLK_LISTS_URL` replaces the address. Unknown keys are ignored; another `version` is refused.
+* The app adds what it can count itself: the number of stations, shown on the list's screen.
 
 ### 6.4 In the app
 * `lists_for_station(station_id, url)`: the lists whose items match, in the published order of lists.
-* **Station sheet:** "In these lists" chips (title in the UI language), hidden when there are none. A chip opens
+* **Station sheet:** "In these lists" chips (the list titles), hidden when there are none. A chip opens
   the list.
 * **Player:** one discreet "In N lists" link that opens the station sheet on that section, hidden when N = 0. N
   counts thematic lists only, never the "No commercial ads" attribute (a badge, not a list). Never the list names in
   the player (06 §2: station, track, ♡, donation link).
-* **A list's screen:** title, description, "by @login", stations in the curator's order (dead ones
-  ranked last with a warning, 09 §5.2), Surprise me inside the list, **Export M3U**.
+* **A list's screen:** title, description, "by @login" (each curator), number of stations, stations in the curator's
+  order (dead ones ranked last with a warning, 09 §5.2), Surprise me inside the list, **Export M3U**.
 * **Where lists are browsed:** §7.
 * **Suggest a list** (Discover, end of the rows): opens the repository's contributing page. A list is several
   stations and a text: a pull request, or an issue form for those without Git.
 
 ### 6.5 Filters on lists
 Station filters (08) work on Radio-Browser fields. Lists carry fields that match them where possible (Genre,
-Country, Language), so one set of chips can filter both (§7 D), plus the fields only a list has. All optional,
+Country), so one set of chips can filter both (§7 D), plus the fields only a list has. All optional,
 combined with AND:
 
 | Filter | Values | Where it comes from |
 |---|---|---|
-| **Use** | Focus, Calm, Energy, Discovery, Everyday, Culture | `use`, written by the curator from `vocab.toml` |
+| **Use** | Focus, Calm, Energy, Discovery, Shows | `use`, written by the curator from `vocab.toml` |
 | **Genre** | The genre families of 08 §3.1 (Jazz, Classical, Electronic, Ambient…) | `genres`, written by the curator |
 | **Country** | Countries present in the lists | `countries`, computed by CI |
-| **Language** | Languages present in the lists | `languages`, computed by CI |
-| **Curator** | Logins of the maintainers | `maintainer`; shown once there are lists by more than one person |
-| Text | Title, description, region | Search box above the chips |
+| Curator | Logins | `curators`, through the search box (§7 D) |
+| Text | Title, description | Search box above the chips |
 
-* `vocab.toml` in the repository holds the ids (`focus`, `calm`, `energy`, `discovery`, `everyday`, `culture`, and
-  the genre ids of 08). The app translates them. A new id is a pull request, like a list.
-* The **Use** values come from how people describe listening, not from data: work in the background, wind down or
-  sleep, move, find something new, have something on at home, learn and stay in touch with a place. Unmeasured
-  (13 §1 could not reach Reddit or X); the vocabulary is cheap to change before the lists multiply.
+* `vocab.toml` in the repository holds the ids (the five uses below, and the genre ids of 08). The app translates
+  them. A new id is a pull request, like a list.
+* **Use** answers "what do you listen to this list for?", not "what is in the stream?":
+
+  | id | fr | en | Listening for |
+  |---|---|---|---|
+  | `focus` | Focus | Focus | Work, study, code: few or no voices |
+  | `calm` | Calme | Calm | Unwind, read, end of the day, sleep |
+  | `energy` | Énergie | Energy | Sport, chores, commuting: a steady tempo |
+  | `discovery` | Découverte | Discovery | Hearing what one does not know yet |
+  | `shows` | Émissions | Shows | Hosts, programmes, local life, with music between them; not talk only |
+
+  `shows` replaced "Talk" (a chip that read as talk radio only, when the main case is community radio mixing music
+  and programmes), and took the place of "Culture" (mixed musical culture and speech) and "Everyday" (any station is
+  listened to every day). It is not the station filter "Hide news & talk" of 13 §2.1, which works on Radio-Browser
+  tags. The values come from how people describe listening, not from data (13 §1 could not reach Reddit or X); the
+  vocabulary is cheap to change before the lists multiply.
 * A chip with a single value in the current set is hidden (one country = no Country chip). With four lists at
   launch most chips are therefore hidden: the format is ready, the screen stays calm.
 * **Not filters:** ad-free share (lists ignore ads), popularity (no telemetry), date of last change (06 §6), number
   of stations.
 
 ### 6.6 Launch lists
-Written by the maintainer, 10 to 15 stations each. Display names to choose; avoid "Hidden gems", the name of a
-personal Discover row (09 §5.3).
+Written by the maintainer, 10 to 20 stations each. The French list is in French; the three international lists are in
+English (§4). Titles say what is in the list rather than a mood, and avoid
+"Pépites" / "Hidden gems", the name of a personal Discover row (09 §5.3).
 
-| id | Use | For | Candidates (to check one by one in Radio-Browser) |
-|---|---|---|---|
-| `fr-community-radios` | discovery, culture | French local and community radios, sponsorship included | Fréquence 7, RDWA, Fréquence Paris Plurielle, Radio Campus stations… |
-| `ambient-focus` | focus, calm | Background for work, no voices | SomaFM (Groove Salad, Drone Zone…) and others: no more than a third from one network |
-| `eclectic-discovery` | discovery | Human programming, independent stations | Radio Paradise, KEXP, WXPN, WFMU, NTS… |
-| `public-cultural` | culture, everyday | Music channels of public broadcasters | FIP and its channels, France Musique's, BBC Radio 3, RTS Espace 2… |
+| id | Title | Use | For | Candidates (to check one by one in Radio-Browser) |
+|---|---|---|---|---|
+| `fr-community-radios` | Radios associatives en France | discovery, shows | French local and community radios, sponsorship included | Fréquence 7, RDWA, Fréquence Paris Plurielle, Radio Campus stations… |
+| `ambient-focus` | Ambient to focus | focus, calm | Background for work, few voices | SomaFM (Groove Salad, Drone Zone…) and others |
+| `eclectic-discovery` | Independent stations | discovery | Human programming, independent stations | Radio Paradise, KEXP, WXPN, WFMU, NTS… |
+| `public-cultural` | Public radio music channels | discovery, calm | Music channels of public broadcasters, one or two per broadcaster, from many countries | FIP, France Musique, Klara, NPO Radio 4, Rai Radio Classica, NRK Klassisk, ICI Musique… |
+
+At launch the Use chip offers Focus, Calme, Découverte and Émissions; Énergie appears with the first list that uses
+it.
+
+No rule caps how many stations one network or broadcaster brings: a list of every FIP channel is a fine list. The
+one test, when the maintainer reviews a pull request, is that the stations match the title and the description.
 
 The candidates come from the brainstorm and are not checked: each one needs its Radio-Browser UUID, a working
 stream, and a listen. Fréquence Paris Plurielle goes in `fr-community-radios` only (the brainstorm put it in two).
@@ -324,11 +423,12 @@ filters; the search box searches the side that is shown.
   "by @login" and one line of description. Rule collections and lists are the same kind of row; the list screen is
   the row's "See all", one level down, like a station sheet.
 * **One set of chips for the whole screen.** The fields of §6.5 were chosen to match the station filters: Genre
-  (same 08 §3.1 families), Country, Language. A chip filters the search results (stations, as in 08) and the rows
-  at the same time: a list's row stays when the list matches (its `genres`, `countries`, `languages`).
+  (same 08 §3.1 families) and Country. A chip filters the search results (stations, as in 08) and the rows at the
+  same time: a list's row stays when the list matches (its `genres`, `countries`). The Language chip filters
+  stations only: lists have no language field (§6.1).
 * **Use** is the one chip stations do not have. It filters rows; in search results, it keeps the stations of the
   lists that have this use ("Focus" + typing "jazz" = jazz stations from focus lists).
-* Typing in the search box: the matching lists first (title, description, region, curator), as one row, then the
+* Typing in the search box: the matching lists first (title, description, curator), as one row, then the
   stations, as today.
 * Personal lists (v2) go to Listen, next to favorites: Listen is *mine*, Discover is *other people's*, History is
   *what I heard* (the split C brought, kept).
@@ -345,17 +445,21 @@ having its own, so the screen stays one level with chips, as 06 §1 asks. No exc
 ---
 
 ## 8. Order of work
-1. soundfolk-stations: `[ad_free]` section, lint, daily URL check; entries for the known stations (SomaFM, Radio
+Lists come first: the four launch lists are drafted and their streams checked, while the attribute needs a statement
+found station by station.
+1. soundfolk-stations: `lists/`, schema, lint, daily check, `v1/lists.json`; the four launch lists (§6.6).
+2. App: fetch lists, `lists_for_station`, chips on the sheet, "In N lists" in the player, the list screen, M3U export.
+   The reader ignores unknown keys (§6.4), with a test reading a `lists.json` that has one: no
+   `deny_unknown_fields` there, unlike the recipe structs.
+3. The lists as Discover rows, the Use chip, lists first in search results (§7 D, with the Discover tab of 09).
+4. soundfolk-stations: `[ad_free]` section, lint, daily URL check; entries for the known stations (SomaFM, Radio
    Paradise, FIP family, KEXP…), each with its proof.
-2. App: read `ad_free` from `v1/stations.json`; badge; the chip and the row come with 08 and 09.
-3. soundfolk-stations: `lists/`, schema, lint, daily check, `v1/lists.json`; three or four lists by the maintainer.
-4. App: fetch lists, `lists_for_station`, chips on the sheet, "In N lists" in the player, the list screen, M3U export.
-5. The lists as Discover rows, the Use chip, lists first in search results (§7 D, with the Discover tab of 09).
+5. App: read `ad_free` from `v1/stations.json`; badge; the chip and the row come with 08 and 09.
 6. v2: personal lists (SQLite, independent of favorites, personal stations allowed since they never leave the
    device), JSON import/export, M3U export.
 
 ---
 
 ## 9. Still open
-* Display names of the four launch lists, in English and French.
-* The `use` vocabulary (§6.5): six values, right ones?
+* Nothing left on the format. The stations of the four launch lists are picked and their streams answer; nobody has
+  listened to them yet (voices in `ambient-focus`, the community status of each station in `fr-community-radios`).
