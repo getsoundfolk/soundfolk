@@ -57,6 +57,28 @@ pub struct Match {
     pub streams: Vec<String>,
 }
 
+impl Match {
+    /// Whether this station (Radio-Browser UUID) or stream URL is one of those listed. Also used
+    /// by the app for the donation links of `soundfolk-stations`, whose `match` is the same.
+    pub fn matches(&self, station_id: Option<&str>, stream: &str) -> bool {
+        if let Some(id) = station_id {
+            if self.stations.iter().any(|s| s.eq_ignore_ascii_case(id)) {
+                return true;
+            }
+        }
+        let Some(stream) = normalize_stream(stream) else {
+            return false;
+        };
+        self.streams.iter().any(|pattern| {
+            let pattern = pattern.trim().to_ascii_lowercase();
+            match pattern.strip_suffix('*') {
+                Some(prefix) => stream.starts_with(prefix),
+                None => stream == pattern.trim_end_matches('/'),
+            }
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Fetch {
@@ -268,26 +290,7 @@ impl Recipe {
 
     /// Whether the recipe applies to this station (Radio-Browser UUID) or stream URL.
     pub fn matches(&self, station_id: Option<&str>, stream: &str) -> bool {
-        if let Some(id) = station_id {
-            if self
-                .matches
-                .stations
-                .iter()
-                .any(|s| s.eq_ignore_ascii_case(id))
-            {
-                return true;
-            }
-        }
-        let Some(stream) = normalize_stream(stream) else {
-            return false;
-        };
-        self.matches.streams.iter().any(|pattern| {
-            let pattern = pattern.trim().to_ascii_lowercase();
-            match pattern.strip_suffix('*') {
-                Some(prefix) => stream.starts_with(prefix),
-                None => stream == pattern.trim_end_matches('/'),
-            }
-        })
+        self.matches.matches(station_id, stream)
     }
 
     /// The polling hint, if the recipe gives one.

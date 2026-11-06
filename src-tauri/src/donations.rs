@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
-use soundfolk_nowplaying::recipe::stream_pattern;
+use soundfolk_nowplaying::recipe::Match;
 
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
 
@@ -33,42 +33,13 @@ struct List {
     stations: Vec<Entry>,
 }
 
-/// One station of the list. Unknown keys are ignored: new optional fields keep `v1`.
+/// One station of the list. Unknown keys are ignored: new optional fields keep `v1`. Not inside
+/// `match`, which is a recipe's (the list's schema forbids other keys there too).
 #[derive(Debug, Clone, Deserialize)]
 struct Entry {
     #[serde(rename = "match")]
     matches: Match,
     donate: String,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct Match {
-    #[serde(default)]
-    stations: Vec<String>,
-    #[serde(default)]
-    streams: Vec<String>,
-}
-
-impl Match {
-    /// Same rules as a recipe's `match`: a Radio-Browser UUID, or a stream (`host/path`, a trailing
-    /// `*` for any path starting with it).
-    fn matches(&self, station_id: Option<&str>, stream: &str) -> bool {
-        if let Some(id) = station_id {
-            if self.stations.iter().any(|s| s.eq_ignore_ascii_case(id)) {
-                return true;
-            }
-        }
-        let Some(stream) = stream_pattern(stream) else {
-            return false;
-        };
-        self.streams.iter().any(|pattern| {
-            let pattern = pattern.trim().to_ascii_lowercase();
-            match pattern.strip_suffix('*') {
-                Some(prefix) => stream.starts_with(prefix),
-                None => stream == pattern.trim_end_matches('/'),
-            }
-        })
-    }
 }
 
 /// A station's donation page, as the player shows it.
