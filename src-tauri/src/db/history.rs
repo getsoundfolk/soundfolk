@@ -49,7 +49,8 @@ pub struct LikedTrack {
 }
 
 /// The name to log a station under: the one given, else that of the favorite or personal station
-/// of the same ID (the rows logged before that are filled by the version 3 migration).
+/// of the same ID. Rows logged before the station became known are named when it does (see
+/// `add_favorite`; a personal station gets a new ID, so no row predates it).
 fn known_station_name(
     conn: &rusqlite::Connection,
     station_id: &str,
@@ -663,6 +664,23 @@ mod tests {
         db.remove_favorite("a").unwrap();
         let history = db.recent_history(10, None).unwrap();
         assert_eq!(history[1].station_name.as_deref(), Some("Radio a"));
+    }
+
+    #[test]
+    fn unnamed_history_takes_the_name_of_a_new_favorite() {
+        let db = Database::open_in_memory().unwrap();
+        db.log_track("a", None, "title", true).unwrap();
+        db.log_track("a", Some("On air"), "other", true).unwrap();
+        db.log_track("b", None, "title", true).unwrap();
+        db.add_favorite(&fav("a")).unwrap();
+        let names: Vec<_> = db
+            .recent_history(10, None)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.station_name)
+            .collect();
+        // Newest first: another station, a name given on air, the unnamed row.
+        assert_eq!(names, [None, Some("On air".into()), Some("Radio a".into())]);
     }
 
     #[test]

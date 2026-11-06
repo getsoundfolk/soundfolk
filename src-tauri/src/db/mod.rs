@@ -228,8 +228,12 @@ impl Database {
     // ── favorites ────────────────────────────────────────────────────────────
 
     /// Adds a station to favorites (updates its info if it is already there).
+    /// Adds or updates a favorite. History rows of that station logged without a name take its
+    /// name; rows that have one keep it (the name at the time of listening).
     pub fn add_favorite(&self, fav: &Favorite) -> rusqlite::Result<()> {
-        self.conn().execute(
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
             "INSERT INTO favorites (station_id, name, stream_url, genre)
              VALUES (?1, ?2, ?3, ?4)
              ON CONFLICT(station_id) DO UPDATE SET
@@ -238,7 +242,12 @@ impl Database {
                  genre = excluded.genre",
             params![fav.station_id, fav.name, fav.stream_url, fav.genre],
         )?;
-        Ok(())
+        tx.execute(
+            "UPDATE listening_history SET station_name = ?2
+             WHERE station_id = ?1 AND station_name IS NULL",
+            params![fav.station_id, fav.name],
+        )?;
+        tx.commit()
     }
 
     pub fn remove_favorite(&self, station_id: &str) -> rusqlite::Result<bool> {
