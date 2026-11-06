@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Soundfolk",
-  "version": "0.1.0",
   "identifier": "io.github.getsoundfolk.soundfolk",
   "build": {
     "beforeDevCommand": "npm run dev",

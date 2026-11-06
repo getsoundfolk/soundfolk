@@ -30,7 +30,7 @@ for file in "${files[@]}"; do
 done
 
 if [ "${#rust[@]}" -gt 0 ]; then
-  if ! rustfmt --edition 2021 --check "${rust[@]}" > /dev/null; then
+  if ! rustfmt --check "${rust[@]}" > /dev/null; then
     fail "Rust code is not formatted. Run 'cargo fmt' in src-tauri/."
   fi
 fi

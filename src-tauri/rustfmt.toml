@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Read by `cargo fmt` and by `rustfmt` run on single files (the pre-commit hook, editors).
+edition = "2024"
+# The code is Rust 2024 but keeps the 2021 formatting style: the 2024 style would rewrite
+# ~35 files at once (import sorting, wrapping). Switch in a commit of its own, `cargo fmt` only.
+style_edition = "2021"

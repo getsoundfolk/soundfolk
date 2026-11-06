@@ -1,13 +1,21 @@
 [package]
 name = "soundfolk"
-version = "0.1.0"
 description = "Soundfolk — discover and listen to web radios from around the world"
-edition = "2021"
-license = "MPL-2.0"
-rust-version = "1.85"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [workspace]
 members = ["crates/nowplaying"]
+
+# Shared by every crate. `version` is the app's only version: Tauri reads it for the bundles
+# and the About page, the release workflow (deb.yml) checks the tag against it.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MPL-2.0"
+rust-version = "1.85"
 
 # Lints of every crate in the workspace (each one opts in with `[lints] workspace = true`).
 # The CI runs clippy with `-D warnings`: a "warn" here fails it.

@@ -44,10 +44,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          base=$(jq -r .version src-tauri/tauri.conf.json)
+          # The app's only version, in `[workspace.package]` of the Cargo manifest.
+          base=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml)
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             if [ "$GITHUB_REF_NAME" != "v$base" ]; then
-              echo "::error::tag $GITHUB_REF_NAME does not match version $base in src-tauri/tauri.conf.json"
+              echo "::error::tag $GITHUB_REF_NAME does not match version $base in src-tauri/Cargo.toml"
               exit 1
             fi
             echo "version=$base" >> "$GITHUB_OUTPUT"

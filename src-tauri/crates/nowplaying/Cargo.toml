@@ -1,10 +1,10 @@
 [package]
 name = "soundfolk-nowplaying"
-version = "0.1.0"
 description = "Network-free engine for now-playing recipes and adapters (Soundfolk)"
-edition = "2021"
-license = "MPL-2.0"
-rust-version = "1.85"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
 
 [lints]
 workspace = true
