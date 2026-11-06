@@ -23,7 +23,7 @@ use crate::db::{
     Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType,
     Stats,
 };
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, IoContext};
 use crate::export;
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
 use crate::recipes::{self, Origin};
@@ -472,7 +472,7 @@ fn edit_recipe_file(
                 let text = recipes
                     .local_copy_of(&entry)
                     .ok_or_else(|| "recipe not found".to_owned())?;
-                std::fs::write(&path, text)?;
+                std::fs::write(&path, text).at(&path)?;
             }
             path
         }
@@ -502,7 +502,7 @@ fn edit_recipe_file(
                     stream: &url,
                     homepage: homepage.as_deref(),
                 });
-                std::fs::write(&path, template)?;
+                std::fs::write(&path, template).at(&path)?;
                 path
             }
         },
@@ -555,7 +555,7 @@ pub async fn share_recipe(
                 )
             }
         };
-        let text = std::fs::read_to_string(&path)?;
+        let text = std::fs::read_to_string(&path).at(&path)?;
         Ok((entry, text))
     })
     .await?;
@@ -589,16 +589,14 @@ fn share_recipe_files(
 
     // A copy laid out as in the repository, for a pull request by hand.
     let folder = recipes_folder(recipes)?.join("to-share");
-    std::fs::create_dir_all(folder.join("stations"))?;
-    std::fs::create_dir_all(folder.join("fixtures"))?;
-    std::fs::write(
-        folder.join("stations").join(format!("{}.toml", entry.id)),
-        &shared.recipe,
-    )?;
-    std::fs::write(
-        folder.join("fixtures").join(&shared.fixture_file),
-        &shared.fixture,
-    )?;
+    let recipe_path = folder.join("stations").join(format!("{}.toml", entry.id));
+    let fixture_path = folder.join("fixtures").join(&shared.fixture_file);
+    for path in [&recipe_path, &fixture_path] {
+        let parent = path.parent().expect("a file in a folder");
+        std::fs::create_dir_all(parent).at(parent)?;
+    }
+    std::fs::write(&recipe_path, &shared.recipe).at(&recipe_path)?;
+    std::fs::write(&fixture_path, &shared.fixture).at(&fixture_path)?;
 
     let name = &entry.recipe.name;
     let mut link = recipes::share_link(&entry.id, name, &shared.recipe, Some(&shared.fixture));
@@ -674,12 +672,12 @@ fn recipes_folder(recipes: &recipes::Recipes) -> AppResult<std::path::PathBuf> {
         .local_dir()
         .ok_or_else(|| "no configuration folder on this system".to_owned())?
         .to_path_buf();
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(&dir).at(&dir)?;
     let schema = serde_json::to_string_pretty(&soundfolk_nowplaying::recipe::json_schema())
         .expect("schema serializes");
     let schema_path = dir.join(recipes::SCHEMA_FILE);
     if std::fs::read_to_string(&schema_path).ok().as_deref() != Some(schema.as_str()) {
-        std::fs::write(schema_path, schema)?;
+        std::fs::write(&schema_path, schema).at(&schema_path)?;
     }
     Ok(dir)
 }
@@ -688,9 +686,7 @@ fn open_path(app: &AppHandle, path: &std::path::Path) -> AppResult<()> {
     use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(path.display().to_string(), None::<&str>)
-        .map_err(|e| {
-            crate::error::AppError::from(format!("could not open {}: {e}", path.display()))
-        })
+        .map_err(|e| AppError::from(format!("could not open {}: {e}", path.display())))
 }
 
 /// Ids of the services shown in a track's menu, or `None` if the user never chose.
@@ -961,7 +957,7 @@ fn export_file(
         .download_dir()
         .or_else(|_| app.path().home_dir())
         .map_err(|e| format!("no folder to save the export in: {e}"))?;
-    std::fs::create_dir_all(&dir)?;
+    std::fs::create_dir_all(&dir).at(&dir)?;
     let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
     let base = format!("{}-{date}", list.file_stem());
     let path = (1..)
@@ -975,7 +971,7 @@ fn export_file(
         .map(|name| dir.join(format!("{name}.{}", format.extension())))
         .find(|path| !path.exists())
         .expect("an unused name");
-    std::fs::write(&path, content)?;
+    std::fs::write(&path, content).at(&path)?;
     {
         use tauri_plugin_opener::OpenerExt;
         // The file is saved either way; a file manager that cannot be opened is not an error.

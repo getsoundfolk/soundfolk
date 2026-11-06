@@ -365,4 +365,22 @@ export interface StationChange extends Playable {
   show_click_notice: boolean;
 }
 
-export const errorMessage = (e: unknown): string => (typeof e === 'string' ? e : String(e));
+/** What a failed command rejects with (`AppError` in error.rs). */
+export interface AppError {
+  kind: 'database' | 'network' | 'catalog' | 'io' | 'other';
+  message: string;
+}
+
+export const isAppError = (e: unknown): e is AppError =>
+  typeof e === 'object' &&
+  e !== null &&
+  typeof (e as AppError).kind === 'string' &&
+  typeof (e as AppError).message === 'string';
+
+/** The text to show for anything a command or a promise rejected with. */
+export const errorMessage = (e: unknown): string => {
+  if (typeof e === 'string') return e;
+  if (isAppError(e)) return e.message;
+  if (e instanceof Error) return e.message;
+  return String(e);
+};
