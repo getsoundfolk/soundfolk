@@ -4,7 +4,7 @@ Spec for keeping the same perceived level from one station to the next, so the l
 after switching.
 
 **Today:** built on desktop (`audio/loudness.rs`, `db/loudness.rs`, `volume.rs`), on by default. Target, guess and
-time constants are still the reasoned values below, not tuned on measurements (§6).
+time constants are tuned on 207 stations (§6.1), not yet checked by ear.
 
 ---
 
@@ -81,8 +81,8 @@ measuring while the switch is off, so turning it on applies a known level at onc
   | Situation | Time constant | Why |
   |---|---|---|
   | Learning: first 10 s of an unknown station | ~1 s, both ways | The error is our guess (§3.3), not the station's dynamics |
-  | Louder than the estimate | ~2 s | Cut quickly (principle 3) |
-  | Quieter than the estimate | ~20 s | A quiet song or a talk break must not pump the gain up |
+  | Louder than the estimate | ~4 s | Cut quickly (principle 3) |
+  | Quieter than the estimate | ~40 s | A quiet song or a talk break must not pump the gain up |
 
   While learning, the first value comes from the **momentary** loudness (400 ms window) gated over the first 1.5 s,
   not from the 3 s short-term window: zapping (Scan, media "next") hears each station for a few seconds only.
@@ -90,7 +90,8 @@ measuring while the switch is off, so turning it on applies a known level at onc
   A fast rise on so little audio can be fooled by a very quiet start (a whispered spoken intro): the gain would jump
   up, then come down at the first song. So while learning, the gain stays **at most +3 dB** (instead of +6); the
   rest of the boost comes after, at the slow rate, once the estimate rests on more audio. Cuts are not limited.
-  Values to tune by ear (§6).
+  Louder / quieter were 2 s / 20 s at first; measured on 207 stations (§6.1), that moved the gain twice as much once
+  settled, for nothing.
 
 ### 3.3 The gain, and the first second
 
@@ -100,12 +101,14 @@ headroom rule of §3.4.
 * **Target: −16 LUFS** (between Apple Music's −16 and the −14 of Spotify / YouTube). Most stations are louder:
   normalization mostly *cuts*, which is the safe direction. The listener raises the slider once, and never again.
   The cost: with normalization on, everything sounds a few dB quieter than the same slider position off, and than
-  Spotify at the same system volume. −14 would narrow that gap and leave less room to boost quiet stations; the
-  measurement of §6 decides.
+  Spotify at the same system volume. Measured (§6.1): the median station is at −12 LUFS, so the typical cut is 4 dB.
+  −14 would narrow that gap, but stations peak near 0 dBFS, so the boost a quieter target asks for is mostly
+  refused by the headroom rule: 32 stations of 207 would stay quieter than the rest, against 11 at −16.
 * **Known station:** its last estimate is read from the database (§4) when the playback starts (the engine asks its
   `LevelMemory`, set by the app); the gain applies from the first sample, then follows the live measure.
 * **Unknown station:** starts at the **median loudness of the stations already learned** (§4), once there are at
-  least 20 of them; before that, at **−11 LUFS** (−5 dB), a guess for webradios to check against measurements (§6).
+  least 20 of them; before that, at **−11 LUFS** (−5 dB), 1 dB above the measured median (§6.1): on the quiet
+  side, as a guess too loud is worse.
   The median, not a low percentile: a guess too low makes the listener raise the slider, then the station comes up
   and ends too loud — the very jump this feature removes. The learning phase (§3.2) then corrects it within ~2 s,
   up or down.
@@ -126,12 +129,13 @@ A quiet but already peaking stream (a raw feed with loud jingles) is therefore l
 Cuts are never limited.
 
 No limiter in the first version: it would let the gain go higher at the price of a processing that changes the sound,
-against principle 2. To reconsider if too many quiet stations stay quiet (§6).
+against principle 2. Measured: it would change little (§6.1).
 
 ### 3.5 Ramps
 
 Every gain change is a linear ramp in dB over at least 50 ms, and the gain moves at most 6 dB/s once playing (fast
-cut) and 0.5 dB/s up, except while learning (§3.2), where it may rise at 6 dB/s too. Pause keeps the gain; the stream keeps being consumed, so the measure keeps running too.
+cut) and 0.5 dB/s up, except while learning (§3.2), where it may rise at 6 dB/s too. Pause keeps the gain; the stream
+keeps being consumed, so the measure keeps running too.
 
 ---
 
@@ -176,18 +180,57 @@ CREATE TABLE IF NOT EXISTS station_loudness (
 
 ---
 
-## 6. Open questions
+## 6. Measurements and open questions
 
-* **Target and starting guess:** −16 LUFS and −11 LUFS are reasoned, not measured. Before tuning, log the estimate
-  of ~200 popular stations to see the real distribution: `cargo test -- --ignored live_loudness --nocapture` with
-  `SOUNDFOLK_STREAMS` and `SOUNDFOLK_SECONDS=30`. If most sit between −14 and −11 LUFS, −14 may be the better target
-  (§3.3). First four (2026-11-05, 20 s each): FIP −15.9, Radio Paradise −9.1, Radio 1 Rock −12.6, Fréquence 7 −12.4.
-* **Time constants:** 1 s learning, 2 s / 20 s by ear, on stations mixing music and talk (news, morning shows), where
-  pumping would show first, and while zapping, where a slow first correction would show first.
+### 6.1 Measured on 207 stations (2026-11-05)
+
+The 220 most clicked Radio-Browser stations, at most 25 per country and one per name (FR, US, DE 25 each, TR 20,
+IN 17, IT and GB 15…; 178 MP3, 41 AAC), each recorded for 90 s with `ffmpeg`'s R128 meter (momentary, short-term
+and sample peak every 100 ms); 207 delivered enough sound. The leveler was then replayed on these series, each
+station as unknown, for each setting. Scripts and station list in [loudness-study/](loudness-study/):
+`stations.py` picks them, `measure.sh` records one, `sim.py` replays the leveler and prints what follows.
+`cargo test -- --ignored live_loudness --nocapture` (with `SOUNDFOLK_STREAMS`) checks the real engine on a few.
+
+**Loudness of the stations** (integrated, LUFS):
+
+| p10 | p25 | median | p75 | p90 | quietest | loudest |
+|---|---|---|---|---|---|---|
+| −17.6 | −15.2 | −12.2 | −9.6 | −7.7 | −23.4 | −3.6 |
+
+Without normalization, 80 % of stations sit within −5.4 / +4.5 dB of the median: a 10 dB range from one switch to
+the next. With it, 80 % end within −1.3 / 0 dB of the target. Stations peak high: the median of each station's
+highest sample peak is −0.9 dBFS (MP3 and AAC decoding often go past 0), so the headroom rule (§3.4) refuses most
+boosts. At −16 LUFS, 41 stations need one and 11 stay more than 1 dB quieter; without the rule, 9. A limiter
+would not help much.
+
+**Settings compared** (each row changes one thing from the first):
+
+| Setting | Gain moves once settled | Pumping range (p90) | Settled after (median) | Ends within (p10..p90) | Left quiet |
+|---|---|---|---|---|---|
+| 2 s / 20 s, −16, guess −11 (first version) | 4.0 dB/min | 4.0 dB | 34 s | −1.2..−0.1 dB | 11 |
+| **4 s / 40 s (kept)** | **2.2 dB/min** | **3.3 dB** | **19 s** | **−1.3..0.0 dB** | **11** |
+| 8 s / 40 s | 1.9 dB/min | 3.2 dB | 18 s | −1.3..+0.2 dB | 8 |
+| 2 s / 60 s | 2.0 dB/min | 3.2 dB | 18 s | −1.8..−0.2 dB | 13 |
+| target −14 | 3.1 dB/min | 3.6 dB | 25 s | −1.9..−0.1 dB | 32 |
+| target −18 | 4.0 dB/min | 4.3 dB | 34 s | −1.1..−0.1 dB | 4 |
+
+* **Time constants:** halving how much the gain moves costs nothing measurable; slower still (8 s to cut) gains
+  little more and lets a louder passage through longer. 4 s / 40 s it is.
+* **Target:** −16 kept (§3.3). −18 leaves fewer stations quiet but lowers everything 2 dB more.
+* **Starting guess and first value:** a guess of −9 / −10 / −11 LUFS trades how loud the first seconds can be against
+  how quiet: at −11, 10 % of unknown stations start more than 5 dB louder than where they settle (for ~2 s), and 10 %
+  about 6 dB quieter. A lower guess makes the first case rarer and the second one worse: kept at −11 (§3.3).
+  Waiting 3 s instead of 1.5 s for the first value, or a learning time constant of 0.5 or 2 s, changes it by less
+  than 1 dB: kept.
+
+### 6.2 Open questions
+
+* **By ear:** the measures say how much the gain moves, not whether it is heard. To check on stations mixing music
+  and talk (news, morning shows), where pumping would show first, and while zapping.
 * **Very dynamic stations** (classical, jazz, ambient): one slow gain leaves their dynamics alone, which is wanted.
   Check that the relative gate keeps a long quiet movement from lifting the gain.
 * **Ads and jingles** are often mastered louder than the programme. The fast cut lowers them, then the slow rise takes
-  ~20 s to come back: acceptable, or should a short loud burst (< 30 s) be ignored by the long-term estimate?
+  ~40 s to come back: acceptable, or should a short loud burst (< 30 s) be ignored by the long-term estimate?
 * **Mono and speech-only stations:** K-weighting judges them fairly, but a talk station at −16 LUFS can feel louder
   than music at the same level. Leave as is unless people complain.
 * **Per-station manual offset** (±6 dB in the station sheet): only if people ask after it ships.
@@ -225,7 +268,8 @@ The stored levels (§4) are shared, so a station learned on desktop starts right
   −1 dBFS; a quiet 5 s intro before a loud signal never takes the gain above +3 dB; a stored level gives the right
   gain on the first sample; switching off ramps back to 0 dB; a station that changed drops its history.
 - [x] `cargo test -- --ignored live_loudness`: levels learned on real stations.
-- [ ] Run it on ~200 stations and tune target, guess and time constants (§6).
+- [x] Measure ~200 stations and tune target, guess and time constants (§6.1).
+- [ ] Listen: pumping on music + talk stations, first seconds while zapping (§6.2).
 
 **Frontend**
 - [x] "Constant volume" switch in ⚙ → Playback (English only, like the rest of the UI for now).

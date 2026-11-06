@@ -11,7 +11,7 @@
 //!   for 10 s: the first value comes after 1.5 s of sound, and the estimate moves fast both ways,
 //!   with the boost capped at +3 dB.
 //! * After that, the estimate follows the short-term loudness (3 s), fast when the station gets
-//!   louder (the gain is cut in ~2 s), slowly when it gets quieter (~20 s), so a quiet song or a
+//!   louder (the gain is cut in ~4 s), slowly when it gets quieter (~40 s), so a quiet song or a
 //!   talk break does not pump the gain up. Silence and passages far below the station's level are
 //!   ignored (gates).
 //! * A boost never takes the recent peak above −1 dBFS: no limiter, no clipping.
@@ -52,10 +52,12 @@ const SHORT_TERM_WINDOW: Duration = Duration::from_secs(3);
 /// Peak taken into account for the headroom.
 const PEAK_WINDOW_BLOCKS: usize = 100;
 
-/// Time constants of the estimate.
+/// Time constants of the estimate. Louder / quieter tuned on 207 stations (`docs/10-loudness.md`
+/// §6): 2 s / 20 s moved the gain twice as much once settled (4 dB a minute, a pumping range of
+/// 4 dB) for no gain in how close stations end to the target.
 const TAU_LEARNING: f64 = 1.0;
-const TAU_LOUDER: f64 = 2.0;
-const TAU_QUIETER: f64 = 20.0;
+const TAU_LOUDER: f64 = 4.0;
+const TAU_QUIETER: f64 = 40.0;
 
 /// Gain moves, in dB per second.
 const RATE_CUT: f64 = 6.0;
