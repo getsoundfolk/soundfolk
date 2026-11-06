@@ -214,7 +214,12 @@ impl Status {
     }
 
     fn set(&self, new: PlayerState) {
-        let mut state = self.lock();
+        self.replace(&mut self.lock(), new);
+    }
+
+    /// [`Status::set`] through a guard already held: whoever must read the state, or the pause
+    /// flag, and write the state in one step takes the lock once for both.
+    fn replace(&self, state: &mut PlayerState, new: PlayerState) {
         if *state != new {
             *state = new.clone();
             (self.listener)(new);
@@ -321,12 +326,17 @@ impl StreamMeta {
 
 impl Reporter {
     fn publish(&self, new: PlayerState) {
+        self.publish_with(|| new);
+    }
+
+    /// `new` runs under the state lock, so it reads the pause flag as `pause` and `resume`
+    /// leave it.
+    fn publish_with(&self, new: impl FnOnce() -> PlayerState) {
         let mut state = self.status.lock();
-        if self.cancel.is_cancelled() || *state == new {
+        if self.cancel.is_cancelled() {
             return;
         }
-        *state = new.clone();
-        (self.status.listener)(new);
+        self.status.replace(&mut state, new());
     }
 
     pub(crate) fn reconnecting(&self, message: &str) {
@@ -334,11 +344,12 @@ impl Reporter {
     }
 
     pub(crate) fn audible(&self) {
-        let paused = self.controls.is_paused();
-        self.publish(if paused {
-            PlayerState::Paused
-        } else {
-            PlayerState::Playing
+        self.publish_with(|| {
+            if self.controls.is_paused() {
+                PlayerState::Paused
+            } else {
+                PlayerState::Playing
+            }
         });
     }
 
@@ -613,19 +624,23 @@ impl AudioEngine for DesktopAudioEngine {
         Ok(PlayReply(wait))
     }
 
+    // Both hold the state lock from the read to the write: an error, a stop or a new station
+    // landing in between would otherwise be overwritten by a stale Paused or Playing.
     fn pause(&mut self) -> Result<(), String> {
-        if self.state() != PlayerState::Playing {
+        let mut state = self.status.lock();
+        if *state != PlayerState::Playing {
             return Ok(());
         }
         self.controls.paused.store(true, Ordering::Relaxed);
-        self.status.set(PlayerState::Paused);
+        self.status.replace(&mut state, PlayerState::Paused);
         Ok(())
     }
 
     fn resume(&mut self) -> Result<(), String> {
+        let mut state = self.status.lock();
         self.controls.paused.store(false, Ordering::Relaxed);
-        if self.state() == PlayerState::Paused {
-            self.status.set(PlayerState::Playing);
+        if *state == PlayerState::Paused {
+            self.status.replace(&mut state, PlayerState::Playing);
         }
         Ok(())
     }
@@ -697,18 +712,16 @@ fn engine_loop(
 
         match command {
             Command::Stop => {
-                controls.paused.store(false, Ordering::Relaxed);
                 status.clear_now_playing();
-                status.set(PlayerState::Idle);
+                unpause(&controls, &status, PlayerState::Idle);
             }
             Command::Play {
                 url,
                 station,
                 reply,
             } => {
-                controls.paused.store(false, Ordering::Relaxed);
                 status.clear_now_playing();
-                status.set(PlayerState::Connecting);
+                unpause(&controls, &status, PlayerState::Connecting);
                 match start_session(
                     url.clone(),
                     station.clone(),
@@ -736,6 +749,14 @@ fn engine_loop(
         }
     }
     drop(session);
+}
+
+/// Clears the pause and sets `new` in one step: a `pause` between the two would see the old
+/// session's Playing and leave the next station paused.
+fn unpause(controls: &Controls, status: &Status, new: PlayerState) {
+    let mut state = status.lock();
+    controls.paused.store(false, Ordering::Relaxed);
+    status.replace(&mut state, new);
 }
 
 /// The sound output died (device unplugged, sound server restarted, wake from sleep): plays the
