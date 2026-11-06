@@ -394,7 +394,7 @@ pub fn run() {
             engine.set_normalize(volume::constant_volume(&app.state::<Database>()));
             engine.set_level_memory(Arc::new(volume::DatabaseLevels(app.handle().clone())));
             app.manage(AudioState::new(engine, on_air));
-            app.manage(CatalogState(Arc::new(RadioBrowser::new()?)));
+            app.manage(CatalogState(Arc::new(RadioBrowser::default())));
 
             let identify = Arc::new(tokio::sync::Notify::new());
             if let Some(mb) = musicbrainz {

@@ -40,6 +40,7 @@ const RETRY_DNS_AFTER: Duration = Duration::from_secs(60);
 /// come back short; we fetch a few more to fill it without hammering the API.
 const MAX_PAGES_PER_SEARCH: usize = 3;
 
+#[derive(Default)]
 pub struct RadioBrowser {
     /// Mirrors found by the last lookup (`None`: to look up).
     mirrors: Mutex<Option<Mirrors>>,
@@ -146,15 +147,6 @@ fn candidates<'a>(list: &'a [Mirror], preferred: Option<&str>, count: usize) -> 
 }
 
 impl RadioBrowser {
-    pub fn new() -> Result<Self, CatalogError> {
-        Ok(Self {
-            mirrors: Mutex::new(None),
-            lookup: tokio::sync::Mutex::new(()),
-            preferred: Mutex::new(None),
-            wildcards: OnceCell::new(),
-        })
-    }
-
     /// The mirrors, looked up again when needed (see the module).
     async fn mirrors(&self) -> Result<Arc<Vec<Mirror>>, CatalogError> {
         let fresh =
@@ -531,7 +523,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "network"]
     async fn live_mirrors_come_from_dns() {
-        let rb = RadioBrowser::new().unwrap();
+        let rb = RadioBrowser::default();
         let list = rb.mirrors().await.unwrap();
         assert!(!list.is_empty());
         assert!(
@@ -655,7 +647,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "network"]
     async fn live_search_finds_every_spelling() {
-        let rb = RadioBrowser::new().unwrap();
+        let rb = RadioBrowser::default();
         assert!(rb.wildcards().await.unwrap());
         // The catalog stores "Wonder 80's Flashback".
         assert!(names(&rb, "Wonder 80’s Flashback")
@@ -681,7 +673,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "network"]
     async fn live_search_reads_percent_and_underscore_as_typed() {
-        let rb = RadioBrowser::new().unwrap();
+        let rb = RadioBrowser::default();
         let percent = names(&rb, "100%").await;
         assert!(!percent.is_empty());
         assert!(percent.iter().all(|n| n.contains('%')), "{percent:?}");
@@ -711,7 +703,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "network"]
     async fn live_search_finds_rdwa() {
-        let rb = RadioBrowser::new().unwrap();
+        let rb = RadioBrowser::default();
         let query = SearchQuery {
             text: Some("rdwa".into()),
             ..Default::default()
@@ -761,7 +753,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "network"]
     async fn live_station_by_id() {
-        let rb = RadioBrowser::new().unwrap();
+        let rb = RadioBrowser::default();
         let station = rb
             .station("ab30ca84-c228-4f57-8cac-816c69ef651d")
             .await
@@ -775,7 +767,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "network"]
     async fn live_search_hides_hls_and_paginates() {
-        let rb = RadioBrowser::new().unwrap();
+        let rb = RadioBrowser::default();
         // Korean broadcasters are mostly HLS: a good stress test for short pages.
         let query = SearchQuery {
             text: Some("kbs".into()),
