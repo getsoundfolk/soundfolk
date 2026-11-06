@@ -101,8 +101,8 @@ fn unless_cancelled<T>(
     runtime.block_on(async {
         tokio::select! {
             out = task => Some(out),
-            // If the hook is dropped without firing (replaced by a later stream's), this branch
-            // is disabled and `task` runs to its end.
+            // If the sender is dropped without a stop, this branch is disabled and `task` runs
+            // to its end.
             Ok(_) = stopped.wait_for(|stopped| *stopped) => None,
         }
     })
