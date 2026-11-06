@@ -270,9 +270,16 @@ impl Database {
         )
     }
 
-    /// Deletes the whole listening history (likes are kept); returns the number of rows removed.
+    /// Deletes the whole listening history (likes are kept), along with the station levels learned
+    /// for Constant volume, which say which stations were heard too. Both go in one transaction.
+    /// Returns the number of history rows removed.
     pub fn clear_history(&self) -> rusqlite::Result<usize> {
-        self.conn().execute("DELETE FROM listening_history", [])
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM station_loudness", [])?;
+        let removed = tx.execute("DELETE FROM listening_history", [])?;
+        tx.commit()?;
+        Ok(removed)
     }
 
     /// Likes the track of a history entry, recording the station it was heard on. Liking a track

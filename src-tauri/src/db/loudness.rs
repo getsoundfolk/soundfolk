@@ -51,10 +51,6 @@ impl Database {
         )
         .optional()
     }
-
-    pub fn clear_station_levels(&self) -> rusqlite::Result<usize> {
-        self.conn().execute("DELETE FROM station_loudness", [])
-    }
 }
 
 #[cfg(test)]
@@ -76,7 +72,8 @@ mod tests {
         db.save_station_level("a", &level(-12.0)).unwrap();
         db.save_station_level("a", &level(-9.0)).unwrap();
         assert_eq!(db.station_level("a").unwrap(), Some(level(-9.0)));
-        assert_eq!(db.clear_station_levels().unwrap(), 1);
+        // Clearing the history forgets the levels too.
+        db.clear_history().unwrap();
         assert_eq!(db.station_level("a").unwrap(), None);
     }
 
