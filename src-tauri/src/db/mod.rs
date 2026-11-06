@@ -381,7 +381,7 @@ type Migration = fn(&Connection) -> rusqlite::Result<()>;
 
 /// Schema migrations, in order: the database is at version `n` (`PRAGMA user_version`) once the
 /// first `n` have run. Append only; never edit or reorder one that has shipped.
-const MIGRATIONS: &[Migration] = &[baseline];
+const MIGRATIONS: &[Migration] = &[baseline, history_and_likes_indexes];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
 const LATEST: u32 = MIGRATIONS.len() as u32;
@@ -428,6 +428,16 @@ fn baseline(conn: &Connection) -> rusqlite::Result<()> {
     }
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_history_track_key ON listening_history (track_key);",
+    )
+}
+
+/// Version 2: indexes on the two unbounded tables for the lookups that scanned them, the history by
+/// station (dedup on insert, re-parsing, per-station stats) and the likes by history row (kept in
+/// step when a history row is re-parsed).
+fn history_and_likes_indexes(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_history_station ON listening_history (station_id);
+         CREATE INDEX IF NOT EXISTS idx_likes_history ON likes (history_id);",
     )
 }
 
@@ -557,6 +567,34 @@ pub(super) mod tests {
             )
             .unwrap();
         assert!(indexed);
+    }
+
+    #[test]
+    fn version_1_database_gains_the_indexes() {
+        let conn = Connection::open_in_memory().unwrap();
+        baseline(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 1).unwrap();
+        let db = Database::init(conn).unwrap();
+        let conn = db.conn();
+        assert_eq!(user_version(&conn), LATEST);
+        for index in ["idx_history_station", "idx_likes_history"] {
+            let exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1)",
+                    [index],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert!(exists, "{index}");
+        }
+        let plan: String = conn
+            .query_row(
+                "EXPLAIN QUERY PLAN DELETE FROM likes WHERE history_id = 1 AND track_key != 'k'",
+                [],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("idx_likes_history"), "{plan}");
     }
 
     #[test]
