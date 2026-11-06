@@ -65,6 +65,36 @@ like. Rules, to avoid false positives:
 Many stations send nothing during ads: the previous title stays, or the title is empty. Recognizing an ad from the
 audio itself (fingerprints, silence detection) is out of scope.
 
+### 2.6 The stream URL (station level, measured)
+Some stream URLs belong to ad-insertion platforms. This signal says nothing about what is on air now: it says the
+station **runs ads**, and it serves the *Ad-free* filter and badge of 06 §5 and 09, by taking stations out of it. It
+can never put a station in: a URL with no match proves nothing.
+
+Measured on 2026-11-06 on the 62,561 stations Radio-Browser lists as working:
+
+| Signal in `url` or `url_resolved` | Stations | Share | In the 2,000 most clicked |
+|---|---:|---:|---:|
+| `streamtheworld.com` (Triton's stream host) | 2,815 | 4.5 % | 125 |
+| AdsWizz parameters (`aw_0_…` in the query) | 640 | 1.0 % | 28 |
+| `tritondigital`, `adswizz`, `targetspot` in the host | 0 | 0 % | 0 |
+| Both signals together, 2,000 most clicked | | | 153 (7.7 %) |
+
+* The ad servers never show up as hosts. They show up through Triton's stream host and through the AdsWizz query
+  parameters added by the broadcaster's own host (`streamabc.net`, `nrjaudio.fm`, `radiobob.de`,
+  `sharp-stream.com`, `hellorayo.co.uk`, Bauer…).
+* Following HTTP redirects adds little: on the 1,362 streams of the top 2,000 that answered, `aw_0_` appeared after
+  a redirect on 21 more stations. No HTTP response header named an ad server. The 604 other streams failed on DNS
+  in the measuring environment, so their redirects are not known.
+* No false positive on the networks known to be ad-free: SomaFM, Radio Paradise, FIP, KEXP and the BBC streams
+  have none of these signals.
+* Not counted as a signal: `zeno.fm` (2,933 stations, 4.7 %), `ihrhls.com` / `revma.com` (iHeart), `infomaniak.ch`,
+  `streamguys1.com`. They host both kinds of stations, or their ads have not been seen yet: the measure of
+  section 4, step 1, decides.
+
+So the list catches about one station in thirteen among the stations people listen to, nearly without errors, and
+says nothing about the others. It is a data file (domains and query parameters), like the title list in 2.4, and a
+station it matches shows the reason on its sheet: "Stream served by an ad platform (Triton)".
+
 ## 3. Behavior
 
 ### 3.1 The player
@@ -94,6 +124,17 @@ measures in 07-now-playing.md), so the ad needs no special case beyond that.
 "Track on air" says how ads are detected on this station: "Ads announced by the stream (AdsWizz)", "Ads recognized
 from their title", or nothing.
 
+### 3.5 "I heard an ad"
+Most stations give no signal (2.5), so the listener is the last one. The player and the station sheet have an
+**I heard an ad** action:
+* It marks the station as running ads in the local database, right away. The station leaves the *Ad-free* filter
+  for this listener, whatever any other source says, even if the station shows an *Ad-free* badge.
+* The mark stays visible on the sheet ("You heard an ad here") and can be removed from there.
+* Nothing leaves the computer. Sending the report to a shared list (to take a badge away for everyone) needs its
+  own design: an opt-in, no listening data, only the station's id, and abuse to plan for. That is for later.
+* An automatic signal (2.1 to 2.6) seen while listening sets the same mark, with its source, so the listener does
+  not have to.
+
 ## 4. Order of work
 1. **Measure.** Connect several times to a few dozen stations per platform (RadioKing, Triton, Zeno, laut.fm,
    Radio.co, a sample of the rest), log every metadata block, and count `adw_` keys, prerolls and midrolls.
@@ -102,3 +143,7 @@ from their title", or nothing.
 3. Keep ads out of the history, the stats and the cover lookup.
 4. The "Ad" display and its countdown.
 5. Then, depending on what step 1 finds: HLS markers, Triton event types, the title heuristic.
+
+The station-level part (2.6, 3.5) is independent and can come first: the URL list and the local mark need no
+stream parsing. They only make sense once the *Ad-free* filter exists, since that is what they remove stations
+from.
