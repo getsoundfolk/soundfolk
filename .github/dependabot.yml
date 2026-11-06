@@ -4,6 +4,8 @@
 # Security fixes come as soon as an advisory is published, outside this schedule, once
 # "Dependabot security updates" is on in the repository settings (Settings → Code security).
 # The DCO check skips Dependabot's commits (bot account, see .github/scripts/check-dco.sh).
+# A release must be a week old before a version update proposes it (cooldown), so a hijacked
+# release is likely pulled before it lands here; security updates skip the cooldown.
 version: 2
 updates:
   - package-ecosystem: cargo
@@ -12,6 +14,8 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: deps
     # Held back on purpose: a newer version would put a second copy of a big crate in the tree
@@ -38,6 +42,8 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: deps
     ignore:
@@ -56,6 +62,8 @@ updates:
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: ci
     groups:
