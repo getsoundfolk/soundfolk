@@ -483,7 +483,6 @@ pub fn run() {
             commands::set_cover_sources,
             commands::get_cover,
             commands::set_track_identification,
-            commands::report_station,
             commands::search_stations,
             commands::resolve_station,
             commands::get_click_counting,

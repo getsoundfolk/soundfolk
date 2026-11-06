@@ -5,7 +5,7 @@
   There is no full local mirror: without a network no radio can be played, so offline catalog search has no value.
 * **Local persistence (SQLite):** the user's favorites, listening history, personal stations and settings, with 0 ms
   responsiveness.
-* **Station IDs:** `station_id` (favorites, history, reports) is the Radio-Browser UUID for a catalog station, or
+* **Station IDs:** `station_id` (favorites, history) is the Radio-Browser UUID for a catalog station, or
   `user:<hex>` for a personal station.
 
 ## 2. Local tables (`rusqlite`, WAL mode)
@@ -107,18 +107,6 @@ CREATE TABLE IF NOT EXISTS artists (
 );
 CREATE TABLE IF NOT EXISTS albums (
     mbid TEXT PRIMARY KEY, title TEXT NOT NULL, primary_type TEXT
-);
-```
-
-### `station_reports`
-Anomaly reports about catalog stations.
-```sql
-CREATE TABLE IF NOT EXISTS station_reports (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    station_id  TEXT NOT NULL,
-    report_type TEXT NOT NULL CHECK (report_type IN ('dead_link', 'duplicate', 'outdated_info')),
-    comment     TEXT,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 ```
 

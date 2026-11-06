@@ -20,8 +20,7 @@ use crate::audio::{
 use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
 use crate::covers::{self, Cover, CoverSource, Covers};
 use crate::db::{
-    Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, ReportType,
-    Stats,
+    Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, Stats,
 };
 use crate::error::{AppError, AppResult, IoContext};
 use crate::export;
@@ -1059,19 +1058,6 @@ pub async fn list_likes(
 ) -> AppResult<Vec<LikedTrack>> {
     let limit = limit.unwrap_or(200).min(1000);
     with_db(&db, move |db| Ok(db.list_likes(limit, query.as_deref())?)).await
-}
-
-#[tauri::command]
-pub async fn report_station(
-    db: State<'_, Database>,
-    station_id: String,
-    report_type: ReportType,
-    comment: Option<String>,
-) -> AppResult<i64> {
-    with_db(&db, move |db| {
-        Ok(db.add_report(&station_id, report_type, comment.as_deref())?)
-    })
-    .await
 }
 
 #[cfg(test)]

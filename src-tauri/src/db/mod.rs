@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Local SQLite persistence (offline-first): favorites, listening history, likes, listening
-//! sessions, reports.
+//! sessions.
 //!
 //! The connection is single and protected by a `Mutex`: accesses are short and WAL mode
 //! prevents concurrent reads (future sync worker) from blocking writes.
@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS likes (
     liked_at     DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Dropped by version 4 (`drop_station_reports`): nothing ever wrote to it.
 CREATE TABLE IF NOT EXISTS station_reports (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id  TEXT NOT NULL,
@@ -155,24 +156,6 @@ pub struct Favorite {
     pub genre: Option<String>,
     #[serde(default)]
     pub added_at: Option<String>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum ReportType {
-    DeadLink,
-    Duplicate,
-    OutdatedInfo,
-}
-
-impl ReportType {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::DeadLink => "dead_link",
-            Self::Duplicate => "duplicate",
-            Self::OutdatedInfo => "outdated_info",
-        }
-    }
 }
 
 /// Station added by the user (`user:…` ID, private).
@@ -368,29 +351,18 @@ impl Database {
         )?;
         Ok(deleted > 0)
     }
-
-    // ── station_reports ──────────────────────────────────────────────────────
-
-    pub fn add_report(
-        &self,
-        station_id: &str,
-        report_type: ReportType,
-        comment: Option<&str>,
-    ) -> rusqlite::Result<i64> {
-        let conn = self.conn();
-        conn.execute(
-            "INSERT INTO station_reports (station_id, report_type, comment) VALUES (?1, ?2, ?3)",
-            params![station_id, report_type.as_str(), comment],
-        )?;
-        Ok(conn.last_insert_rowid())
-    }
 }
 
 type Migration = fn(&Connection) -> rusqlite::Result<()>;
 
 /// Schema migrations, in order: the database is at version `n` (`PRAGMA user_version`) once the
 /// first `n` have run. Append only; never edit or reorder one that has shipped.
-const MIGRATIONS: &[Migration] = &[baseline, history_and_likes_indexes, history_station_names];
+const MIGRATIONS: &[Migration] = &[
+    baseline,
+    history_and_likes_indexes,
+    history_station_names,
+    drop_station_reports,
+];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
 const LATEST: u32 = MIGRATIONS.len() as u32;
@@ -462,6 +434,12 @@ fn history_station_names(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Version 4: `station_reports` goes. The app never offered a way to report a station, so the table
+/// was always empty, and a future report feature would need a table of its own.
+fn drop_station_reports(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch("DROP TABLE IF EXISTS station_reports;")
+}
+
 /// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).
 fn add_column(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<()> {
     let name = column.split_whitespace().next().unwrap_or(column);
@@ -522,21 +500,6 @@ pub(super) mod tests {
         assert!(list[0].added_at.is_some());
         assert!(db.remove_favorite("a").unwrap());
         assert!(!db.remove_favorite("a").unwrap());
-    }
-
-    #[test]
-    fn reports_validate_type() {
-        let db = Database::open_in_memory().unwrap();
-        assert_eq!(
-            db.add_report("a", ReportType::DeadLink, Some("404"))
-                .unwrap(),
-            1
-        );
-        let bad = db.conn().execute(
-            "INSERT INTO station_reports (station_id, report_type) VALUES ('a', 'nope')",
-            [],
-        );
-        assert!(bad.is_err());
     }
 
     fn user_version(conn: &Connection) -> u32 {
@@ -650,6 +613,26 @@ pub(super) mod tests {
                 None
             ]
         );
+    }
+
+    #[test]
+    fn version_3_database_loses_the_reports_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        baseline(&conn).unwrap();
+        history_and_likes_indexes(&conn).unwrap();
+        history_station_names(&conn).unwrap();
+        conn.pragma_update(None, "user_version", 3).unwrap();
+        let db = Database::init(conn).unwrap();
+        let conn = db.conn();
+        assert_eq!(user_version(&conn), LATEST);
+        let left: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE name IN ('station_reports', 'idx_reports_station')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]
