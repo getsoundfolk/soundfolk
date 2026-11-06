@@ -1035,7 +1035,7 @@ pub async fn set_cover_sources(
     sources: Vec<CoverSource>,
 ) -> AppResult<Vec<CoverSource>> {
     let saved = with_db(&db, move |db| Ok(covers::save_sources(db, sources)?)).await?;
-    covers.0.refresh();
+    covers.0.set_sources(saved.clone());
     Ok(saved)
 }
 

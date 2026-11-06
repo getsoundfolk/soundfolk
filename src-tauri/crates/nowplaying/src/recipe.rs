@@ -15,6 +15,9 @@
 //! title = ".title"
 //! ```
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -300,10 +303,7 @@ impl Recipe {
 
     /// Whether a title is noise (jingle, ad…) according to `ignore`.
     pub fn ignores(&self, title: &str) -> bool {
-        self.ignore
-            .iter()
-            .filter_map(|p| regex_lite::Regex::new(p).ok())
-            .any(|re| re.is_match(title))
+        self.ignore.iter().any(|p| pattern_matches(p, title))
     }
 
     /// The recipe without its tests, as published in `recipes.json`.
@@ -318,6 +318,18 @@ impl Recipe {
     pub fn to_toml(&self) -> String {
         toml::to_string_pretty(self).expect("recipe serializes to TOML")
     }
+}
+
+/// Whether the text matches a recipe pattern, compiled once per run (an invalid one, which
+/// `problems` reports, matches nothing). Recipes are read on every poll; their patterns are few.
+fn pattern_matches(pattern: &str, text: &str) -> bool {
+    static CACHE: LazyLock<Mutex<HashMap<String, Option<regex_lite::Regex>>>> =
+        LazyLock::new(Mutex::default);
+    let mut cache = CACHE.lock().unwrap_or_else(|p| p.into_inner());
+    if !cache.contains_key(pattern) {
+        cache.insert(pattern.to_owned(), regex_lite::Regex::new(pattern).ok());
+    }
+    cache[pattern].as_ref().is_some_and(|re| re.is_match(text))
 }
 
 /// The form `match.streams` uses for a stream URL (`host[:port]/path`), to write a recipe for it.

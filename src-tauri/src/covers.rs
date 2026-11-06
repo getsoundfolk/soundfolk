@@ -171,6 +171,8 @@ struct State {
     logos: HashMap<String, Option<String>>,
     /// Picture last given to the media controls.
     media_picture: Option<String>,
+    /// The cover sources, read from the database once, then kept by [`Covers::set_sources`].
+    sources: Option<Vec<CoverSource>>,
 }
 
 pub struct Covers {
@@ -265,9 +267,26 @@ impl Covers {
         });
     }
 
-    /// The sources changed: the cover of the track on air is chosen again.
-    pub fn refresh(self: &Arc<Self>) {
+    /// The sources changed (as saved): the cover of the track on air is chosen again.
+    pub fn set_sources(self: &Arc<Self>, sources: Vec<CoverSource>) {
+        self.state().sources = Some(sources);
         self.resolve(false);
+    }
+
+    /// The cover sources, read from the database the first time.
+    fn sources(&self, db: &Database) -> Vec<CoverSource> {
+        if let Some(sources) = &self.state().sources {
+            return sources.clone();
+        }
+        match load_sources(db) {
+            // Sources saved meanwhile are newer than this read.
+            Ok(sources) => self.state().sources.get_or_insert(sources).clone(),
+            // Not kept: read again for the next title.
+            Err(e) => {
+                tracing::warn!("cover sources not read: {e}");
+                default_sources()
+            }
+        }
     }
 
     fn resolve(self: &Arc<Self>, title_changed: bool) {
@@ -280,10 +299,7 @@ impl Covers {
             (state.now_playing.clone(), state.station.clone(), logo)
         };
         let db = self.app.state::<Database>();
-        let sources = load_sources(&db).unwrap_or_else(|e| {
-            tracing::warn!("cover sources not read: {e}");
-            default_sources()
-        });
+        let sources = self.sources(&db);
         let query = online_query(&now_playing, station.as_deref());
 
         let (url, lookup) = pick(&sources, |source| match source {
