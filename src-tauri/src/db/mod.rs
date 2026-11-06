@@ -22,6 +22,8 @@ pub use history::{HistoryEntry, HistorySummary, LikedTrack};
 pub use identify::TrackToIdentify;
 pub use stats::Stats;
 
+/// Schema version 1, applied by [`baseline`]. Frozen: a later change goes in a new entry of
+/// [`MIGRATIONS`], never here.
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS favorites (
     station_id TEXT PRIMARY KEY,
@@ -145,11 +147,6 @@ CREATE TABLE IF NOT EXISTS personal_stations (
 );
 ";
 
-/// Indexes on columns that older databases only gain in [`migrate`].
-const INDEXES: &str = "
-CREATE INDEX IF NOT EXISTS idx_history_track_key ON listening_history (track_key);
-";
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Favorite {
     pub station_id: String,
@@ -212,9 +209,7 @@ impl Database {
 
     fn init(conn: Connection) -> rusqlite::Result<Self> {
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        conn.execute_batch(SCHEMA)?;
         migrate(&conn)?;
-        conn.execute_batch(INDEXES)?;
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
         };
@@ -382,8 +377,44 @@ impl Database {
     }
 }
 
-/// Brings a database created by an older version up to the current schema.
+type Migration = fn(&Connection) -> rusqlite::Result<()>;
+
+/// Schema migrations, in order: the database is at version `n` (`PRAGMA user_version`) once the
+/// first `n` have run. Append only; never edit or reorder one that has shipped.
+const MIGRATIONS: &[Migration] = &[baseline];
+
+/// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
+const LATEST: u32 = MIGRATIONS.len() as u32;
+
+/// Runs the migrations the database has not had yet, each in its own transaction with the
+/// version bump, so a failure leaves the database at the last version that fully applied.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let current: u32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    if current > LATEST {
+        // Written by a newer soundfolk. Refusing it would lock the user out after a downgrade;
+        // what the newer migrations added is simply not used here.
+        tracing::warn!(
+            current,
+            latest = LATEST,
+            "database schema is newer than this build"
+        );
+        return Ok(());
+    }
+    for version in current..LATEST {
+        let tx = conn.unchecked_transaction()?;
+        MIGRATIONS[version as usize](&tx)?;
+        tx.pragma_update(None, "user_version", version + 1)?;
+        tx.commit()?;
+        tracing::info!(version = version + 1, "database schema migrated");
+    }
+    Ok(())
+}
+
+/// Version 1: the schema as it stood before versioning. Databases from that time are all at
+/// version 0 but with more or fewer `listening_history` columns depending on their age, hence the
+/// columns probed one by one.
+fn baseline(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(SCHEMA)?;
     // `title_source`: NULL = parsed from `track_title`; 'source' = artist and title as the
     // source gave them (never re-parsed).
     for column in [
@@ -395,7 +426,9 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     ] {
         add_column(conn, "listening_history", column)?;
     }
-    Ok(())
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_history_track_key ON listening_history (track_key);",
+    )
 }
 
 /// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).
@@ -473,6 +506,67 @@ pub(super) mod tests {
             [],
         );
         assert!(bad.is_err());
+    }
+
+    fn user_version(conn: &Connection) -> u32 {
+        conn.pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn new_database_is_at_the_latest_version() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        assert_eq!(user_version(&conn), LATEST);
+        migrate(&conn).unwrap(); // nothing left to run
+        assert_eq!(user_version(&conn), LATEST);
+    }
+
+    #[test]
+    fn unversioned_database_is_brought_up_to_date() {
+        // A database from before the history gained its parsed columns.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE listening_history (
+                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                 station_id  TEXT NOT NULL,
+                 track_title TEXT NOT NULL,
+                 played_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+             );
+             INSERT INTO listening_history (station_id, track_title)
+                 VALUES ('a', 'Artist - Title');",
+        )
+        .unwrap();
+        let db = Database::init(conn).unwrap();
+        let conn = db.conn();
+        assert_eq!(user_version(&conn), LATEST);
+        let (title, key): (String, Option<String>) = conn
+            .query_row(
+                "SELECT track_title, track_key FROM listening_history",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(title, "Artist - Title");
+        assert!(key.is_some(), "the old row is re-parsed");
+        let indexed: bool = conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE name = 'idx_history_track_key')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(indexed);
+    }
+
+    #[test]
+    fn newer_database_still_opens() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        conn.pragma_update(None, "user_version", LATEST + 1)
+            .unwrap();
+        let db = Database::init(conn).unwrap();
+        assert_eq!(user_version(&db.conn()), LATEST + 1);
     }
 
     #[test]
