@@ -222,12 +222,12 @@ impl Status {
     }
 }
 
-/// Cancellation flag for a session, with a hook to interrupt a blocked network read
-/// (without it, `Stop` would wait for the HTTP read timeout to expire).
+/// Cancellation flag for a session, with hooks to interrupt a blocked network read
+/// (without them, `Stop` would wait for the HTTP read timeout to expire).
 #[derive(Default)]
 pub(crate) struct Cancel {
     flag: AtomicBool,
-    hook: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    hooks: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
 }
 
 impl Cancel {
@@ -236,21 +236,24 @@ impl Cancel {
     }
 
     fn cancel(&self) {
+        // The flag is set before taking the lock, so a hook registered after the drain
+        // sees it and runs itself: every hook runs exactly once.
         self.flag.store(true, Ordering::SeqCst);
-        let hook = self.hook.lock().unwrap_or_else(|p| p.into_inner()).take();
-        if let Some(hook) = hook {
+        let hooks = std::mem::take(&mut *self.hooks.lock().unwrap_or_else(|p| p.into_inner()));
+        for hook in hooks {
             hook();
         }
     }
 
-    /// Registers the action to run on cancellation (immediately if already cancelled).
+    /// Adds an action to run on cancellation (immediately if already cancelled).
+    /// Earlier hooks are kept: each one runs.
     pub(crate) fn on_cancel(&self, hook: impl FnOnce() + Send + 'static) {
-        let mut slot = self.hook.lock().unwrap_or_else(|p| p.into_inner());
+        let mut hooks = self.hooks.lock().unwrap_or_else(|p| p.into_inner());
         if self.is_cancelled() {
-            drop(slot);
+            drop(hooks);
             hook();
         } else {
-            *slot = Some(Box::new(hook));
+            hooks.push(Box::new(hook));
         }
     }
 }
@@ -927,6 +930,20 @@ mod tests {
             h.fetch_add(1, Ordering::SeqCst);
         });
         assert_eq!(hits.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn cancel_runs_every_registered_hook() {
+        let cancel = Cancel::default();
+        let hits = Arc::new(AtomicU32::new(0));
+        for _ in 0..3 {
+            let h = hits.clone();
+            cancel.on_cancel(move || {
+                h.fetch_add(1, Ordering::SeqCst);
+            });
+        }
+        cancel.cancel();
+        assert_eq!(hits.load(Ordering::SeqCst), 3);
     }
 
     #[test]
