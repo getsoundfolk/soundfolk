@@ -2,6 +2,7 @@
 <script lang="ts">
   import { writeText } from '@tauri-apps/plugin-clipboard-manager';
   import { openUrl } from '@tauri-apps/plugin-opener';
+  import { focusFirstItem, menuKeydown, rovingKeydown } from '../a11y';
   import { api, errorMessage, type HistoryEntry, type LikedTrack } from '../api';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
@@ -48,6 +49,8 @@
    * panel cannot clip it; it opens on the side of the button with more room.
    */
   let menu = $state<{ id: string; style: string } | null>(null);
+  /** The ⋯ button of the open menu: the focus goes back to it when the menu closes. */
+  let menuButton: HTMLElement | null = null;
   let toast = $state<string | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   // Id of the latest request: an older response is ignored.
@@ -139,9 +142,17 @@
     toastTimer = setTimeout(() => (toast = null), ms);
   }
 
+  /** Closes the menu; from the keyboard or an action, the focus goes back to its button. */
+  function closeMenu(refocus: boolean) {
+    if (!menu) return;
+    menu = null;
+    if (refocus && menuButton?.isConnected) menuButton.focus();
+    menuButton = null;
+  }
+
   /** Runs a menu action: closes the menu, reports a failure. */
   async function act(action: () => Promise<unknown>, done?: string) {
-    menu = null;
+    closeMenu(true);
     errors.clear('history');
     try {
       await action();
@@ -156,9 +167,10 @@
 
   function toggleMenu(row: Row, button: HTMLElement) {
     if (menu?.id === row.id) {
-      menu = null;
+      closeMenu(false);
       return;
     }
+    menuButton = button;
     const rect = button.getBoundingClientRect();
     const right = `right: ${window.innerWidth - rect.right}px;`;
     const below = window.innerHeight - rect.bottom;
@@ -175,7 +187,7 @@
     if (!menu) return;
     const close = (e: Event) => {
       if (e.target instanceof Element && e.target.closest(`.${styles.menu}`)) return;
-      menu = null;
+      closeMenu(false);
     };
     document.addEventListener('scroll', close, { capture: true, passive: true });
     return () => document.removeEventListener('scroll', close, { capture: true });
@@ -205,20 +217,27 @@
 
 <!-- Close the menu on Escape or on a click outside it. -->
 <svelte:window
-  onkeydown={(e) => e.key === 'Escape' && (menu = null)}
-  onresize={() => (menu = null)}
-  onclick={(e) => menu && !(e.target as Element).closest(`.${styles.actions}`) && (menu = null)}
+  onkeydown={(e) => e.key === 'Escape' && closeMenu(true)}
+  onresize={() => closeMenu(false)}
+  onclick={(e) => !(e.target as Element).closest(`.${styles.actions}`) && closeMenu(false)}
 />
 
 <div class={styles.bar}>
-  <div class={styles.views} role="radiogroup" aria-label="Show">
+  <div
+    class={styles.views}
+    role="radiogroup"
+    tabindex="-1"
+    aria-label="Show"
+    onkeydown={rovingKeydown}
+  >
     {#each VIEWS as v (v.id)}
       <button
         class={styles.view}
         type="button"
         role="radio"
         aria-checked={view === v.id}
-        onclick={() => ((view = v.id), (menu = null))}>{v.label}</button
+        tabindex={view === v.id ? 0 : -1}
+        onclick={() => ((view = v.id), closeMenu(false))}>{v.label}</button
       >
     {/each}
   </div>
@@ -287,7 +306,19 @@
                 onclick={(e) => toggleMenu(row, e.currentTarget)}>⋯</button
               >
               {#if menu?.id === row.id}
-                <div class={styles.menu} style={menu.style} role="menu">
+                <div
+                  class={styles.menu}
+                  style={menu.style}
+                  role="menu"
+                  tabindex="-1"
+                  aria-label={`Actions for ${row.title}`}
+                  onkeydown={menuKeydown}
+                  onfocusout={(e) =>
+                    !e.currentTarget.contains(e.relatedTarget as Node | null) &&
+                    e.relatedTarget !== menuButton &&
+                    closeMenu(false)}
+                  {@attach focusFirstItem}
+                >
                   {#if trackServices.enabled.length}
                     <p class={styles.heading}>Find this track on</p>
                     {#each trackServices.enabled as service (service.id)}
@@ -295,6 +326,7 @@
                         class={styles.item}
                         type="button"
                         role="menuitem"
+                        tabindex="-1"
                         onclick={() => act(() => openUrl(service.url(row.search_query)))}
                       >
                         {service.name}
@@ -306,6 +338,7 @@
                     class={styles.item}
                     type="button"
                     role="menuitem"
+                    tabindex="-1"
                     onclick={() => copy(displayTitle(row), 'Title copied')}
                   >
                     Copy title
@@ -314,6 +347,7 @@
                     class={styles.item}
                     type="button"
                     role="menuitem"
+                    tabindex="-1"
                     onclick={() =>
                       copy(
                         shareText(displayTitle(row), row.station_name),
@@ -327,6 +361,7 @@
                     class={styles.item}
                     type="button"
                     role="menuitem"
+                    tabindex="-1"
                     onclick={() => act(async () => player.play(await resolve(row)))}
                   >
                     Play {row.station_name ?? 'the station'}
@@ -336,6 +371,7 @@
                       class={styles.item}
                       type="button"
                       role="menuitem"
+                      tabindex="-1"
                       onclick={() =>
                         act(
                           () =>
@@ -354,6 +390,7 @@
                       class={styles.item}
                       type="button"
                       role="menuitem"
+                      tabindex="-1"
                       onclick={() =>
                         act(
                           async () => player.toggleFavorite(await resolve(row)),

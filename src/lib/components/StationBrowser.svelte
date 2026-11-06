@@ -9,6 +9,7 @@
     type Playable,
     type Station,
   } from '../api';
+  import { rovingKeydown } from '../a11y';
   import { errors } from '../errors.svelte';
   import { player } from '../player.svelte';
   import AddStationForm from './AddStationForm.svelte';
@@ -138,7 +139,7 @@
 </script>
 
 <section class={styles.root} aria-label="Stations">
-  <div class={styles.tabs} role="tablist">
+  <div class={styles.tabs} role="tablist" tabindex="-1" onkeydown={rovingKeydown}>
     {#each TABS as t (t.id)}
       <button
         class={styles.tab}
@@ -146,6 +147,7 @@
         role="tab"
         id={`tab-${t.id}`}
         aria-selected={tab === t.id}
+        tabindex={tab === t.id ? 0 : -1}
         aria-controls={`panel-${t.id}`}
         onclick={() => (tab = t.id)}
       >

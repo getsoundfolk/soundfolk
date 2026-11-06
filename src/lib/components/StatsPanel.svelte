@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
+  import { rovingKeydown } from '../a11y';
   import { api, errorMessage, type Count, type Stats, type StationStats } from '../api';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
@@ -138,13 +139,20 @@
   </div>
 {/snippet}
 
-<div class={styles.periods} role="radiogroup" aria-label="Period">
+<div
+  class={styles.periods}
+  role="radiogroup"
+  tabindex="-1"
+  aria-label="Period"
+  onkeydown={rovingKeydown}
+>
   {#each PERIODS as p (p.label)}
     <button
       class={styles.period}
       type="button"
       role="radio"
       aria-checked={period === p.days}
+      tabindex={period === p.days ? 0 : -1}
       onclick={() => (period = p.days)}
     >
       {p.label}
@@ -189,17 +197,25 @@
     <section class={styles.section}>
       <header class={styles.head}>
         <h3 class={styles.title}>Stations</h3>
-        <div class={styles.switch} role="radiogroup" aria-label="Rank stations by">
+        <div
+          class={styles.switch}
+          role="radiogroup"
+          tabindex="-1"
+          aria-label="Rank stations by"
+          onkeydown={rovingKeydown}
+        >
           <button
             type="button"
             role="radio"
             aria-checked={stationOrder === 'likes'}
+            tabindex={stationOrder === 'likes' ? 0 : -1}
             onclick={() => (stationOrder = 'likes')}>Likes</button
           >
           <button
             type="button"
             role="radio"
             aria-checked={stationOrder === 'rate'}
+            tabindex={stationOrder === 'rate' ? 0 : -1}
             onclick={() => (stationOrder = 'rate')}>Per hour</button
           >
         </div>
