@@ -11,13 +11,17 @@
 //!   guessing why.
 
 use std::error::Error as _;
+use std::future::Future;
 use std::io;
 use std::time::Duration;
 
 use stream_download::http::reqwest::{self, Client};
 use stream_download::http::HttpStreamError;
 
+use tokio::sync::watch;
+
 use super::connectivity::Connectivity;
+use super::Cancel;
 
 /// Servers asked whether Internet works: the Radio-Browser API, which Soundfolk already uses for
 /// its catalog (no new third party learns anything). Any HTTPS answer counts, even an error: it
@@ -62,13 +66,46 @@ pub(crate) enum Verdict {
     Unknown,
 }
 
-/// Whose fault `failure` is, on proof only (see the module). Blocking, at most a few seconds.
-pub(crate) fn diagnose(failure: &Failure, runtime: &tokio::runtime::Handle) -> Verdict {
+/// Whose fault `failure` is, on proof only (see the module). Blocking, at most a few seconds,
+/// but returns at once when `cancel` fires (the verdict is then meaningless: the caller checks
+/// the cancellation first). The Internet check is dropped; the system's, blocking, ends on its own
+/// timeout in the background without holding the caller.
+pub(crate) fn diagnose(
+    failure: &Failure,
+    runtime: &tokio::runtime::Handle,
+    cancel: &Cancel,
+) -> Verdict {
+    let (stop, stopped) = watch::channel(false);
+    cancel.on_cancel(move || {
+        let _ = stop.send(true);
+    });
     decide(
         failure,
-        || internet_reachable(runtime),
-        super::connectivity::system,
+        || unless_cancelled(runtime, stopped.clone(), internet_reachable()).unwrap_or(false),
+        || {
+            // D-Bus calls, blocking: on the blocking pool so that a cancellation is not held up.
+            let system = runtime.spawn_blocking(super::connectivity::system);
+            unless_cancelled(runtime, stopped.clone(), system)
+                .and_then(Result::ok)
+                .flatten()
+        },
     )
+}
+
+/// Runs `task` to completion, or `None` as soon as `stopped` turns `true`.
+fn unless_cancelled<T>(
+    runtime: &tokio::runtime::Handle,
+    mut stopped: watch::Receiver<bool>,
+    task: impl Future<Output = T>,
+) -> Option<T> {
+    runtime.block_on(async {
+        tokio::select! {
+            out = task => Some(out),
+            // If the hook is dropped without firing (replaced by a later stream's), this branch
+            // is disabled and `task` runs to its end.
+            Ok(_) = stopped.wait_for(|stopped| *stopped) => None,
+        }
+    })
 }
 
 /// [`diagnose`], with the checks passed in. They only run when the failure itself proves nothing.
@@ -165,8 +202,8 @@ impl Failure {
     }
 }
 
-/// Whether Internet works, apart from the station. Blocking, at most a few seconds.
-pub(crate) fn internet_reachable(runtime: &tokio::runtime::Handle) -> bool {
+/// Whether Internet works, apart from the station: at most a few seconds.
+async fn internet_reachable() -> bool {
     let Ok(client) = Client::builder()
         .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
         .timeout(INTERNET_CHECK_TIMEOUT)
@@ -175,13 +212,11 @@ pub(crate) fn internet_reachable(runtime: &tokio::runtime::Handle) -> bool {
     else {
         return true; // cannot tell: blame nobody, the station's own error is shown
     };
-    runtime.block_on(async {
-        let (a, b) = tokio::join!(
-            client.head(INTERNET_CHECKS[0]).send(),
-            client.head(INTERNET_CHECKS[1]).send()
-        );
-        a.is_ok() || b.is_ok()
-    })
+    let (a, b) = tokio::join!(
+        client.head(INTERNET_CHECKS[0]).send(),
+        client.head(INTERNET_CHECKS[1]).send()
+    );
+    a.is_ok() || b.is_ok()
 }
 
 #[cfg(test)]
@@ -236,6 +271,47 @@ mod tests {
             connect("http://soundfolk-test.invalid/live").await,
             Failure::UnknownHost
         );
+    }
+
+    #[test]
+    fn a_stop_cuts_a_check_short() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let (stop, stopped) = watch::channel(false);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            let _ = stop.send(true);
+        });
+        // A check that never answers: only the stop ends it.
+        let check = std::future::pending::<bool>();
+        assert_eq!(unless_cancelled(runtime.handle(), stopped, check), None);
+    }
+
+    #[test]
+    fn a_check_dropped_without_a_stop_runs_to_its_end() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let (stop, stopped) = watch::channel(false);
+        drop(stop);
+        let check = async {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            true
+        };
+        assert_eq!(
+            unless_cancelled(runtime.handle(), stopped, check),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn a_stopped_playback_is_not_diagnosed() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let cancel = Cancel::default();
+        cancel.cancel();
+        let start = std::time::Instant::now();
+        assert_eq!(
+            diagnose(&Failure::NoAnswer, runtime.handle(), &cancel),
+            Verdict::Unknown
+        );
+        assert!(start.elapsed() < Duration::from_millis(100));
     }
 
     #[test]

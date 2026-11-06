@@ -223,7 +223,7 @@ fn blame(job: &Job, sound_just_stopped: bool, failure: &Failure) -> Blame {
         // The check takes a moment: the player must not look like it still plays.
         job.reporter.reconnecting(RECONNECTING);
     }
-    match failure::diagnose(failure, &job.runtime) {
+    match failure::diagnose(failure, &job.runtime, &job.cancel) {
         failure::Verdict::Station => Blame::Station,
         failure::Verdict::NoInternet => Blame::Connection(NO_INTERNET),
         failure::Verdict::SignIn => Blame::Connection(SIGN_IN),
