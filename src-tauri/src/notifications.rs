@@ -16,7 +16,7 @@ use crate::audio::NowPlaying;
 use crate::commands::with_db;
 use crate::db::Database;
 use crate::error::AppResult;
-use crate::tracks::{self, ParsedTitle};
+use crate::tracks::ParsedTitle;
 
 const SETTING_TRACK_NOTIFICATIONS: &str = "track_notifications";
 
@@ -74,13 +74,7 @@ impl TrackNotifications {
         else {
             return;
         };
-        let parsed = match &now_playing.track {
-            Some(track) => ParsedTitle {
-                artist: track.artist.clone(),
-                title: track.title.clone(),
-            },
-            None => tracks::parse(raw, station),
-        };
+        let parsed = now_playing.parsed(raw, station);
         let (summary, body) = text(&parsed, station);
         let (icon, identifier, last) = (
             self.icon.clone(),

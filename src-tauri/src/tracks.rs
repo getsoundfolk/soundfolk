@@ -16,6 +16,13 @@ pub struct ParsedTitle {
     pub title: String,
 }
 
+impl ParsedTitle {
+    /// `Artist - Title`, the form ICY uses.
+    pub fn display(&self) -> String {
+        soundfolk_nowplaying::artist_title(self.artist.as_deref(), &self.title)
+    }
+}
+
 /// Separators between artist and title (ICY convention: `Artist - Title`).
 const DASHES: [&str; 3] = [" - ", " – ", " — "];
 /// Separators before a station signature at the end of a title.

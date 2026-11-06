@@ -121,13 +121,7 @@ fn online_query(
     if is_station(station) || is_station(now_playing.station.as_deref()) {
         return None;
     }
-    let parsed = match &now_playing.track {
-        Some(track) => tracks::ParsedTitle {
-            artist: track.artist.clone(),
-            title: track.title.clone(),
-        },
-        None => tracks::parse(raw, station),
-    };
+    let parsed = now_playing.parsed(raw, station);
     parsed.artist.as_ref()?;
     Some((tracks::track_key(&parsed), parsed))
 }

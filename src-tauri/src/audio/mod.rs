@@ -33,6 +33,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
+
+use crate::tracks;
 pub use stream_download::http::reqwest::Url;
 
 pub use decoder::probe as probe_stream;
@@ -119,9 +121,20 @@ pub struct TrackInfo {
 
 impl TrackInfo {
     fn display(&self) -> String {
-        match &self.artist {
-            Some(artist) => format!("{artist} - {}", self.title),
-            None => self.title.clone(),
+        soundfolk_nowplaying::artist_title(self.artist.as_deref(), &self.title)
+    }
+}
+
+impl NowPlaying {
+    /// Artist and title of the track on air: as the source gives them apart, otherwise parsed
+    /// from `raw`, the announced title.
+    pub fn parsed(&self, raw: &str, station: Option<&str>) -> tracks::ParsedTitle {
+        match &self.track {
+            Some(track) => tracks::ParsedTitle {
+                artist: track.artist.clone(),
+                title: track.title.clone(),
+            },
+            None => tracks::parse(raw, station),
         }
     }
 }

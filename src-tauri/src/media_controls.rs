@@ -80,20 +80,7 @@ fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
         .as_deref()
         .map(str::trim)
         .filter(|t| !t.is_empty() && !station.is_some_and(|s| s.eq_ignore_ascii_case(t)))
-        .map(|raw| {
-            // Given apart by the source: shown as is; otherwise parsed from the ICY title.
-            let parsed = match &now_playing.track {
-                Some(track) => crate::tracks::ParsedTitle {
-                    artist: track.artist.clone(),
-                    title: track.title.clone(),
-                },
-                None => crate::tracks::parse(raw, station),
-            };
-            match parsed.artist {
-                Some(artist) => format!("{artist} - {}", parsed.title),
-                None => parsed.title,
-            }
-        });
+        .map(|raw| now_playing.parsed(raw, station).display());
     match station {
         Some(station) => Display {
             title: Some(station.to_owned()),

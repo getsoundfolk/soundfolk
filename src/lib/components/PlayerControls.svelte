@@ -5,6 +5,7 @@
   import { api, type DonationLink } from '../api';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
+  import { displayTitle } from '../trackLinks';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
   import styles from './PlayerControls.module.css';
@@ -32,7 +33,7 @@
   const upNext = $derived.by(() => {
     const next = player.nowPlaying.next;
     if (!next) return null;
-    const text = next.artist ? `${next.artist} – ${next.title}` : next.title;
+    const text = displayTitle(next);
     const at = next.started_at ? new Date(next.started_at) : null;
     const time =
       at && !Number.isNaN(at.getTime())

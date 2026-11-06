@@ -74,13 +74,18 @@ pub struct Track {
     pub cover: Option<String>,
 }
 
+/// `Artist - Title`, the form ICY uses; the title alone when the artist is unknown.
+pub fn artist_title(artist: Option<&str>, title: &str) -> String {
+    match artist {
+        Some(artist) => format!("{artist} - {title}"),
+        None => title.to_owned(),
+    }
+}
+
 impl Track {
     /// `Artist - Title`, the form ICY uses.
     pub fn display(&self) -> String {
-        match &self.artist {
-            Some(artist) => format!("{artist} - {}", self.title),
-            None => self.title.clone(),
-        }
+        artist_title(self.artist.as_deref(), &self.title)
     }
 
     /// When the track ends, if known.

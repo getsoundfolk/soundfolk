@@ -206,7 +206,7 @@ export function checkCustom(name: string, template: string): string | null {
   return null;
 }
 
-/** `Artist - Title`, or the title alone. */
+/** `Artist - Title`, or the title alone: the ICY form, as the backend builds it. */
 export const displayTitle = (t: { artist: string | null; title: string }) =>
   t.artist ? `${t.artist} - ${t.title}` : t.title;
 

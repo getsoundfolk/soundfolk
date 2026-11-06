@@ -10,9 +10,9 @@
     type RecipeTest,
     type SharedRecipe,
     type TitleStatus,
-    type TrackInfo,
   } from '../api';
   import { player } from '../player.svelte';
+  import { displayTitle } from '../trackLinks';
   import { ui } from '../ui.svelte';
   import styles from './StationSheet.module.css';
 
@@ -92,7 +92,6 @@
     }
   }
 
-  const trackText = (t: TrackInfo) => (t.artist ? `${t.artist} – ${t.title}` : t.title);
   const time = (iso: string | null) => {
     if (!iso) return null;
     const d = new Date(iso);
@@ -264,14 +263,14 @@
       {#if test}
         <div class={styles.result} role="status">
           {#if test.track}
-            <p><span class={styles.label}>Reads</span> {trackText(test.track)}</p>
+            <p><span class={styles.label}>Reads</span> {displayTitle(test.track)}</p>
             {#if time(test.track.started_at)}
               <p><span class={styles.label}>Started</span> {time(test.track.started_at)}</p>
             {/if}
             {#if test.next}
               <p>
                 <span class={styles.label}>Next</span>
-                {trackText(test.next)}{#if time(test.next.started_at)}&nbsp;at {time(
+                {displayTitle(test.next)}{#if time(test.next.started_at)}&nbsp;at {time(
                     test.next.started_at,
                   )}{/if}
               </p>
