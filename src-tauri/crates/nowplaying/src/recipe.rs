@@ -352,31 +352,6 @@ fn parse_every(text: &str) -> Option<SignedDuration> {
         .filter(|d| d.is_positive())
 }
 
-/// Recipes in priority order: the first one matching a station wins.
-#[derive(Debug, Clone, Default)]
-pub struct RecipeBook {
-    recipes: Vec<Recipe>,
-}
-
-impl RecipeBook {
-    /// Appends recipes after those already in the book (lower priority).
-    pub fn extend(&mut self, recipes: impl IntoIterator<Item = Recipe>) {
-        self.recipes.extend(recipes);
-    }
-
-    pub fn find(&self, station_id: Option<&str>, stream: &str) -> Option<&Recipe> {
-        self.recipes.iter().find(|r| r.matches(station_id, stream))
-    }
-
-    pub fn len(&self) -> usize {
-        self.recipes.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.recipes.is_empty()
-    }
-}
-
 /// JSON Schema of the recipe format (also valid for the TOML files, e.g. with Taplo).
 pub fn json_schema() -> serde_json::Value {
     serde_json::to_value(schemars::schema_for!(Recipe)).expect("schema serializes")
@@ -464,21 +439,6 @@ mod tests {
             panic!()
         };
         assert!(e.contains("colour"), "{e}");
-    }
-
-    #[test]
-    fn book_keeps_priority_order() {
-        let local = Recipe::from_toml(&FREQUENCE7.replace("Fréquence 7\"", "Local\"")).unwrap();
-        let shared = Recipe::from_toml(FREQUENCE7).unwrap();
-        let mut book = RecipeBook::default();
-        book.extend([local]);
-        book.extend([shared]);
-        assert_eq!(
-            book.find(None, "https://live.aurafm.org/Frequence7")
-                .unwrap()
-                .name,
-            "Local"
-        );
     }
 
     #[test]
