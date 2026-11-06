@@ -113,8 +113,24 @@
     return () => clearTimeout(timer);
   });
 
+  // Today's date, moved on at midnight so the day labels follow while the app stays open.
+  // The timer is late after a sleep; showing the window again checks the date too.
+  let today = $state(new Date());
+  $effect(() => {
+    const roll = () => {
+      if (new Date().toDateString() !== today.toDateString()) today = new Date();
+    };
+    const next = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    const timer = setTimeout(roll, next.getTime() - Date.now() + 1000);
+    const onVisible = () => document.visibilityState === 'visible' && roll();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  });
+
   function dayLabel(date: Date): string {
-    const today = new Date();
     const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
     if (date.toDateString() === today.toDateString()) return 'Today';
     if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';

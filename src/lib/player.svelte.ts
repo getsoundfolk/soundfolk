@@ -63,15 +63,27 @@ class PlayerStore {
     ]);
     const offs = subscriptions.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
     await this.run(async () => {
-      this.state = await api.getPlayerState();
-      this.nowPlaying = await api.getNowPlaying();
-      this.cover = await api.getCover();
-      this.titleStatus = await api.getTitleStatus();
-      this.favorites = await api.listFavorites();
-      this.volume = (await api.getVolume()) ?? this.volume;
+      // Independent reads, sent together rather than one round trip after another.
+      const [state, nowPlaying, cover, titleStatus, favorites, volume, current] = await Promise.all(
+        [
+          api.getPlayerState(),
+          api.getNowPlaying(),
+          api.getCover(),
+          api.getTitleStatus(),
+          api.listFavorites(),
+          api.getVolume(),
+          // The last station played, in this run (app kept playing in the background) or the previous one.
+          api.getCurrentStation(),
+        ],
+      );
+      this.state = state;
+      this.nowPlaying = nowPlaying;
+      this.cover = cover;
+      this.titleStatus = titleStatus;
+      this.favorites = favorites;
+      this.current = current;
+      this.volume = volume ?? this.volume;
       await api.setVolume(this.volume);
-      // The last station played, in this run (app kept playing in the background) or the previous one.
-      this.current = await api.getCurrentStation();
     });
     // Reported after the loading, which clears the player's error when it starts.
     const failed = subscriptions.find((r) => r.status === 'rejected');

@@ -55,17 +55,31 @@
       results = reset ? page.stations : [...results, ...page.stations];
       nextOffset = page.next_offset;
     } catch (e) {
-      if (mine === requestId) searchError = errorMessage(e);
+      if (mine === requestId) {
+        searchError = errorMessage(e);
+        searched = null;
+      }
     } finally {
       if (mine === requestId) loading = false;
     }
   }
 
+  // Text of the results shown, or null before the first search and after a failure (retried).
+  let searched: string | null = null;
+
   // Debounced search: wait for a pause in typing so the API is not hit on every keystroke.
+  // The catalog is only queried once the Search tab is open, and not again for the same text.
   $effect(() => {
-    const delay = text.trim() === '' ? 0 : 300;
-    void text;
-    const timer = setTimeout(() => search(true), delay);
+    if (tab !== 'search') return;
+    const query = text.trim();
+    if (query === searched) return;
+    const timer = setTimeout(
+      () => {
+        searched = query;
+        search(true);
+      },
+      query === '' ? 0 : 300,
+    );
     return () => clearTimeout(timer);
   });
 
