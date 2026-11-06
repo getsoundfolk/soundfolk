@@ -24,6 +24,10 @@ pub trait CatalogSource: Send + Sync {
     /// One station by its catalog ID (`None` if the catalog no longer has it).
     fn station<'a>(&'a self, id: &'a str) -> CatalogFuture<'a, Option<Station>>;
 
+    /// Several stations by their catalog IDs, in the order of `ids`; the ones the catalog no
+    /// longer has are left out.
+    fn stations<'a>(&'a self, ids: &'a [String]) -> CatalogFuture<'a, Vec<Station>>;
+
     /// Reports that a user started playing the station (popularity rankings).
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()>;
 }

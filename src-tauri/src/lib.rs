@@ -3,6 +3,7 @@ mod audio;
 mod catalog;
 mod commands;
 mod covers;
+mod curated_lists;
 mod daily_list;
 mod db;
 mod donations;
@@ -40,6 +41,8 @@ const TITLE_STATUS_EVENT: &str = "player:title-status";
 const RECIPE_NOTICE_EVENT: &str = "recipes:notice";
 /// Event emitted when a new list of donation links was downloaded (no payload).
 const DONATIONS_EVENT: &str = "donations:updated";
+/// Event emitted when new curated lists were downloaded (no payload).
+const LISTS_EVENT: &str = "lists:updated";
 /// How often an open listening session records that it is still playing.
 const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -358,6 +361,21 @@ pub fn run() {
                     }
                 },
             );
+            let lists = Arc::new(curated_lists::CuratedLists::default());
+            app.manage(lists.clone());
+            let list_events = app.handle().clone();
+            curated_lists::start(
+                lists,
+                app.path()
+                    .app_cache_dir()
+                    .ok()
+                    .map(|dir| dir.join("stations")),
+                move || {
+                    if let Err(e) = list_events.emit(LISTS_EVENT, ()) {
+                        tracing::warn!("failed to emit {LISTS_EVENT}: {e}");
+                    }
+                },
+            );
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
@@ -511,6 +529,10 @@ pub fn run() {
             commands::list_personal_stations,
             commands::remove_personal_station,
             donations::get_donation_link,
+            curated_lists::get_curated_lists,
+            curated_lists::get_lists_for_station,
+            curated_lists::get_curated_list_stations,
+            curated_lists::export_curated_list,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")

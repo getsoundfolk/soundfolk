@@ -80,6 +80,24 @@
   color: var(--color-text-subtle);
 }
 
+/* Discreet on purpose: the player shows the station, the track, ♡ and the donation link. */
+.inLists {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-subtle);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.inLists:hover,
+.inLists:focus-visible {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
 .like {
   flex: none;
   width: 2rem;

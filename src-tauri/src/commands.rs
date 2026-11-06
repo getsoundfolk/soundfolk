@@ -946,6 +946,18 @@ fn export_file(
             (export::likes(&tracks, format), tracks.len())
         }
     };
+    save_download(app, list.file_stem(), format.extension(), &content, count)
+}
+
+/// Writes an export to a new file `<stem>-<date>.<extension>` in the Downloads folder (`-2`, `-3`…
+/// when it exists), then shows it in the file manager.
+pub(crate) fn save_download(
+    app: &AppHandle,
+    stem: &str,
+    extension: &str,
+    content: &str,
+    count: usize,
+) -> AppResult<ExportedFile> {
     let dir = app
         .path()
         .download_dir()
@@ -953,7 +965,7 @@ fn export_file(
         .map_err(|e| format!("no folder to save the export in: {e}"))?;
     std::fs::create_dir_all(&dir).at(&dir)?;
     let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
-    let base = format!("{}-{date}", list.file_stem());
+    let base = format!("{stem}-{date}");
     let path = (1..)
         .map(|n| {
             if n == 1 {
@@ -962,7 +974,7 @@ fn export_file(
                 format!("{base}-{n}")
             }
         })
-        .map(|name| dir.join(format!("{name}.{}", format.extension())))
+        .map(|name| dir.join(format!("{name}.{extension}")))
         .find(|path| !path.exists())
         .expect("an unused name");
     std::fs::write(&path, content).at(&path)?;

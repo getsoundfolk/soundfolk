@@ -329,7 +329,8 @@ else per station:
   the player (06 §2: station, track, ♡, donation link).
 * **A list's screen:** title, description, "by @login" (each curator), number of stations, stations in the curator's
   order (dead ones ranked last with a warning, 09 §5.2), Surprise me inside the list, **Export M3U**.
-* **Where lists are browsed:** §7.
+* **Where lists are browsed:** §7. Until the Discover tab of 09 exists, a **Lists** tab between Search and
+  Favorites shows them, sorted by title, each opening its screen.
 * **Suggest a list** (Discover, end of the rows): opens the repository's contributing page. A list is several
   stations and a text: a pull request, or an issue form for those without Git.
 

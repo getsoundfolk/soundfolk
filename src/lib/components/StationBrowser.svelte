@@ -12,22 +12,30 @@
   import { rovingKeydown } from '../a11y';
   import { errors } from '../errors.svelte';
   import { player } from '../player.svelte';
+  import { ui } from '../ui.svelte';
   import AddStationForm from './AddStationForm.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
+  import ListsPanel from './ListsPanel.svelte';
   import StationRow from './StationRow.svelte';
   import styles from './StationBrowser.module.css';
 
-  type Tab = 'history' | 'search' | 'favorites' | 'personal';
+  type Tab = 'history' | 'search' | 'lists' | 'favorites' | 'personal';
   const TABS: { id: Tab; label: string }[] = [
     { id: 'history', label: 'History' },
     { id: 'search', label: 'Search' },
+    { id: 'lists', label: 'Lists' },
     { id: 'favorites', label: 'Favorites' },
     { id: 'personal', label: 'My stations' },
   ];
   const PAGE = 30;
 
   let tab = $state<Tab>('history');
+
+  // A list opened from elsewhere (the station sheet) shows in the Lists tab.
+  $effect(() => {
+    if (ui.listRequest) tab = 'lists';
+  });
 
   // ── Search (online catalog) ──────────────────────────────────────────
   let text = $state('');
@@ -224,6 +232,8 @@
           {loading ? 'Loading…' : 'Show more'}
         </button>
       {/if}
+    {:else if tab === 'lists'}
+      <ListsPanel />
     {:else if tab === 'favorites'}
       {#if player.favorites.length === 0}
         <p class={styles.empty}>No favorites yet. Tap a station’s star to add it.</p>

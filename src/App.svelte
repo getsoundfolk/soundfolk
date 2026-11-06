@@ -10,17 +10,20 @@
   import StationSheet from './lib/components/StationSheet.svelte';
   import StationBrowser from './lib/components/StationBrowser.svelte';
   import { history } from './lib/history.svelte';
+  import { lists } from './lib/lists.svelte';
   import { player } from './lib/player.svelte';
   import { ui } from './lib/ui.svelte';
 
   onMount(() => {
     const ready = player.init();
+    const listsReady = lists.init();
     // Back from the editor: a recipe saved meanwhile is picked up now (the folder is not polled).
     const focus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) api.reloadRecipes().catch(() => {});
     });
     return () => {
       ready.then((off) => off());
+      listsReady.then((off) => off());
       focus.then((off) => off());
     };
   });

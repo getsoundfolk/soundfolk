@@ -11,6 +11,7 @@
     type SharedRecipe,
     type TitleStatus,
   } from '../api';
+  import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { displayTitle } from '../trackLinks';
   import { ui } from '../ui.svelte';
@@ -194,6 +195,19 @@
         </div>
       {/if}
     </dl>
+
+    {#if lists.forCurrent.length}
+      <section class={styles.section} aria-labelledby="station-sheet-lists">
+        <h3 class={styles.sectionTitle} id="station-sheet-lists">In these lists</h3>
+        <div class={styles.actions}>
+          {#each lists.forCurrent as list (list.id)}
+            <button class={styles.chip} type="button" onclick={() => ui.openList(list.id)}
+              >{list.title}</button
+            >
+          {/each}
+        </div>
+      </section>
+    {/if}
 
     <section class={styles.section} aria-labelledby="station-sheet-track">
       <h3 class={styles.sectionTitle} id="station-sheet-track">Track on air</h3>

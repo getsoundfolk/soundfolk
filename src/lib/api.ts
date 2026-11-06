@@ -115,7 +115,7 @@ export interface HistorySummary {
   since: string | null;
 }
 
-interface ExportedFile {
+export interface ExportedFile {
   path: string;
   file_name: string;
   count: number;
@@ -165,6 +165,27 @@ export interface DonationLink {
   domain: string;
 }
 
+/** A curated list (`soundfolk-stations`, docs/14-curated-lists.md). */
+export interface CuratedList {
+  id: string;
+  /** In the language its curator picked for its listeners, shown as is. */
+  title: string;
+  description: string;
+  /** GitHub logins. */
+  curators: string[];
+  use: string[];
+  genres: string[];
+  /** ISO 3166-1 codes. */
+  countries: string[];
+  items: { uuid: string; stream?: string | null }[];
+}
+
+/** A list a station is in. */
+export interface ListRef {
+  id: string;
+  title: string;
+}
+
 interface SearchQuery {
   text?: string;
   country_code?: string;
@@ -183,6 +204,11 @@ export const api = {
   getCurrentStation: () => invoke<Playable | null>('get_current_station'),
   getDonationLink: (stationId: string | null, url: string) =>
     invoke<DonationLink | null>('get_donation_link', { stationId, url }),
+  getCuratedLists: () => invoke<CuratedList[]>('get_curated_lists'),
+  getListsForStation: (stationId: string | null, url: string) =>
+    invoke<ListRef[]>('get_lists_for_station', { stationId, url }),
+  getCuratedListStations: (id: string) => invoke<Station[]>('get_curated_list_stations', { id }),
+  exportCuratedList: (id: string) => invoke<ExportedFile>('export_curated_list', { id }),
   getVolume: () => invoke<number | null>('get_volume'),
   saveVolume: (volume: number) => invoke<void>('save_volume', { volume }),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),

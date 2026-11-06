@@ -5,6 +5,7 @@
   import { api, type DonationLink } from '../api';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
+  import { lists } from '../lists.svelte';
   import { displayTitle } from '../trackLinks';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
@@ -119,6 +120,12 @@
     };
   });
 
+  // The curated lists the station is in (14 §6.4): one discreet link to the station sheet.
+  $effect(() => {
+    void lists.version;
+    lists.refreshFor(player.current);
+  });
+
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
   let wasOpen = false;
@@ -166,6 +173,12 @@
         <p class={styles.next} title={upNext.text}>
           Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
         </p>
+      {/if}
+      {#if lists.forCurrent.length && player.current}
+        <button class={styles.inLists} type="button" onclick={ui.openStation}>
+          In {lists.forCurrent.length}
+          {lists.forCurrent.length === 1 ? 'list' : 'lists'}
+        </button>
       {/if}
     </div>
     {#if history.onAir}

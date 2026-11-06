@@ -39,6 +39,8 @@ const RETRY_DNS_AFTER: Duration = Duration::from_secs(60);
 /// Catalog pages fetched at most per search: unsupported (HLS) stations are dropped, so a page can
 /// come back short; we fetch a few more to fill it without hammering the API.
 const MAX_PAGES_PER_SEARCH: usize = 3;
+/// UUIDs asked for in one `byuuid` request: a curated list holds 40 at most, its URL stays short.
+const UUIDS_PER_REQUEST: usize = 50;
 
 #[derive(Default)]
 pub struct RadioBrowser {
@@ -317,6 +319,30 @@ impl CatalogSource for RadioBrowser {
             let body = self.get(&format!("json/stations/byuuid/{id}"), &[]).await?;
             let (stations, _) = parse_stations(&body)?;
             Ok(stations.into_iter().next())
+        })
+    }
+
+    fn stations<'a>(&'a self, ids: &'a [String]) -> CatalogFuture<'a, Vec<Station>> {
+        Box::pin(async move {
+            if let Some(id) = ids.iter().find(|id| !is_uuid(id)) {
+                return Err(CatalogError::BadRequest(format!("Invalid ID: {id}")));
+            }
+            let mut found = Vec::new();
+            for chunk in ids.chunks(UUIDS_PER_REQUEST) {
+                let body = self
+                    .get("json/stations/byuuid", &[("uuids", chunk.join(","))])
+                    .await?;
+                found.extend(parse_stations(&body)?.0);
+            }
+            Ok(ids
+                .iter()
+                .filter_map(|id| {
+                    found
+                        .iter()
+                        .find(|s| s.id.eq_ignore_ascii_case(id))
+                        .cloned()
+                })
+                .collect())
         })
     }
 
@@ -761,6 +787,25 @@ mod tests {
             .unwrap();
         assert_eq!(station.id, "ab30ca84-c228-4f57-8cac-816c69ef651d");
         assert!(rb.station("../../etc/passwd").await.is_err());
+    }
+
+    /// Against the real API: `cargo test -- --ignored live_stations`.
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_stations_by_id_keep_the_order_asked() {
+        let rb = RadioBrowser::default();
+        let ids = [
+            "9615628c-0601-11e8-ae97-52543be04c81", // Radio Zinzine
+            "00000000-0000-4000-8000-000000000000", // not in the catalog
+            "ab30ca84-c228-4f57-8cac-816c69ef651d", // RDWA
+        ]
+        .map(String::from);
+        let found = rb.stations(&ids).await.unwrap();
+        assert_eq!(
+            found.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(),
+            [ids[0].as_str(), ids[2].as_str()]
+        );
+        assert!(rb.stations(&["a,b".to_owned()]).await.is_err());
     }
 
     /// Against the real API: HLS stations never come back, and paging moves forward.

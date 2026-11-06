@@ -129,6 +129,22 @@
   gap: 0.5rem;
 }
 
+.chip {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--color-border-control);
+  border-radius: 999px;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.chip:hover,
+.chip:focus-visible {
+  border-color: var(--color-border-hover);
+}
+
 .button {
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--color-border-control);
