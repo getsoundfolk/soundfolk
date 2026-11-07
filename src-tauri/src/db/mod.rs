@@ -211,15 +211,15 @@ impl Database {
 
     // ── favorites ────────────────────────────────────────────────────────────
 
-    /// Adds a station to favorites (updates its info if it is already there).
-    /// Adds or updates a favorite. History rows of that station logged without a name take its
+    /// Adds a station to favorites, at the top (updates its info, not its place, if it is already
+    /// there). History rows of that station logged without a name take its
     /// name; rows that have one keep it (the name at the time of listening).
     pub fn add_favorite(&self, fav: &Favorite) -> rusqlite::Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute(
-            "INSERT INTO favorites (station_id, name, stream_url, genre)
-             VALUES (?1, ?2, ?3, ?4)
+            "INSERT INTO favorites (station_id, name, stream_url, genre, position)
+             VALUES (?1, ?2, ?3, ?4, (SELECT COALESCE(MIN(position), 0) - 1 FROM favorites))
              ON CONFLICT(station_id) DO UPDATE SET
                  name = excluded.name,
                  stream_url = excluded.stream_url,
@@ -246,7 +246,7 @@ impl Database {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT station_id, name, stream_url, genre, added_at
-             FROM favorites ORDER BY added_at DESC, rowid DESC",
+             FROM favorites ORDER BY position, added_at DESC, rowid DESC",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(Favorite {
@@ -258,6 +258,21 @@ impl Database {
             })
         })?;
         rows.collect()
+    }
+
+    /// Puts the favorites in the order of `station_ids` (the listener dragged them). A favorite
+    /// missing from it keeps its position; an unknown ID is ignored.
+    pub fn reorder_favorites(&self, station_ids: &[String]) -> rusqlite::Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        {
+            let mut stmt =
+                tx.prepare("UPDATE favorites SET position = ?2 WHERE station_id = ?1")?;
+            for (position, id) in station_ids.iter().enumerate() {
+                stmt.execute(params![id, position as i64])?;
+            }
+        }
+        tx.commit()
     }
 
     // ── settings ─────────────────────────────────────────────────────────────
@@ -407,6 +422,7 @@ const MIGRATIONS: &[Migration] = &[
     history_station_names,
     drop_station_reports,
     station_names,
+    favorite_positions,
 ];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
@@ -496,6 +512,19 @@ fn station_names(conn: &Connection) -> rusqlite::Result<()> {
     )
 }
 
+/// Version 6: the favorites get a place of their own, so the listener can reorder them. They keep
+/// the order they were shown in until then, the newest first.
+fn favorite_positions(conn: &Connection) -> rusqlite::Result<()> {
+    add_column(conn, "favorites", "position INTEGER NOT NULL DEFAULT 0")?;
+    conn.execute_batch(
+        "UPDATE favorites SET position = (
+             SELECT COUNT(*) FROM favorites f
+             WHERE COALESCE(f.added_at, '') > COALESCE(favorites.added_at, '')
+                OR (COALESCE(f.added_at, '') = COALESCE(favorites.added_at, '')
+                    AND f.rowid > favorites.rowid));",
+    )
+}
+
 /// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).
 fn add_column(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<()> {
     let name = column.split_whitespace().next().unwrap_or(column);
@@ -556,6 +585,55 @@ pub(super) mod tests {
         assert!(list[0].added_at.is_some());
         assert!(db.remove_favorite("a").unwrap());
         assert!(!db.remove_favorite("a").unwrap());
+    }
+
+    fn favorite_ids(db: &Database) -> Vec<String> {
+        db.list_favorites()
+            .unwrap()
+            .into_iter()
+            .map(|f| f.station_id)
+            .collect()
+    }
+
+    #[test]
+    fn new_favorites_go_on_top_and_keep_the_order_given() {
+        let db = Database::open_in_memory().unwrap();
+        for id in ["a", "b", "c"] {
+            db.add_favorite(&fav(id)).unwrap();
+        }
+        assert_eq!(favorite_ids(&db), ["c", "b", "a"]);
+
+        db.reorder_favorites(&["a".into(), "c".into(), "b".into(), "gone".into()])
+            .unwrap();
+        assert_eq!(favorite_ids(&db), ["a", "c", "b"]);
+
+        // Updating a favorite leaves it where it is; a new one goes on top.
+        db.add_favorite(&Favorite {
+            name: "Renamed".into(),
+            ..fav("b")
+        })
+        .unwrap();
+        db.add_favorite(&fav("d")).unwrap();
+        assert_eq!(favorite_ids(&db), ["d", "a", "c", "b"]);
+    }
+
+    #[test]
+    fn favorites_keep_their_order_through_the_positions_migration() {
+        let conn = Connection::open_in_memory().unwrap();
+        for migration in &MIGRATIONS[..5] {
+            migration(&conn).unwrap();
+        }
+        conn.pragma_update(None, "user_version", 5).unwrap();
+        conn.execute_batch(
+            "INSERT INTO favorites (station_id, name, stream_url, added_at) VALUES
+                 ('old', 'Old', 'u1', '2025-01-01 10:00:00'),
+                 ('new', 'New', 'u2', '2025-03-01 10:00:00'),
+                 ('tie1', 'Tie 1', 'u3', '2025-02-01 10:00:00'),
+                 ('tie2', 'Tie 2', 'u4', '2025-02-01 10:00:00');",
+        )
+        .unwrap();
+        let db = Database::init(conn).unwrap();
+        assert_eq!(favorite_ids(&db), ["new", "tie2", "tie1", "old"]);
     }
 
     fn user_version(conn: &Connection) -> u32 {

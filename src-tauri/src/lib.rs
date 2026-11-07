@@ -494,6 +494,7 @@ pub fn run() {
             commands::add_favorite,
             commands::remove_favorite,
             commands::list_favorites,
+            commands::reorder_favorites,
             commands::get_listening_history,
             commands::get_history_summary,
             commands::clear_listening_history,

@@ -16,6 +16,46 @@
   background: var(--color-surface-hover);
 }
 
+.row[data-dragged='true'] {
+  position: relative;
+  z-index: 1;
+  background: var(--color-surface-overlay);
+  box-shadow: 0 0.3rem 1rem var(--color-shadow);
+}
+
+/* Reorder handle: its place is always kept, so the row does not shift when it shows. */
+.handle {
+  flex: none;
+  width: 1rem;
+  height: 2rem;
+  margin-right: -0.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--color-text-subtle);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease);
+}
+
+.row:hover .handle,
+.handle:focus-visible,
+.row[data-dragged='true'] .handle {
+  opacity: 1;
+}
+
+.handle:hover {
+  color: var(--color-text);
+}
+
+.row[data-dragged='true'] .handle {
+  cursor: grabbing;
+}
+
 .play,
 .icon {
   flex: none;
@@ -57,6 +97,7 @@
   vertical-align: 0.125rem;
 }
 
+.handle:focus-visible,
 .play:focus-visible,
 .icon:focus-visible {
   outline: 2px solid var(--color-focus);

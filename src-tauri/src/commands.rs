@@ -916,6 +916,12 @@ pub async fn remove_favorite(db: State<'_, Database>, station_id: String) -> App
     with_db(&db, move |db| Ok(db.remove_favorite(&station_id)?)).await
 }
 
+/// Saves the order the listener gave the favorites (station IDs, top first).
+#[tauri::command]
+pub async fn reorder_favorites(db: State<'_, Database>, station_ids: Vec<String>) -> AppResult<()> {
+    with_db(&db, move |db| Ok(db.reorder_favorites(&station_ids)?)).await
+}
+
 #[tauri::command]
 pub async fn list_favorites(db: State<'_, Database>) -> AppResult<Vec<Favorite>> {
     with_db(&db, |db| Ok(db.list_favorites()?)).await

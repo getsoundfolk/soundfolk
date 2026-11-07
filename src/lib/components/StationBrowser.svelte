@@ -13,6 +13,7 @@
   import { errors } from '../errors.svelte';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
+  import { Reorder } from '../reorder.svelte';
   import { pickRandom, playableOf, warningOf } from '../stations';
   import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
@@ -160,6 +161,17 @@
     }
   }
 
+  // Favorites in the listener's order: drag a row's handle to move it.
+  const favoriteOrder = new Reorder(
+    () => player.favorites.map((f) => f.station_id),
+    (id) => {
+      const f = player.favorites.find((f) => f.station_id === id);
+      return f ? stationNames.shown(f.station_id, f.name) : id;
+    },
+    (ids) => player.reorderFavorites(ids),
+  );
+  const shownFavorites = $derived(favoriteOrder.shown(player.favorites, (f) => f.station_id));
+
   // ── Conversions to what the player can play ───────────────────────────
   const fromPersonal = (p: PersonalStation): Playable => ({
     id: p.station_id,
@@ -263,8 +275,8 @@
           </ul>
         {/if}
         {#if player.favorites.length}
-          <ul class={styles.list}>
-            {#each player.favorites as f (f.station_id)}
+          <ul class={styles.list} {@attach favoriteOrder.attach}>
+            {#each shownFavorites as f (f.station_id)}
               <StationRow
                 name={stationNames.shown(f.station_id, f.name)}
                 meta={f.genre ?? ''}
@@ -273,9 +285,14 @@
                 favorite
                 onplay={() => player.play(fromFavorite(f))}
                 onfavorite={() => player.toggleFavorite(fromFavorite(f))}
+                handle={player.favorites.length > 1
+                  ? favoriteOrder.handle(f.station_id)
+                  : undefined}
+                dragged={favoriteOrder.draggedId === f.station_id}
               />
             {/each}
           </ul>
+          <p class={styles.live} aria-live="polite">{favoriteOrder.announcement}</p>
         {/if}
       </section>
 

@@ -158,6 +158,19 @@ class PlayerStore {
     });
   }
 
+  /** Puts the favorites in this order (station ids, top first), shown at once. */
+  async reorderFavorites(ids: string[]) {
+    const byId = new Map(this.favorites.map((f) => [f.station_id, f]));
+    this.favorites = ids.flatMap((id) => byId.get(id) ?? []);
+    await this.run(async () => {
+      try {
+        await api.reorderFavorites(ids);
+      } finally {
+        this.favorites = await api.listFavorites();
+      }
+    });
+  }
+
   /** Answer to "Remove it from your favorites?" after a favorite vanished from the catalog. */
   async answerGoneFavorite(remove: boolean) {
     const id = this.goneFavorite;

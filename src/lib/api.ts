@@ -230,6 +230,8 @@ export const api = {
   listFavorites: () => invoke<Favorite[]>('list_favorites'),
   addFavorite: (favorite: Favorite) => invoke<void>('add_favorite', { favorite }),
   removeFavorite: (stationId: string) => invoke<boolean>('remove_favorite', { stationId }),
+  /** Saves the favorites' order (station ids, top first). */
+  reorderFavorites: (stationIds: string[]) => invoke<void>('reorder_favorites', { stationIds }),
 
   addPersonalStation: (url: string, name: string) =>
     invoke<PersonalStation>('add_personal_station', { url, name }),

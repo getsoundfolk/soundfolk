@@ -16,6 +16,10 @@
     onremove?: () => void;
     /** Opens the station sheet (ⓘ, or a right-click on the row). */
     oninfo?: () => void;
+    /** Attributes and handlers of a drag handle before the row (see `Reorder.handle`). */
+    handle?: Record<string, unknown>;
+    /** The row is being dragged. */
+    dragged?: boolean;
   }
 
   let {
@@ -29,12 +33,15 @@
     onfavorite,
     onremove,
     oninfo,
+    handle,
+    dragged = false,
   }: Props = $props();
 </script>
 
 <li
   class={styles.row}
   data-active={active}
+  data-dragged={dragged}
   oncontextmenu={oninfo
     ? (e) => {
         e.preventDefault();
@@ -42,6 +49,15 @@
       }
     : undefined}
 >
+  {#if handle}
+    <button
+      class={styles.handle}
+      type="button"
+      aria-label={`Move ${name}`}
+      title="Drag, or use ↑ ↓, to reorder"
+      {...handle}><Icon name="grip" /></button
+    >
+  {/if}
   <button
     class={styles.play}
     type="button"
