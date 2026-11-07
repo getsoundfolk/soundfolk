@@ -201,6 +201,8 @@ export const api = {
   pauseStream: () => invoke<void>('pause_stream'),
   resumeStream: () => invoke<void>('resume_stream'),
   setVolume: (volume: number) => invoke<void>('set_volume', { volume }),
+  getMuted: () => invoke<boolean>('get_muted'),
+  setMuted: (muted: boolean) => invoke<void>('set_muted', { muted }),
   getCurrentStation: () => invoke<Playable | null>('get_current_station'),
   getDonationLink: (stationId: string | null, url: string) =>
     invoke<DonationLink | null>('get_donation_link', { stationId, url }),

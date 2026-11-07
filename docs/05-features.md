@@ -25,6 +25,12 @@ onwards.
   no Internet) the player waits as usual; a favorite gone from the catalog stops there so that the window can offer
   to remove it; after a full turn without sound, the last error is shown. A station chosen in the window is never
   skipped.
+* **Tray menu (desktop):** show / hide the window, mini player, Play / Pause, Mute / Unmute, Next / Previous
+  favorite, Quit. Left click shows or hides the window, middle click plays or pauses. The mute is held by the
+  backend (`volume.rs`), so the tray, the window and the mini player always agree; moving the slider unmutes.
+* **Keyboard shortcuts (main window):** Space plays or pauses, M mutes, Ctrl+F or Ctrl+K go to the search
+  (Discover), Up / Down move between the stations of a list, keeping the same button of the row. None of them takes a
+  key from a text field, and Space leaves a focused button, tab or slider its own meaning (`src/lib/shortcuts.ts`).
 * **Track notifications (desktop):** off by default, turned on in ⚙. Each new track in the history (not a repeated
   title, nor the station's name between tracks) shows a desktop notification while the window does not have the
   focus: title, then artist and station. On Linux each one replaces the previous one and is transient, so a long

@@ -40,6 +40,7 @@
 
 <li
   class={styles.row}
+  data-station-row
   data-active={active}
   data-dragged={dragged}
   oncontextmenu={oninfo

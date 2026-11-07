@@ -22,7 +22,8 @@ class PlayerStore {
   cover = $state<Cover>({ title: null, url: null });
   current = $state<Playable | null>(null);
   volume = $state(0.8);
-  /** Sound cut by the speaker button; the slider keeps its level to come back to. Not saved. */
+  /** Sound cut by the speaker button, M or the tray; the slider keeps its level to come back to.
+   *  Held by the backend, so that every window shows the same. Not saved. */
   muted = $state(false);
   favorites = $state<Favorite[]>([]);
   clickNotice = $state(false);
@@ -51,6 +52,7 @@ class PlayerStore {
       listen<string>('favorite:gone', (e) => (this.goneFavorite = e.payload)),
       listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
       listen<Cover>('player:cover', (e) => (this.cover = e.payload)),
+      listen<boolean>('player:muted', (e) => (this.muted = e.payload)),
       listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
       listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
       // A favorite that had moved now plays from its new address, saved by the backend.
@@ -69,8 +71,8 @@ class PlayerStore {
     const offs = subscriptions.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
     await this.run(async () => {
       // Independent reads, sent together rather than one round trip after another.
-      const [state, nowPlaying, cover, titleStatus, favorites, volume, current] = await Promise.all(
-        [
+      const [state, nowPlaying, cover, titleStatus, favorites, volume, current, muted] =
+        await Promise.all([
           api.getPlayerState(),
           api.getNowPlaying(),
           api.getCover(),
@@ -79,8 +81,8 @@ class PlayerStore {
           api.getVolume(),
           // The last station played, in this run (app kept playing in the background) or the previous one.
           api.getCurrentStation(),
-        ],
-      );
+          api.getMuted(),
+        ]);
       this.state = state;
       this.nowPlaying = nowPlaying;
       this.cover = cover;
@@ -88,6 +90,7 @@ class PlayerStore {
       this.favorites = favorites;
       this.current = current;
       this.volume = volume ?? this.volume;
+      this.muted = muted;
       await api.setVolume(this.volume);
     });
     // Reported after the loading, which clears the player's error when it starts.
@@ -128,13 +131,14 @@ class PlayerStore {
   /** Moving the slider also brings the sound back after a mute. */
   async setVolume(volume: number) {
     this.volume = Math.min(1, Math.max(0, volume));
-    this.muted = false;
-    await this.run(() => api.setVolume(this.volume));
+    await this.run(async () => {
+      await api.setVolume(this.volume);
+      if (this.muted) await api.setMuted(false);
+    });
   }
 
   async toggleMute() {
-    this.muted = !this.muted;
-    await this.run(() => api.setVolume(this.muted ? 0 : this.volume));
+    await this.run(() => api.setMuted(!this.muted));
   }
 
   /** Remembers the current volume for the next launch (once the slider is released). */

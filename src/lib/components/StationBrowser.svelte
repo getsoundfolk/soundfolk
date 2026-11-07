@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
   import {
     api,
     errorMessage,
@@ -49,6 +49,14 @@
     });
   });
   const openedList = $derived(ui.listId ? lists.get(ui.listId) : null);
+
+  // Ctrl+F / Ctrl+K (`shortcuts.ts`): the search lives in Discover.
+  let searchField = $state<HTMLInputElement>();
+  $effect(() => {
+    if (!ui.searchRequest) return;
+    untrack(() => (tab = 'discover'));
+    tick().then(() => searchField?.select());
+  });
 
   // ── Search (online catalog) ──────────────────────────────────────────
   let text = $state('');
@@ -363,6 +371,7 @@
       <input
         class={styles.search}
         type="search"
+        bind:this={searchField}
         placeholder="Search"
         aria-label="Search stations and lists"
         bind:value={text}

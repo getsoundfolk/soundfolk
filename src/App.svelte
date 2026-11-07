@@ -12,6 +12,7 @@
   import { history } from './lib/history.svelte';
   import { lists } from './lib/lists.svelte';
   import { player } from './lib/player.svelte';
+  import { shortcutKeydown } from './lib/shortcuts';
   import { stationNames } from './lib/stationNames.svelte';
   import { ui } from './lib/ui.svelte';
 
@@ -36,6 +37,8 @@
     history.refreshLatest();
   });
 </script>
+
+<svelte:window onkeydown={shortcutKeydown} />
 
 <main>
   <!-- Settings take the whole window; the home screen stays mounted (hidden) to keep its state. -->

@@ -35,6 +35,12 @@ class UiStore {
   };
   /** Bumped when a list is opened: the station browser shows it in the current tab. */
   listRequest = $state(0);
+  /** Ctrl+F / Ctrl+K: back to the home screen, the search field focused (station browser). */
+  focusSearch = () => {
+    this.openList(null);
+    this.searchRequest++;
+  };
+  searchRequest = $state(0);
 }
 
 export const ui = new UiStore();

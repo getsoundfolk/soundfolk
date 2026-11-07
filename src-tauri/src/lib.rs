@@ -418,6 +418,7 @@ pub fn run() {
             engine.set_normalize(volume::constant_volume(&app.state::<Database>()));
             engine.set_level_memory(Arc::new(volume::DatabaseLevels(app.handle().clone())));
             app.manage(AudioState::new(engine, on_air));
+            app.manage(volume::Sound::default());
             app.manage(CatalogState(Arc::new(RadioBrowser::default())));
 
             let identify = Arc::new(tokio::sync::Notify::new());
@@ -522,6 +523,8 @@ pub fn run() {
             volume::get_constant_volume,
             volume::set_constant_volume,
             volume::get_level_adjustment,
+            volume::get_muted,
+            volume::set_muted,
             commands::get_title_status,
             commands::reload_recipes,
             commands::test_recipe,

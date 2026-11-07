@@ -285,8 +285,8 @@ pub async fn resume_stream(audio: State<'_, AudioState>) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn set_volume(audio: State<'_, AudioState>, volume: f32) -> AppResult<()> {
-    Ok(audio.engine().set_volume(volume)?)
+pub async fn set_volume(app: AppHandle, volume: f32) -> AppResult<()> {
+    crate::volume::set_level(&app, volume)
 }
 
 /// Volume saved by `save_volume`, or `None` if the user never moved the slider.

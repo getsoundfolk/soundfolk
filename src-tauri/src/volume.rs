@@ -2,9 +2,11 @@
 //! *Constant volume* (`docs/11-loudness.md`): the setting, and the database as the engine's
 //! memory of station levels. The measuring and the gain are in `audio::loudness`.
 
-use tauri::{AppHandle, Manager, State};
+use std::sync::Mutex;
 
-use crate::audio::{LevelMemory, StoredLevel};
+use tauri::{AppHandle, Emitter, Manager, State};
+
+use crate::audio::{AudioEngine, LevelMemory, StoredLevel};
 use crate::commands::{with_db, AudioState};
 use crate::db::Database;
 use crate::error::AppResult;
@@ -85,4 +87,84 @@ pub async fn get_level_adjustment(audio: State<'_, AudioState>) -> AppResult<Opt
         .engine()
         .level_adjustment()
         .map(|db| db.round() as i32))
+}
+
+/// The slider level and the mute. Held here rather than in a window: the tray mutes too, and the
+/// main window and the mini player must show the same thing.
+#[derive(Default)]
+pub struct Sound(Mutex<SoundLevel>);
+
+#[derive(Default)]
+struct SoundLevel {
+    /// Slider position, `None` until a window sets it: the engine then plays at full gain.
+    level: Option<f32>,
+    muted: bool,
+}
+
+impl Sound {
+    fn lock(&self) -> std::sync::MutexGuard<'_, SoundLevel> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn muted(&self) -> bool {
+        self.lock().muted
+    }
+}
+
+/// The slider moved: the level is kept, and heard unless the sound is muted. Unmuting is the
+/// window's call (moving the slider does it), not this one's: a window that opens sets its
+/// level, and must not bring back a sound the tray cut.
+pub fn set_level(app: &AppHandle, level: f32) -> AppResult<()> {
+    if !level.is_finite() {
+        return Err("Invalid volume".to_owned().into());
+    }
+    let (Some(sound), Some(audio)) = (app.try_state::<Sound>(), app.try_state::<AudioState>())
+    else {
+        return Ok(());
+    };
+    // Held while the engine changes, so that a mute from the tray cannot come in between
+    let mut s = sound.lock();
+    s.level = Some(level);
+    if !s.muted {
+        audio.engine().set_volume(level)?;
+    }
+    Ok(())
+}
+
+/// Cuts the sound or brings it back, and tells the windows and the tray menu.
+pub fn mute(app: &AppHandle, muted: bool) -> AppResult<()> {
+    let (Some(sound), Some(audio)) = (app.try_state::<Sound>(), app.try_state::<AudioState>())
+    else {
+        return Ok(());
+    };
+    {
+        let mut s = sound.lock();
+        s.muted = muted;
+        audio
+            .engine()
+            .set_volume(if muted { 0.0 } else { s.level.unwrap_or(1.0) })?;
+    }
+    if let Err(e) = app.emit("player:muted", muted) {
+        tracing::warn!("mute not sent to the windows: {e}");
+    }
+    crate::tray::show_muted(app, muted);
+    Ok(())
+}
+
+/// The tray's Mute / Unmute.
+pub fn toggle_mute(app: &AppHandle) {
+    let muted = app.try_state::<Sound>().is_some_and(|s| s.muted());
+    if let Err(e) = mute(app, !muted) {
+        tracing::warn!("mute not toggled: {e}");
+    }
+}
+
+#[tauri::command]
+pub async fn get_muted(sound: State<'_, Sound>) -> AppResult<bool> {
+    Ok(sound.muted())
+}
+
+#[tauri::command]
+pub async fn set_muted(app: AppHandle, muted: bool) -> AppResult<()> {
+    mute(&app, muted)
 }

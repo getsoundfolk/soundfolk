@@ -32,6 +32,9 @@ static AVAILABLE: AtomicBool = AtomicBool::new(true);
 /// Whether the player is playing, as the menu shows it (Play or Pause).
 static PLAYING: AtomicBool = AtomicBool::new(false);
 
+/// Whether the sound is muted, as the menu shows it (Mute or Unmute).
+static MUTED: AtomicBool = AtomicBool::new(false);
+
 /// Whether the main window is shown, as the menu shows it (Hide or Show). It opens at launch,
 /// unless the app starts hidden (`lib.rs`).
 static WINDOW_SHOWN: AtomicBool = AtomicBool::new(true);
@@ -65,6 +68,13 @@ pub fn show_state(app: &AppHandle, state: &PlayerState) {
     }
 }
 
+/// Follows the mute, so that the menu offers Unmute while the sound is cut, Mute otherwise.
+pub fn show_muted(app: &AppHandle, muted: bool) {
+    if MUTED.swap(muted, Ordering::Relaxed) != muted {
+        imp::set_muted(app, muted);
+    }
+}
+
 /// Follows the main window, so that the menu offers to hide it while it is shown, to show it
 /// otherwise (closed or minimized).
 pub fn show_window_state(app: &AppHandle, shown: bool) {
@@ -81,6 +91,14 @@ fn play_pause_label(playing: bool) -> &'static str {
     }
 }
 
+fn mute_label(muted: bool) -> &'static str {
+    if muted {
+        "Unmute"
+    } else {
+        "Mute"
+    }
+}
+
 fn toggle_label(window_shown: bool) -> &'static str {
     if window_shown {
         "Hide Soundfolk"
@@ -94,6 +112,11 @@ fn handle_menu(app: &AppHandle, id: &str) {
     let command = match id {
         "toggle" => return crate::toggle_main_window(app),
         "quit" => return app.exit(0),
+        "mute" => {
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || crate::volume::toggle_mute(&app));
+            return;
+        }
         "play_pause" => Command::Toggle,
         "next" => Command::Next,
         "previous" => Command::Previous,
@@ -114,7 +137,8 @@ mod imp {
     use tauri::AppHandle;
 
     use super::{
-        handle_menu, play_pause_label, set_available, set_unavailable, toggle_label, WINDOW_SHOWN,
+        handle_menu, mute_label, play_pause_label, set_available, set_unavailable, toggle_label,
+        MUTED, WINDOW_SHOWN,
     };
 
     /// Set once the icon is registered; `Handle` is not `Clone`, so it lives here.
@@ -123,6 +147,7 @@ mod imp {
     struct SoundfolkTray {
         app: AppHandle,
         playing: bool,
+        muted: bool,
         window_shown: bool,
         icon: Vec<Icon>,
     }
@@ -192,6 +217,7 @@ mod imp {
                 item(toggle_label(self.window_shown), "toggle"),
                 MenuItem::Separator,
                 item(play_pause_label(self.playing), "play_pause"),
+                item(mute_label(self.muted), "mute"),
                 item("Next favorite", "next"),
                 item("Previous favorite", "previous"),
                 MenuItem::Separator,
@@ -219,6 +245,7 @@ mod imp {
         let tray = SoundfolkTray {
             app: app.handle().clone(),
             playing: false,
+            muted: MUTED.load(Ordering::Relaxed),
             window_shown,
             icon,
         };
@@ -247,6 +274,13 @@ mod imp {
         });
     }
 
+    pub fn set_muted(_app: &AppHandle, muted: bool) {
+        let Some(handle) = HANDLE.get() else { return };
+        tauri::async_runtime::spawn(async move {
+            handle.update(|tray| tray.muted = muted).await;
+        });
+    }
+
     pub fn set_window_shown(_app: &AppHandle, shown: bool) {
         let Some(handle) = HANDLE.get() else { return };
         tauri::async_runtime::spawn(async move {
@@ -261,12 +295,13 @@ mod imp {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
 
-    use super::{handle_menu, play_pause_label, toggle_label, WINDOW_SHOWN};
+    use super::{handle_menu, mute_label, play_pause_label, toggle_label, MUTED, WINDOW_SHOWN};
 
     /// The items whose label follows the window and the player.
     struct Labels {
         toggle: MenuItem<Wry>,
         play_pause: MenuItem<Wry>,
+        mute: MenuItem<Wry>,
     }
 
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
@@ -279,6 +314,8 @@ mod imp {
             true,
             None::<&str>,
         )?;
+        let muted = MUTED.load(std::sync::atomic::Ordering::Relaxed);
+        let mute = MenuItem::with_id(app, "mute", mute_label(muted), true, None::<&str>)?;
         let next = MenuItem::with_id(app, "next", "Next favorite", true, None::<&str>)?;
         let previous = MenuItem::with_id(app, "previous", "Previous favorite", true, None::<&str>)?;
         let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -288,6 +325,7 @@ mod imp {
                 &toggle,
                 &PredefinedMenuItem::separator(app)?,
                 &play_pause,
+                &mute,
                 &next,
                 &previous,
                 &PredefinedMenuItem::separator(app)?,
@@ -314,7 +352,11 @@ mod imp {
             tray = tray.icon(icon.clone());
         }
         tray.build(app)?;
-        app.manage(Labels { toggle, play_pause });
+        app.manage(Labels {
+            toggle,
+            play_pause,
+            mute,
+        });
         Ok(())
     }
 
@@ -322,6 +364,14 @@ mod imp {
         if let Some(labels) = app.try_state::<Labels>() {
             if let Err(e) = labels.play_pause.set_text(play_pause_label(playing)) {
                 tracing::debug!("tray: Play / Pause label not updated: {e}");
+            }
+        }
+    }
+
+    pub fn set_muted(app: &AppHandle, muted: bool) {
+        if let Some(labels) = app.try_state::<Labels>() {
+            if let Err(e) = labels.mute.set_text(mute_label(muted)) {
+                tracing::debug!("tray: Mute / Unmute label not updated: {e}");
             }
         }
     }

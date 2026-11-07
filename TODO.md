@@ -104,11 +104,12 @@ listening stats must be crossed with the sessions.
   the cheap variant). Desktop only: on mobile `AVPlayer` / `ExoPlayer` keep the hardware decoding (battery).
 
 **From desktop radio player feedback (r/selfhosted, r/linux…)** — not yet in the app:
-- [ ] Tray menu: play / pause, mute, switch between favorite stations (today: show / hide and quit only).
+- [x] Tray menu: play / pause, mute, switch between favorite stations.
 - [x] Reconnect after suspend or a network change, however long it lasted (network watcher, see
   `docs/04-audio-engine.md`). Still to check on a real suspend / Wi-Fi → 4G switch.
 - [x] Logarithmic volume curve: the gain is the cube of the slider position (`audio::gain`).
-- [ ] Keyboard shortcuts: Space play / pause, M mute, Ctrl+F / Ctrl+K search, arrows to move between stations.
+- [x] Keyboard shortcuts: Space play / pause, M mute, Ctrl+F / Ctrl+K search, arrows to move between stations
+  (main window only; the mini player has none yet).
 - [ ] Album art for the track on air (Cover Art Archive, for MusicBrainz-matched tracks), in the player and MPRIS;
   station logo otherwise.
 - [x] Export the history (CSV / JSON).
