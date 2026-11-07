@@ -25,7 +25,8 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * **Three text roles:** `--color-text` (names, titles), `--color-text-soft` / `--color-text-muted` (secondary
   information), `--color-text-subtle` (hints, timestamps). `--color-disabled` only for disabled controls.
 * **Orange is rare.** `--color-accent` (`#c2410c`) appears only on:
-  * the play button;
+  * the play button, while stopped: orange means "playing is one click away". While a station plays, Pause is
+    neutral grey, like every secondary action. Green only says a connection or availability, when needed;
   * the selected tab;
   * the station on air (a small lamp before its name);
   * the highest value of each chart.
@@ -42,6 +43,9 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * **Status colors** (success, info, warning, error, danger) are toned to sit inside the ramp: a tinted background, a
   border and a text color per status, never a saturated fill except for a destructive confirm button.
 * `--color-like` is reserved for the heart of a liked track.
+* **Default art.** With neither an album cover nor a station logo, the player and the mini player show Soundfolk's
+  waves (`Waves.svelte`): an orange sine wave among white copies of it, on charcoal. Its colors are the brand tokens
+  (`--color-brand`, `--color-brand-ink`, `--color-brand-line`), the same in both themes and never used elsewhere.
 
 ## 3. Type
 * **System font stack** (`system-ui`, `-apple-system`, `Segoe UI`): the app looks native on each desktop and ships
@@ -70,16 +74,22 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * Tiles in a grid have equal heights (Discover).
 
 ## 6. Long text
-* **The player** gives each piece its line, beside a 112 px cover: the **title** (two lines before the ellipsis),
-  the **artist**, then the **station**; play and a short volume slider sit below them, still beside the cover, so the
-  large cover costs no height. Each button sits at the end of the line it acts on: ♡ after the title, ⓘ after the
-  station; the other lines keep the whole width. Mini player and settings act on the app, not on the station: they
-  sit at the end of the tab bar. There is no larger "now playing" screen for the cover to grow
-  into. The **mini player** (its own always-on-top window, which replaces the main
-  one) shows the same lines from the same code (`onAir.svelte.ts`), over the cover at full size, or beside a small
-  one when compact; on one line each, the full text in `title`. Artist and title come apart from the source when it gives them that way,
-  otherwise as the history split them; a title the history did not log (a jingle, the station's own name) is shown
-  whole. Without a title, the station alone.
+* **The player** gives each piece its line, beside a 112 px cover. **The station leads** (1 rem, semibold, one line):
+  the listener chose it, it stays while tracks come and go, and a poor name can be renamed. Under it, the **title**
+  of the track on air (0.9375 rem, medium, two lines before the ellipsis), then the **artist** (secondary) and what
+  is **up next** (smaller still). A source title that is a file name, a jingle or an identifier thus never takes the
+  first line, and nothing is cleaned up to hide it. Without a title, the station alone, in the same place. Play, between
+  previous and next favorite (quiet icons: they change the station, not the track, as in the mini player, the tray
+  and the media keys), and a short volume slider sit below, still beside the cover, so the large cover costs no height. Each button ends the
+  line it acts on: ⓘ the station's (it opens its sheet), ♡ the track's (it is the track that is liked); the other
+  lines keep the whole width. Mini player and settings act on the app, not on the station: they sit at the end of
+  the tab bar. There is no larger "now playing" screen for the cover to grow into.
+* **The mini player** (its own always-on-top window, which replaces the main one) follows the same order from the
+  same code (`onAir.svelte.ts`): station, title, artist over the cover at full size; station, then "title – artist"
+  on one line beside a small one when compact; the full text in `title`. Artist and title come apart from the source
+  when it gives them that way, otherwise as the history split them; a title the history did not log (a jingle) is
+  shown whole, and a title that only repeats the station's name is no track.
+* **Track notifications and History** stay centered on tracks: their job is the track, not the listening.
 * **Track titles in History** wrap to two lines before the ellipsis, the artist on the line below.
 * Station names, list names and secondary lines stay on **one line** with an ellipsis.
 * **The player's status line** shows only what the controls do not: *Connecting…*, *Reconnecting…*, an error.

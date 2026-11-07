@@ -12,16 +12,24 @@ class OnAir {
   stationName = $derived(
     player.current ? stationNames.shown(player.current.id, player.current.name) : null,
   );
+  /** The first line of the player: the station, which the listener chose and which does not
+   *  change from one track to the next. */
+  station = $derived(this.stationName ?? 'No station');
   // Artist and title come apart from the source when it gives them that way, otherwise as the
-  // history split them; a title the history did not log (the station's own name, a jingle) is
-  // shown whole. Without a title, the station alone.
+  // history split them; a title the history did not log (a jingle) is shown whole. A title that
+  // only repeats the station's name is no track.
   private split = $derived(player.nowPlaying.track ?? history.onAir);
-  headline = $derived(
-    this.split?.title ?? player.nowPlaying.title ?? this.stationName ?? 'No station',
+  private rawTitle = $derived(this.split?.title ?? player.nowPlaying.title ?? null);
+  private repeatsStation = $derived(
+    !!this.rawTitle &&
+      !!this.stationName &&
+      this.rawTitle.trim().toLowerCase() === this.stationName.trim().toLowerCase(),
   );
-  artist = $derived(player.nowPlaying.title ? (this.split?.artist ?? null) : null);
-  /** The station, under a title; null when the headline already is the station. */
-  subline = $derived(player.nowPlaying.title ? this.stationName : null);
+  /** The track on air, under the station; null without one. */
+  title = $derived(player.nowPlaying.title && !this.repeatsStation ? this.rawTitle : null);
+  artist = $derived(this.title ? (this.split?.artist ?? null) : null);
+  /** Title and artist on one line, where there is room for one only. */
+  track = $derived(this.title && this.artist ? `${this.title} – ${this.artist}` : this.title);
 
   /** Announced by the station's page: the next track, and when it starts. */
   upNext = $derived.by(() => {

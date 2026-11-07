@@ -43,11 +43,6 @@
   object-fit: contain;
 }
 
-.placeholder {
-  width: 2.75rem;
-  height: 2.75rem;
-}
-
 /* Beside the cover: the track on air and the buttons at the top, play and volume at the bottom,
    so a large cover costs no extra height. */
 .body {
@@ -67,8 +62,8 @@
   min-width: 0;
 }
 
+.station,
 .artist,
-.subline,
 .next {
   margin: 0;
   overflow: hidden;
@@ -76,13 +71,21 @@
   white-space: nowrap;
 }
 
-/* The track on air: a long title gets two lines before the ellipsis; the full text stays in
-   the tooltip. */
-.headline {
+/* The station leads, on one line: names are short, and one the listener finds poor can be
+   renamed. */
+.station {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* The track on air, right under it and still easy to spot: a long title gets two lines before
+   the ellipsis; the full text stays in the tooltip. */
+.title {
   display: -webkit-box;
   margin: 0;
   overflow: hidden;
-  font-size: 1rem;
+  font-size: 0.9375rem;
   font-weight: 500;
   line-height: 1.3;
   line-clamp: 2;
@@ -92,13 +95,8 @@
 }
 
 .artist {
-  font-size: 0.875rem;
-  color: var(--color-text-soft);
-}
-
-.subline {
   font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  color: var(--color-text-soft);
 }
 
 .next {
@@ -153,6 +151,13 @@
   color: var(--color-text);
 }
 
+/* Pressed: one step further than hover, no movement. */
+.like:active,
+.gear:active:not(:disabled),
+.speaker:active {
+  background: var(--color-surface-higher);
+}
+
 .like[data-on='true'] {
   color: var(--color-like);
 }
@@ -178,6 +183,11 @@
   min-width: 0;
 }
 
+/* A little air between the station and the track under it. */
+.info > .line:first-child {
+  margin-bottom: 0.1875rem;
+}
+
 .line > p {
   flex: 1;
   min-width: 0;
@@ -192,8 +202,46 @@
   margin: -0.125rem -0.25rem -0.25rem 0;
 }
 
-.line > .subline + .gear {
-  margin-top: -0.2rem;
+/* Previous favorite, play, next favorite: play is the only filled button. */
+.transport {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+/* The icon stays small; the hit area is 40 px, close to play's 44. */
+.skip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.skip:hover:not(:disabled) {
+  background: var(--color-surface-high);
+  color: var(--color-text);
+}
+
+.skip:active:not(:disabled) {
+  background: var(--color-surface-higher);
+}
+
+.skip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.skip:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 /* Round Play / Pause button: the icon alone, its name in aria-label. */
@@ -211,8 +259,13 @@
   cursor: pointer;
 }
 
-.button:hover:not(:disabled) {
+.button:hover:not(:disabled),
+.button:active:not(:disabled) {
   background: var(--color-accent-hover);
+}
+
+.button[data-active='true']:active {
+  background: var(--color-surface-higher);
 }
 
 .button:focus-visible {
@@ -230,8 +283,10 @@
   color: var(--color-text);
 }
 
+/* Secondary to play: a short, thin, quiet track (about 4 rem beside the speaker), with a hit area
+   taller than it looks. */
 .volume {
-  flex: 0 1 11rem;
+  flex: 0 1 6.5rem;
   display: flex;
   align-items: center;
   gap: 0.25rem;
@@ -269,11 +324,11 @@
 /* The track fills up to the thumb (`--fill`, set from the value); the thumb only shows its
    full size on hover or while dragging, so at rest the bar reads as a level. */
 .slider {
-  --track: 0.3rem;
-  --fill-color: var(--color-text-muted);
+  --track: 0.1875rem;
+  --fill-color: var(--color-text-subtle);
   flex: 1;
   min-width: 0;
-  height: 1.5rem;
+  height: 2rem;
   margin: 0;
   background: transparent;
   cursor: pointer;
@@ -335,7 +390,7 @@
 .slider:hover,
 .slider:active,
 .slider:focus-visible {
-  --track: 0.4rem;
+  --track: 0.3rem;
 }
 
 .slider:hover::-webkit-slider-thumb,

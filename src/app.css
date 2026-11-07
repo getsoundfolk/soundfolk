@@ -42,6 +42,13 @@
   --color-knob: #ededed;
   --color-like: #f2667a;
 
+  /* Brand: Soundfolk's orange and the default art's colors (Waves.svelte), the same in both
+     themes. Never for the interface: white text on #ea580c is under WCAG AA, buttons take
+     --color-accent. */
+  --color-brand: #ea580c;
+  --color-brand-ink: #3d3d40;
+  --color-brand-line: rgb(255 255 255 / 0.62);
+
   /* Status. */
   --color-success: #10b981;
   --color-success-text: #9ee0b0;

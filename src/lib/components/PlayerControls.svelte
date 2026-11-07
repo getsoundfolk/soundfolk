@@ -10,6 +10,7 @@
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
+  import Waves from './Waves.svelte';
   import styles from './PlayerControls.module.css';
 
   const LABELS = {
@@ -29,11 +30,11 @@
     errors.player ??
       ('message' in player.state ? player.state.message : LABELS[player.state.status]),
   );
-  // Title, artist and station each on their line (onAir.svelte.ts).
+  // Station, title and artist each on their line (onAir.svelte.ts).
   const stationName = $derived(onAir.stationName);
-  const headline = $derived(onAir.headline);
+  const station = $derived(onAir.station);
+  const title = $derived(onAir.title);
   const artist = $derived(onAir.artist);
-  const subline = $derived(onAir.subline);
   const upNext = $derived(onAir.upNext);
   const cover = $derived(onAir.cover);
 
@@ -83,6 +84,20 @@
   });
 </script>
 
+<!-- Previous / next favorite, as in the mini player, the tray and the media keys: it changes the
+     station, not the track (a live stream has no previous track). Quiet beside play. -->
+{#snippet skip(forward: boolean)}
+  <button
+    class={styles.skip}
+    type="button"
+    aria-label={forward ? 'Next favorite' : 'Previous favorite'}
+    title={forward ? 'Next favorite' : 'Previous favorite'}
+    disabled={player.favorites.length === 0}
+    onclick={() => api.switchFavorite(forward).catch((e) => errors.report('player', e))}
+    ><Icon name={forward ? 'next' : 'previous'} size={18} /></button
+  >
+{/snippet}
+
 {#snippet info()}
   <button
     class={styles.gear}
@@ -95,7 +110,7 @@
 
 <section class={styles.root} aria-label="Player">
   <div class={styles.top}>
-    <!-- Always the same tile: the cover, the logo, or a plain note when there is neither.
+    <!-- Always the same tile: the cover, the logo, or Soundfolk's waves when there is neither.
          The size is also set on the <img> itself, so a big cover never spills over the window. -->
     <div class={styles.art} aria-hidden="true">
       {#if cover}
@@ -110,51 +125,39 @@
           onerror={() => (onAir.brokenCover = cover)}
         />
       {:else}
-        <svg
-          class={styles.placeholder}
-          width="44"
-          height="44"
-          viewBox="0 0 24 24"
-          fill="currentColor"
-        >
-          <path
-            d="M9 18.5a2.5 2.5 0 1 1-2-2.45V5.2l12-2.2v12.5a2.5 2.5 0 1 1-2-2.45V7.3l-8 1.47z"
-          />
-        </svg>
+        <Waves />
       {/if}
     </div>
     <div class={styles.body}>
-      <!-- Each button at the end of the line it acts on: ♡ on the track's title, ⓘ on the
-           station's name. ♡ keeps its place while the history logs the title, so the title never
-           changes width under it. -->
+      <!-- The station leads: the listener chose it, and it stays while tracks come and go. Each
+           button ends the line it acts on: ⓘ the station's, ♡ the track's. ♡ keeps its place
+           while the history logs the title, so the title never changes width under it. -->
       <div class={styles.info}>
         <div class={styles.line}>
-          <p class={styles.headline} title={headline}>{headline}</p>
-          {#if history.onAir}
-            {@const track = history.onAir}
-            <button
-              class={styles.like}
-              type="button"
-              aria-pressed={track.liked}
-              aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
-              title={track.liked ? 'Unlike' : 'Like'}
-              data-on={track.liked}
-              onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
-              ><Icon name="heart" size={18} filled={track.liked} /></button
-            >
-          {:else if subline}
-            <span class={styles.slot} aria-hidden="true"></span>
-          {:else if player.current}
-            {@render info()}
-          {/if}
+          <p class={styles.station} title={station}>{station}</p>
+          {#if player.current}{@render info()}{/if}
         </div>
-        {#if artist}<p class={styles.artist} title={artist}>{artist}</p>{/if}
-        {#if subline}
+        {#if title}
           <div class={styles.line}>
-            <p class={styles.subline} title={subline}>{subline}</p>
-            {@render info()}
+            <p class={styles.title} {title}>{title}</p>
+            {#if history.onAir}
+              {@const track = history.onAir}
+              <button
+                class={styles.like}
+                type="button"
+                aria-pressed={track.liked}
+                aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
+                title={track.liked ? 'Unlike' : 'Like'}
+                data-on={track.liked}
+                onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
+                ><Icon name="heart" size={16} filled={track.liked} /></button
+              >
+            {:else}
+              <span class={styles.slot} aria-hidden="true"></span>
+            {/if}
           </div>
         {/if}
+        {#if artist}<p class={styles.artist} title={artist}>{artist}</p>{/if}
         {#if upNext}
           <p class={styles.next} title={upNext.text}>
             Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
@@ -182,27 +185,32 @@
       </div>
 
       <div class={styles.row}>
-        <button
-          class={styles.button}
-          type="button"
-          data-active={player.active}
-          aria-label={player.active ? 'Pause' : 'Play'}
-          title={player.active ? 'Pause' : 'Play'}
-          disabled={!player.current}
-          onclick={() => player.toggle()}
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            {#if player.active}
-              <rect x="6" y="5" width="4" height="14" rx="1" />
-              <rect x="14" y="5" width="4" height="14" rx="1" />
-            {:else}
-              <path
-                transform="translate(-1.5 0)"
-                d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"
-              />
-            {/if}
-          </svg>
-        </button>
+        <div class={styles.transport}>
+          {@render skip(false)}
+          <button
+            class={styles.button}
+            type="button"
+            data-active={player.active}
+            aria-label={player.active ? 'Pause' : 'Play'}
+            title={player.active ? 'Pause' : 'Play'}
+            disabled={!player.current}
+            onclick={() => player.toggle()}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              {#if player.active}
+                <rect x="6" y="5" width="4" height="14" rx="1" />
+                <rect x="14" y="5" width="4" height="14" rx="1" />
+              {:else}
+                <path
+                  transform="translate(-1.5 0)"
+                  d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"
+                />
+              {/if}
+            </svg>
+          </button>
+
+          {@render skip(true)}
+        </div>
 
         <div class={styles.volume} onwheel={wheelVolume}>
           <button

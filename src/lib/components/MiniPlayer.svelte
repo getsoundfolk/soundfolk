@@ -18,6 +18,7 @@
   import { player } from '../player.svelte';
   import { stationNames } from '../stationNames.svelte';
   import Icon from './Icon.svelte';
+  import Waves from './Waves.svelte';
   import styles from './MiniPlayer.module.css';
 
   onMount(() => {
@@ -170,11 +171,7 @@
           onerror={() => (onAir.brokenCover = cover)}
         />
       {:else}
-        <svg class={styles.note} viewBox="0 0 24 24" fill="currentColor">
-          <path
-            d="M9 18.5a2.5 2.5 0 1 1-2-2.45V5.2l12-2.2v12.5a2.5 2.5 0 1 1-2-2.45V7.3l-8 1.47z"
-          />
-        </svg>
+        <Waves />
       {/if}
     {/key}
   </div>
@@ -191,14 +188,13 @@
       onclick={() => setCompact(false)}><Icon name="expand" size={14} /></button
     >
     <div class={styles.compactBody}>
-      <p class={styles.compactTitle} title={onAir.headline}>{onAir.headline}</p>
+      <p class={styles.compactTitle} title={onAir.station}>{onAir.station}</p>
       {#if message}
         <p class={styles.compactLine} data-error={status === 'error'} title={message}>
           {message}
         </p>
-      {:else if onAir.artist ?? onAir.subline}
-        {@const line = onAir.artist ?? onAir.subline}
-        <p class={styles.compactLine} title={line}>{line}</p>
+      {:else if onAir.track}
+        <p class={styles.compactLine} title={onAir.track}>{onAir.track}</p>
       {/if}
       <div class={styles.compactRow}>
         {@render skip(false)}
@@ -290,9 +286,9 @@
       </div>
 
       <div class={styles.text}>
-        <p class={styles.headline} title={onAir.headline}>{onAir.headline}</p>
+        <p class={styles.station} title={onAir.station}>{onAir.station}</p>
+        {#if onAir.title}<p class={styles.title} title={onAir.title}>{onAir.title}</p>{/if}
         {#if onAir.artist}<p class={styles.artist} title={onAir.artist}>{onAir.artist}</p>{/if}
-        {#if onAir.subline}<p class={styles.station} title={onAir.subline}>{onAir.subline}</p>{/if}
         {#if message}
           <p class={styles.message} data-error={status === 'error'} role="status" title={message}>
             {message}
