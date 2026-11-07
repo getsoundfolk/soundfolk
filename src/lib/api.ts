@@ -306,6 +306,15 @@ export const api = {
   getCustomTrackServices: () => invoke<CustomService[]>('get_custom_track_services'),
   setCustomTrackServices: (services: CustomService[]) =>
     invoke<void>('set_custom_track_services', { services }),
+
+  /** Hands over from the main window to the mini player (the main window closes). */
+  openMiniPlayer: () => invoke<void>('open_mini_player'),
+  /** Back to the main window; the mini player closes. */
+  closeMiniPlayer: () => invoke<void>('close_mini_player'),
+  /** The mini player's full or compact size, kept for the next time. */
+  setMiniCompact: (compact: boolean) => invoke<void>('set_mini_compact', { compact }),
+  /** Next or previous favorite, as the media keys do it. */
+  switchFavorite: (forward: boolean) => invoke<void>('switch_favorite', { forward }),
 };
 
 /** A site the user added to a track's menu: `{query}` in `template` stands for the track. */

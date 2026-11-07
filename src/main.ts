@@ -3,7 +3,9 @@ import { mount } from 'svelte';
 import { Menu } from '@tauri-apps/api/menu';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import './app.css';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import App from './App.svelte';
+import MiniPlayer from './lib/components/MiniPlayer.svelte';
 import { applyTheme, savedTheme } from './lib/theme';
 
 applyTheme(savedTheme());
@@ -34,4 +36,9 @@ async function showCopyMenu(text: string) {
   await menu.popup();
 }
 
-export default mount(App, { target: document.getElementById('app')! });
+// The mini player's window runs this same front end (src-tauri/src/mini.rs): its label says
+// which of the two to show.
+const mini = getCurrentWindow().label === 'mini';
+if (mini) document.documentElement.dataset.window = 'mini';
+
+export default mount(mini ? MiniPlayer : App, { target: document.getElementById('app')! });

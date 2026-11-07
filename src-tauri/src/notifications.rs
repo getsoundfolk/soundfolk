@@ -60,7 +60,9 @@ impl TrackNotifications {
     /// A new track is on air. `station`: the station's own name, which finds its signature in the
     /// title; `label`: the name the user gave it, shown instead.
     pub fn track(&self, now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>) {
-        if !self.enabled.load(Ordering::Relaxed) || FOREGROUND.load(Ordering::Relaxed) {
+        // The mini player shows the title already, over every other window.
+        let shown = FOREGROUND.load(Ordering::Relaxed) || crate::mini::is_open();
+        if !self.enabled.load(Ordering::Relaxed) || shown {
             return;
         }
         let station = station

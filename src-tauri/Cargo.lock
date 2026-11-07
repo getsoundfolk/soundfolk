@@ -4454,6 +4454,7 @@ dependencies = [
  "cpal",
  "ebur128",
  "encoding_rs",
+ "gtk",
  "jiff",
  "ksni",
  "notify-rust",

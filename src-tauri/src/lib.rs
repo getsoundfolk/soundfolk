@@ -11,6 +11,7 @@ mod error;
 mod export;
 mod favorite_repair;
 mod media_controls;
+mod mini;
 mod musicbrainz;
 mod notifications;
 mod recipe_list;
@@ -232,6 +233,8 @@ fn show_main_window(app: &tauri::AppHandle) {
         {
             tracing::warn!("failed to show the main window: {e}");
         }
+        // Only once the main window is there: the mini player is the app's last window otherwise.
+        mini::close(&handle);
     });
     if let Err(e) = shown {
         tracing::warn!("failed to show the main window: {e}");
@@ -456,6 +459,15 @@ pub fn run() {
         // Closing the window really closes it: its web view (WebKit, most of the app's memory) is
         // freed while the app keeps playing from the notification area (`tray.rs`). "Quit" in its menu exits.
         .on_window_event(|window, event| {
+            // Nothing in the mini player closes it, but a window manager shortcut can: that is a
+            // return to the main window, or the app would play on with no window to come back to.
+            if window.label() == mini::LABEL {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    show_main_window(window.app_handle());
+                }
+                return;
+            }
             if let WindowEvent::CloseRequested { .. } = event {
                 if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
                     let geometry = window.app_handle().state::<WindowGeometry>();
@@ -549,6 +561,10 @@ pub fn run() {
             curated_lists::get_favorite_lists,
             curated_lists::set_favorite_list,
             curated_lists::export_my_list,
+            mini::open_mini_player,
+            mini::close_mini_player,
+            mini::set_mini_compact,
+            mini::switch_favorite,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")
@@ -564,6 +580,7 @@ pub fn run() {
                 }
             }
             if let tauri::RunEvent::Exit = event {
+                mini::save_position(app);
                 if let Err(e) = app.state::<Database>().end_session() {
                     tracing::warn!("listening session not closed: {e}");
                 }

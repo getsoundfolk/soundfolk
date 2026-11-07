@@ -113,6 +113,8 @@ zbus = "5"
 souvlaki = { version = "0.9", default-features = false, features = ["use_zbus"] }
 # Notification area icon: StatusNotifierItem, so that a left click reaches the app (see tray.rs)
 ksni = "0.3.6"
+# The mini player's web view gives up its minimum height (mini.rs); already pulled in by Tauri
+gtk = "0.18"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }

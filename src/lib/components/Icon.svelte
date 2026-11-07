@@ -16,7 +16,14 @@
     | 'back'
     | 'reset'
     | 'grip'
-    | 'check';
+    | 'check'
+    | 'mini'
+    | 'window'
+    | 'expand'
+    | 'shrink'
+    | 'previous'
+    | 'next'
+    | 'history';
 </script>
 
 <script lang="ts">
@@ -88,6 +95,34 @@
     <circle cx="15" cy="19" r="1" fill="currentColor" />
   {:else if name === 'check'}
     <path d="M20 6 9 17l-5-5" />
+  {:else if name === 'mini'}
+    <path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" />
+    <rect x="12" y="13" width="10" height="7" rx="2" />
+  {:else if name === 'window'}
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M10 4v4" />
+    <path d="M2 8h20" />
+    <path d="M6 4v4" />
+  {:else if name === 'expand'}
+    <path d="M15 3h6v6" />
+    <path d="m21 3-7 7" />
+    <path d="m3 21 7-7" />
+    <path d="M9 21H3v-6" />
+  {:else if name === 'shrink'}
+    <path d="m14 10 7-7" />
+    <path d="M20 10h-6V4" />
+    <path d="m3 21 7-7" />
+    <path d="M4 14h6v6" />
+  {:else if name === 'previous'}
+    <path d="M19 20 9 12l10-8z" fill="currentColor" />
+    <path d="M5 19V5" />
+  {:else if name === 'next'}
+    <path d="m5 4 10 8-10 8z" fill="currentColor" />
+    <path d="M19 5v14" />
+  {:else if name === 'history'}
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l4 2" />
   {/if}
 </svg>
 

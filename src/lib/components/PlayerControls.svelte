@@ -6,9 +6,8 @@
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { lists } from '../lists.svelte';
-  import { displayTitle } from '../trackLinks';
+  import { onAir, wheelVolume } from '../onAir.svelte';
   import { player } from '../player.svelte';
-  import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
   import styles from './PlayerControls.module.css';
@@ -30,73 +29,17 @@
     errors.player ??
       ('message' in player.state ? player.state.message : LABELS[player.state.status]),
   );
-  // Title, artist and station each on their line. Artist and title come apart from the source
-  // when it gives them that way, otherwise as the history split them; a title the history did
-  // not log (the station's own name, a jingle) is shown whole. Without a title, the station
-  // alone. The station is named as in the list: the stream's own `icy-name` is often a mount
-  // point ("fipworld-hifi.aac") or a placeholder.
-  // A name the user gave the station comes first.
-  const stationName = $derived(
-    player.current ? stationNames.shown(player.current.id, player.current.name) : null,
-  );
-  const split = $derived(player.nowPlaying.track ?? history.onAir);
-  const headline = $derived(split?.title ?? player.nowPlaying.title ?? stationName ?? 'No station');
-  const artist = $derived(player.nowPlaying.title ? (split?.artist ?? null) : null);
-  const subline = $derived(player.nowPlaying.title ? stationName : null);
-  // Announced by the station's page: the next track, and when it starts.
-  const upNext = $derived.by(() => {
-    const next = player.nowPlaying.next;
-    if (!next) return null;
-    const text = displayTitle(next);
-    const at = next.started_at ? new Date(next.started_at) : null;
-    const time =
-      at && !Number.isNaN(at.getTime())
-        ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-        : null;
-    return { text, time };
-  });
-
-  // Cover art of the track on air, from the sources set in ⚙ › Cover art (only while it is
-  // still the title it was found for), or the station's logo (inline, kept on disk by the
-  // backend). An image that fails to load is hidden rather than shown broken.
-  let brokenCover = $state<string | null>(null);
-  const cover = $derived.by(() => {
-    const { title, url } = player.cover;
-    if (!url || title !== player.nowPlaying.title || url === brokenCover) return null;
-    return /^(https?:\/\/|data:image\/)/i.test(url) ? url : null;
-  });
+  // Title, artist and station each on their line (onAir.svelte.ts).
+  const stationName = $derived(onAir.stationName);
+  const headline = $derived(onAir.headline);
+  const artist = $derived(onAir.artist);
+  const subline = $derived(onAir.subline);
+  const upNext = $derived(onAir.upNext);
+  const cover = $derived(onAir.cover);
 
   // Volume: the filled part of the track and the speaker's waves.
   const level = $derived(player.muted ? 0 : player.volume);
   const percent = $derived(Math.round(player.volume * 100));
-
-  // The wheel is the fine control: 1 % per mouse notch, where a click on the track jumps.
-  // A touchpad sends many small pixel deltas: they add up, one step per notch's worth.
-  const NOTCH_PX = 100;
-  let wheelPx = 0;
-  let saveTimer: ReturnType<typeof setTimeout> | undefined;
-  function onWheel(e: WheelEvent) {
-    const raw = e.deltaY || -e.deltaX;
-    if (!raw) return;
-    e.preventDefault();
-    const px =
-      e.deltaMode === WheelEvent.DOM_DELTA_LINE
-        ? raw * 33
-        : e.deltaMode === WheelEvent.DOM_DELTA_PAGE
-          ? raw * NOTCH_PX * 3
-          : raw;
-    // A direction change drops what was left over from the other way.
-    if (Math.sign(px) !== Math.sign(wheelPx)) wheelPx = 0;
-    wheelPx += px;
-    // At least one step per event: a mouse notch must never do nothing.
-    const steps =
-      Math.trunc(wheelPx / NOTCH_PX) || (Math.abs(px) >= NOTCH_PX / 2 ? Math.sign(px) : 0);
-    if (!steps) return;
-    wheelPx = Math.abs(wheelPx) >= NOTCH_PX ? wheelPx - steps * NOTCH_PX : 0;
-    player.setVolume(Math.round(player.volume * 100 - steps) / 100);
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => player.saveVolume(), 400);
-  }
 
   // The station's donation page (docs/13-donations.md §3), asked again when the station changes
   // or a new list was downloaded. A late answer for a previous station is dropped.
@@ -163,7 +106,7 @@
           height="112"
           alt=""
           referrerpolicy="no-referrer"
-          onerror={() => (brokenCover = cover)}
+          onerror={() => (onAir.brokenCover = cover)}
         />
       {:else}
         <svg
@@ -229,6 +172,14 @@
         <button
           class={styles.gear}
           type="button"
+          aria-label="Mini player"
+          title="Mini player"
+          onclick={() => api.openMiniPlayer().catch((e) => errors.report('player', e))}
+          ><Icon name="mini" size={18} /></button
+        >
+        <button
+          class={styles.gear}
+          type="button"
           aria-label="Settings"
           title="Settings"
           bind:this={gear}
@@ -259,7 +210,7 @@
           </svg>
         </button>
 
-        <div class={styles.volume} onwheel={onWheel}>
+        <div class={styles.volume} onwheel={wheelVolume}>
           <button
             class={styles.speaker}
             type="button"

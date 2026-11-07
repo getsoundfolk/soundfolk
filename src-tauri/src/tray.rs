@@ -111,6 +111,7 @@ fn toggle_label(window_shown: bool) -> &'static str {
 fn handle_menu(app: &AppHandle, id: &str) {
     let command = match id {
         "toggle" => return crate::toggle_main_window(app),
+        "mini" => return crate::mini::show(app),
         "quit" => return app.exit(0),
         "mute" => {
             let app = app.clone();
@@ -215,6 +216,7 @@ mod imp {
             };
             vec![
                 item(toggle_label(self.window_shown), "toggle"),
+                item("Mini player", "mini"),
                 MenuItem::Separator,
                 item(play_pause_label(self.playing), "play_pause"),
                 item(mute_label(self.muted), "mute"),
@@ -307,6 +309,7 @@ mod imp {
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
         let shown = WINDOW_SHOWN.load(std::sync::atomic::Ordering::Relaxed);
         let toggle = MenuItem::with_id(app, "toggle", toggle_label(shown), true, None::<&str>)?;
+        let mini = MenuItem::with_id(app, "mini", "Mini player", true, None::<&str>)?;
         let play_pause = MenuItem::with_id(
             app,
             "play_pause",
@@ -323,6 +326,7 @@ mod imp {
             app,
             &[
                 &toggle,
+                &mini,
                 &PredefinedMenuItem::separator(app)?,
                 &play_pause,
                 &mute,

@@ -143,6 +143,12 @@ body {
   background: var(--color-bg);
 }
 
+/* The mini player's window is transparent: its card draws the rounded corners (MiniPlayer). */
+:root[data-window='mini'],
+:root[data-window='mini'] body {
+  background: transparent;
+}
+
 /* Figures line up wherever they appear. */
 :root {
   font-variant-numeric: tabular-nums;

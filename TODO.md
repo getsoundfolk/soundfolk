@@ -115,9 +115,10 @@ listening stats must be crossed with the sessions.
 - [x] Export the history (CSV / JSON).
 - [ ] Search filters by codec and bitrate (country and tag already exist).
 - [x] Follow the system light / dark theme: Settings › Appearance, System / Light / Dark (`src/lib/theme.ts`).
-- [ ] Compact mini-player, optionally always on top: a small window (cover of 56–80 px, title, artist,
-  play / pause, volume) beside the full one. The full player stays the only view of the track on air, hence its
-  112 px cover.
+- [x] Mini player (`mini.rs`, `MiniPlayer.svelte`): an always-on-top window that stands in for the main one
+  (which closes: one web view at a time). Full (560 × 180: cover, track, volume, ♥, favorites or recent titles,
+  previous / play / next favorite) or compact (320 × 88); size and position kept. From the player's header or the
+  tray menu; back from its own button, the tray or a window manager close.
 - [ ] Measure memory use and keep a target (< ~50 MB idle while playing) — the main argument against Electron
   players.
 
