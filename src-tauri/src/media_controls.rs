@@ -140,7 +140,8 @@ pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerStat
         *zap = None;
         return state;
     }
-    let favorites = match app.state::<Database>().list_favorites() {
+    let db = app.state::<Database>();
+    let favorites = match db.list_favorites() {
         Ok(favorites) => favorites,
         Err(e) => {
             tracing::warn!("cannot skip to the next favorite: {e}");
@@ -148,10 +149,19 @@ pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerStat
             return state;
         }
     };
-    let Skip::To(next, skipped) = zapping.skip(&favorites, message) else {
+    let failed = zapping.station_id.clone();
+    let Skip::To(next, mut skipped) = zapping.skip(&favorites, message) else {
         *zap = None;
         return state;
     };
+    // Named as the user knows it.
+    if let Ok(Some(label)) = db.station_name(&failed) {
+        for list in [&mut skipped, &mut zapping.skipped] {
+            if let Some(last) = list.last_mut() {
+                last.name = label.clone();
+            }
+        }
+    }
     let shown = PlayerState::Reconnecting(format!("Skipping {}…", skipped[skipped.len() - 1].name));
     tracing::info!(station = %next.station_id, "favorite not broadcasting: skipping to the next one");
     // Starting a station waits for the sound output, and the engine may be locked by the caller.
@@ -182,6 +192,7 @@ impl SystemMedia {
         &self,
         _now_playing: &NowPlaying,
         _station: Option<&str>,
+        _label: Option<&str>,
         _cover: Option<&str>,
     ) {
     }
@@ -197,11 +208,12 @@ struct Display {
     album: Option<String>,
 }
 
-/// `station` is the name the user knows the station by; the stream's `icy-name` is the fallback.
-/// A title that is only the station name (sent by some radios between tracks) is not a track.
-/// The track is rebuilt as `Artist - Title`, without the station signature some radios append.
+/// `station` is the station's own name; the stream's `icy-name` is the fallback. `label` is the
+/// name the user gave it, shown instead. A title that is only the station name (sent by some radios
+/// between tracks) is not a track. The track is rebuilt as `Artist - Title`, without the station
+/// signature some radios append (found with the station's own name).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
+fn display(now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>) -> Display {
     let station = station
         .or(now_playing.station.as_deref())
         .map(str::trim)
@@ -212,7 +224,8 @@ fn display(now_playing: &NowPlaying, station: Option<&str>) -> Display {
         .map(str::trim)
         .filter(|t| !t.is_empty() && !station.is_some_and(|s| s.eq_ignore_ascii_case(t)))
         .map(|raw| now_playing.parsed(raw, station).display());
-    match station {
+    let label = label.map(str::trim).filter(|l| !l.is_empty());
+    match label.or(station) {
         Some(station) => Display {
             title: Some(station.to_owned()),
             artist: track,
@@ -293,9 +306,10 @@ mod linux {
             &self,
             now_playing: &NowPlaying,
             station: Option<&str>,
+            label: Option<&str>,
             cover: Option<&str>,
         ) {
-            let shown = display(now_playing, station);
+            let shown = display(now_playing, station, label);
             let metadata = MediaMetadata {
                 title: shown.title.as_deref(),
                 artist: shown.artist.as_deref(),
@@ -458,6 +472,7 @@ mod tests {
         let shown = display(
             &on_air(Some("icy name"), Some("Daft Punk - One More Time - FIP")),
             Some("FIP"),
+            None,
         );
         assert_eq!(
             shown,
@@ -468,7 +483,7 @@ mod tests {
             }
         );
         // A title that cannot be split is shown as is; without a name, `icy-name` is the station
-        let shown = display(&on_air(Some("icy name"), Some("Jingle")), None);
+        let shown = display(&on_air(Some("icy name"), Some("Jingle")), None, None);
         assert_eq!(shown.title.as_deref(), Some("icy name"));
         assert_eq!(shown.artist.as_deref(), Some("Jingle"));
     }
@@ -549,20 +564,44 @@ mod tests {
     }
 
     #[test]
+    fn the_name_given_to_the_station_is_shown() {
+        // The signature is still found with the station's own name.
+        let shown = display(
+            &on_air(None, Some("Daft Punk - One More Time - FIP")),
+            Some("FIP"),
+            Some("France Inter Paris"),
+        );
+        assert_eq!(
+            shown,
+            Display {
+                title: Some("France Inter Paris".into()),
+                artist: Some("Daft Punk - One More Time".into()),
+                album: Some("France Inter Paris".into()),
+            }
+        );
+    }
+
+    #[test]
     fn station_is_shown_without_a_track() {
         let expected = Display {
             title: Some("FIP".into()),
             artist: None,
             album: Some("FIP".into()),
         };
-        assert_eq!(display(&on_air(None, None), Some("FIP")), expected);
-        assert_eq!(display(&on_air(Some("FIP"), Some(" fip ")), None), expected);
-        assert_eq!(display(&on_air(None, Some("  ")), Some("FIP")), expected);
+        assert_eq!(display(&on_air(None, None), Some("FIP"), None), expected);
+        assert_eq!(
+            display(&on_air(Some("FIP"), Some(" fip ")), None, None),
+            expected
+        );
+        assert_eq!(
+            display(&on_air(None, Some("  ")), Some("FIP"), None),
+            expected
+        );
     }
 
     #[test]
     fn track_takes_the_first_line_without_a_station() {
-        let shown = display(&on_air(None, Some("Daft Punk - One More Time")), None);
+        let shown = display(&on_air(None, Some("Daft Punk - One More Time")), None, None);
         assert_eq!(
             shown,
             Display {

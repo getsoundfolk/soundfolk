@@ -8,6 +8,7 @@
   import { lists } from '../lists.svelte';
   import { displayTitle } from '../trackLinks';
   import { player } from '../player.svelte';
+  import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
   import styles from './PlayerControls.module.css';
@@ -29,8 +30,12 @@
   // Current title if the stream announces one, otherwise the selected station.
   // The station is named as in the list: the stream's own `icy-name` is often
   // a mount point ("fipworld-hifi.aac") or a placeholder.
-  const headline = $derived(player.nowPlaying.title ?? player.current?.name ?? 'No station');
-  const subline = $derived(player.nowPlaying.title ? player.current?.name : null);
+  // A name the user gave the station comes first.
+  const stationName = $derived(
+    player.current ? stationNames.shown(player.current.id, player.current.name) : null,
+  );
+  const headline = $derived(player.nowPlaying.title ?? stationName ?? 'No station');
+  const subline = $derived(player.nowPlaying.title ? stationName : null);
   // Announced by the station's page: the next track, and when it starts.
   const upNext = $derived.by(() => {
     const next = player.nowPlaying.next;
@@ -198,7 +203,7 @@
       <button
         class={styles.donate}
         type="button"
-        title={`Donate to ${player.current.name} (${donation.domain})`}
+        title={`Donate to ${stationName} (${donation.domain})`}
         onclick={() => openUrl(donation!.url).catch((e) => errors.report('player', e))}
         >Donate</button
       >

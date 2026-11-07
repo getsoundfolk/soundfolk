@@ -6,6 +6,7 @@
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { pickRandom, playableOf } from '../stations';
+  import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
   import styles from './ListRow.module.css';
@@ -83,12 +84,12 @@
         <button
           class={styles.tile}
           type="button"
-          title={`Play ${s.name}`}
+          title={`Play ${stationNames.shown(s.id, s.name)}`}
           data-active={player.current?.id === s.id}
           data-down={s.health.status === 'unreachable'}
           onclick={() => player.play(playableOf(s))}
         >
-          <span class={styles.name}>{s.name}</span>
+          <span class={styles.name}>{stationNames.shown(s.id, s.name)}</span>
           <span class={styles.small}
             >{#if player.current?.id === s.id}<span class={styles.onAir} aria-hidden="true"
               ></span>On air{:else}{s.country_code ?? ''}{/if}</span

@@ -137,7 +137,9 @@ impl Database {
                 &conn,
                 &format!(
                     "{FIRST_LIKES}
-                     SELECT COALESCE(station_name, station_id), NULL, COUNT(*) FROM firsts
+                     SELECT COALESCE(
+                                (SELECT name FROM station_names n WHERE n.station_id = firsts.station_id),
+                                station_name, station_id), NULL, COUNT(*) FROM firsts
                      WHERE rank = 1 AND {} GROUP BY station_id ORDER BY 3 DESC, 1 LIMIT {TOP}",
                     since("liked_at")
                 ),
@@ -250,6 +252,7 @@ fn station_stats(conn: &Connection, days: Option<u32>) -> rusqlite::Result<Vec<S
          ids AS (SELECT station_id FROM heard UNION SELECT station_id FROM liked UNION SELECT station_id FROM listened)
          SELECT ids.station_id,
                 COALESCE(
+                    (SELECT name FROM station_names n WHERE n.station_id = ids.station_id),
                     (SELECT station_name FROM listening_history h
                      WHERE h.station_id = ids.station_id AND station_name IS NOT NULL ORDER BY id DESC LIMIT 1),
                     (SELECT station_name FROM listening_sessions s

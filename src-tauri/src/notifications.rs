@@ -57,8 +57,9 @@ impl TrackNotifications {
         }
     }
 
-    /// A new track is on air (`station`: the name the user knows it by).
-    pub fn track(&self, now_playing: &NowPlaying, station: Option<&str>) {
+    /// A new track is on air. `station`: the station's own name, which finds its signature in the
+    /// title; `label`: the name the user gave it, shown instead.
+    pub fn track(&self, now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>) {
         if !self.enabled.load(Ordering::Relaxed) || FOREGROUND.load(Ordering::Relaxed) {
             return;
         }
@@ -75,7 +76,8 @@ impl TrackNotifications {
             return;
         };
         let parsed = now_playing.parsed(raw, station);
-        let (summary, body) = text(&parsed, station);
+        let label = label.map(str::trim).filter(|l| !l.is_empty());
+        let (summary, body) = text(&parsed, label.or(station));
         let (icon, identifier, last) = (
             self.icon.clone(),
             self.identifier.clone(),

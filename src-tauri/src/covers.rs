@@ -154,8 +154,10 @@ fn pick(
 #[derive(Default)]
 struct State {
     now_playing: NowPlaying,
-    /// The station's name as the user knows it.
+    /// The station's own name (finds its signature in the titles).
     station: Option<String>,
+    /// The name the user gave the station, shown instead of its own.
+    label: Option<String>,
     shown: Cover,
     in_flight: HashSet<String>,
     failed: HashMap<String, Instant>,
@@ -225,13 +227,38 @@ impl Covers {
     }
 
     /// The title on air changed: shows it on the desktop, and finds its cover, looked up if need be.
-    pub fn update(self: &Arc<Self>, now_playing: NowPlaying, station: Option<String>) {
+    pub fn update(
+        self: &Arc<Self>,
+        now_playing: NowPlaying,
+        station: Option<String>,
+        label: Option<String>,
+    ) {
         {
             let mut state = self.state();
             state.now_playing = now_playing;
             state.station = station;
+            state.label = label;
         }
         self.resolve(true);
+    }
+
+    /// The user renamed the station on air: the media controls show the new name.
+    pub fn rename(self: &Arc<Self>, label: Option<String>) {
+        let (now_playing, station, picture) = {
+            let mut state = self.state();
+            state.label = label.clone();
+            (
+                state.now_playing.clone(),
+                state.station.clone(),
+                state.media_picture.clone(),
+            )
+        };
+        self.media.show_now_playing(
+            &now_playing,
+            station.as_deref(),
+            label.as_deref(),
+            picture.as_deref(),
+        );
     }
 
     /// A station starts: its logo is fetched once per launch from the catalog, to stand in for
@@ -284,13 +311,18 @@ impl Covers {
     }
 
     fn resolve(self: &Arc<Self>, title_changed: bool) {
-        let (now_playing, station, logo) = {
+        let (now_playing, station, label, logo) = {
             let state = self.state();
             let logo = state
                 .station_id
                 .as_ref()
                 .and_then(|id| state.logos.get(id).cloned().flatten());
-            (state.now_playing.clone(), state.station.clone(), logo)
+            (
+                state.now_playing.clone(),
+                state.station.clone(),
+                state.label.clone(),
+                logo,
+            )
         };
         let db = self.app.state::<Database>();
         let sources = self.sources(&db);
@@ -346,8 +378,12 @@ impl Covers {
             (changed, picture_changed)
         };
         if title_changed || picture_changed {
-            self.media
-                .show_now_playing(&now_playing, station.as_deref(), picture.as_deref());
+            self.media.show_now_playing(
+                &now_playing,
+                station.as_deref(),
+                label.as_deref(),
+                picture.as_deref(),
+            );
         }
         if changed {
             if let Err(e) = self.app.emit(COVER_EVENT, cover) {

@@ -8,6 +8,7 @@
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { pickRandom, playableOf, shortMeta, warningOf } from '../stations';
+  import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
   import StationRow from './StationRow.svelte';
   import Icon from './Icon.svelte';
@@ -134,7 +135,7 @@
     <ul class={styles.stations}>
       {#each stations as s (s.id)}
         <StationRow
-          name={s.name}
+          name={stationNames.shown(s.id, s.name)}
           meta={shortMeta(s)}
           warning={warningOf(s)}
           active={player.current?.id === s.id}

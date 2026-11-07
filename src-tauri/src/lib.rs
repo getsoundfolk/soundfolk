@@ -392,17 +392,21 @@ pub fn run() {
                 Arc::new(move |now_playing: NowPlaying| {
                     let new_track =
                         journalize_title(&title_handle, &station, &last_logged, &now_playing);
-                    let name = station
-                        .lock()
-                        .unwrap_or_else(|p| p.into_inner())
-                        .as_ref()
-                        .and_then(|s| s.name.clone());
+                    let on_air = station.lock().unwrap_or_else(|p| p.into_inner()).clone();
+                    let name = on_air.as_ref().and_then(|s| s.name.clone());
+                    let label = on_air.and_then(|s| {
+                        let db = title_handle.state::<Database>();
+                        db.station_name(&s.id).unwrap_or_else(|e| {
+                            tracing::warn!("station name not read: {e}");
+                            None
+                        })
+                    });
                     if new_track {
                         let notifications =
                             title_handle.state::<notifications::TrackNotifications>();
-                        notifications.track(&now_playing, name.as_deref());
+                        notifications.track(&now_playing, name.as_deref(), label.as_deref());
                     }
-                    covers.update(now_playing.clone(), name);
+                    covers.update(now_playing.clone(), name, label);
                     if let Err(e) = title_handle.emit(NOW_PLAYING_EVENT, now_playing) {
                         tracing::warn!("failed to emit now-playing title: {e}");
                     }
@@ -530,6 +534,8 @@ pub fn run() {
             commands::add_personal_station,
             commands::list_personal_stations,
             commands::remove_personal_station,
+            commands::get_station_names,
+            commands::set_station_name,
             donations::get_donation_link,
             curated_lists::get_curated_lists,
             curated_lists::get_lists_for_station,

@@ -14,7 +14,8 @@ const SETTING_PARSER_VERSION: &str = "title_parser_version";
 pub struct HistoryEntry {
     pub id: i64,
     pub station_id: String,
-    /// Name at the time of listening; for old rows, the favorite or personal station name if known.
+    /// The name the user gave the station, else the name at the time of listening (for old rows,
+    /// the favorite or personal station name if known).
     pub station_name: Option<String>,
     /// Raw title as announced on air.
     pub track_title: String,
@@ -43,6 +44,7 @@ pub struct LikedTrack {
     pub raw_title: String,
     /// Station the track was liked on.
     pub station_id: String,
+    /// The name the user gave the station, else its name when the track was liked.
     pub station_name: Option<String>,
     pub liked_at: String,
     pub search_query: String,
@@ -244,14 +246,16 @@ impl Database {
         let pattern = query.filter(|q| !q.trim().is_empty()).map(contains_pattern);
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT h.id, h.station_id, h.station_name, h.track_title, h.artist, h.title, h.track_key,
-                    h.played_at, l.track_key IS NOT NULL
+            "SELECT h.id, h.station_id, COALESCE(n.name, h.station_name), h.track_title, h.artist,
+                    h.title, h.track_key, h.played_at, l.track_key IS NOT NULL
              FROM listening_history h
              LEFT JOIN likes l ON l.track_key = h.track_key
+             LEFT JOIN station_names n ON n.station_id = h.station_id
              WHERE ?2 IS NULL
                 OR h.track_title LIKE ?2 ESCAPE '\\'
                 OR h.artist LIKE ?2 ESCAPE '\\'
                 OR h.station_name LIKE ?2 ESCAPE '\\'
+                OR n.name LIKE ?2 ESCAPE '\\'
              ORDER BY h.id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit, pattern], |row| {
@@ -323,13 +327,16 @@ impl Database {
         let pattern = query.filter(|q| !q.trim().is_empty()).map(contains_pattern);
         let conn = self.conn();
         let mut stmt = conn.prepare(
-            "SELECT track_key, artist, title, raw_title, station_id, station_name, liked_at
-             FROM likes
+            "SELECT k.track_key, k.artist, k.title, k.raw_title, k.station_id,
+                    COALESCE(n.name, k.station_name), k.liked_at
+             FROM likes k
+             LEFT JOIN station_names n ON n.station_id = k.station_id
              WHERE ?2 IS NULL
-                OR raw_title LIKE ?2 ESCAPE '\\'
-                OR artist LIKE ?2 ESCAPE '\\'
-                OR station_name LIKE ?2 ESCAPE '\\'
-             ORDER BY liked_at DESC, rowid DESC LIMIT ?1",
+                OR k.raw_title LIKE ?2 ESCAPE '\\'
+                OR k.artist LIKE ?2 ESCAPE '\\'
+                OR k.station_name LIKE ?2 ESCAPE '\\'
+                OR n.name LIKE ?2 ESCAPE '\\'
+             ORDER BY k.liked_at DESC, k.rowid DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map(params![limit, pattern], |row| {
             let parsed = ParsedTitle {
@@ -540,6 +547,51 @@ mod tests {
             }
         );
         assert!(db.recent_history(10, None).unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_name_given_to_a_station_shows_in_the_history_and_likes() {
+        let db = Database::open_in_memory().unwrap();
+        db.log_track(
+            "a",
+            Some("SomaFM Groove Salad (128k MP3)"),
+            "Air - Sexy Boy",
+            true,
+        )
+        .unwrap();
+        let id = db.recent_history(1, None).unwrap()[0].id;
+        assert!(db.like_track(id).unwrap());
+        db.set_station_name("a", Some("Groove Salad")).unwrap();
+
+        let shown = |db: &Database| {
+            (
+                db.recent_history(1, None).unwrap()[0].station_name.clone(),
+                db.list_likes(1, None).unwrap()[0].station_name.clone(),
+            )
+        };
+        let renamed = Some("Groove Salad".to_owned());
+        assert_eq!(shown(&db), (renamed.clone(), renamed));
+        // Both names find the station.
+        for query in ["groove salad", "128k"] {
+            assert_eq!(
+                db.recent_history(10, Some(query)).unwrap().len(),
+                1,
+                "{query}"
+            );
+            assert_eq!(db.list_likes(10, Some(query)).unwrap().len(), 1, "{query}");
+        }
+        // The stored name is the original one, which the title parser relies on.
+        let stored: String = db
+            .conn()
+            .query_row("SELECT station_name FROM listening_history", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(stored, "SomaFM Groove Salad (128k MP3)");
+
+        db.set_station_name("a", Some("  ")).unwrap();
+        let original = Some("SomaFM Groove Salad (128k MP3)".to_owned());
+        assert_eq!(shown(&db), (original.clone(), original));
     }
 
     #[test]

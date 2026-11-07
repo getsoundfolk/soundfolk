@@ -235,6 +235,12 @@ export const api = {
   removePersonalStation: (stationId: string) =>
     invoke<boolean>('remove_personal_station', { stationId }),
 
+  /** Names the user gave stations, by station ID. */
+  getStationNames: () => invoke<Record<string, string>>('get_station_names'),
+  /** Names a station (null gives it back its own); returns the name kept. */
+  setStationName: (stationId: string, name: string | null) =>
+    invoke<string | null>('set_station_name', { stationId, name }),
+
   getListeningHistory: (limit?: number, query?: string) =>
     invoke<HistoryEntry[]>('get_listening_history', { limit, query }),
   getHistorySummary: () => invoke<HistorySummary>('get_history_summary'),

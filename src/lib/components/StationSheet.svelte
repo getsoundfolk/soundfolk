@@ -13,6 +13,7 @@
   } from '../api';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
+  import { stationNames } from '../stationNames.svelte';
   import { displayTitle } from '../trackLinks';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
@@ -31,6 +32,9 @@
   const station = $derived(player.current);
   const status = $derived(player.titleStatus);
   const recipe = $derived(status?.recipe ?? null);
+  /** The name the user gave the station, if any; the station keeps its own as `station.name`. */
+  const given = $derived(station ? stationNames.given(station.id) : null);
+  let nameError = $state<string | null>(null);
 
   $effect(() => {
     if (!dialog) return;
@@ -39,6 +43,7 @@
       opened = null;
       shared = null;
       error = null;
+      nameError = null;
       dialog.showModal();
     } else if (!ui.stationOpen && dialog.open) {
       dialog.close();
@@ -113,6 +118,18 @@
     openUrl(url).catch((e) => (error = errorMessage(e)));
   }
 
+  /** Saves the name typed (on Enter or when the field loses focus); blank gives back its own. */
+  async function rename(input: HTMLInputElement) {
+    if (!station) return;
+    nameError = null;
+    try {
+      await stationNames.rename(station.id, input.value);
+    } catch (e) {
+      nameError = errorMessage(e);
+    }
+    input.value = stationNames.given(station.id) ?? '';
+  }
+
   async function edit() {
     if (!station) return;
     error = null;
@@ -164,13 +181,49 @@
 >
   {#if station}
     <header class={styles.header}>
-      <h2 class={styles.title} id="station-sheet-title">{station.name}</h2>
+      <h2 class={styles.title} id="station-sheet-title">{given ?? station.name}</h2>
       <button class={styles.close} type="button" aria-label="Close" onclick={ui.closeStation}
         ><Icon name="x" /></button
       >
     </header>
 
     <dl class={styles.details}>
+      <div>
+        <dt><label for="station-sheet-name">Name</label></dt>
+        <dd>
+          <input
+            id="station-sheet-name"
+            class={styles.input}
+            type="text"
+            value={given ?? ''}
+            placeholder={station.name}
+            aria-describedby="station-sheet-name-hint"
+            spellcheck="false"
+            autocomplete="off"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+              // Escape closes the sheet: the name typed is dropped, not saved.
+              else if (e.key === 'Escape') e.currentTarget.value = given ?? '';
+            }}
+            onchange={(e) => rename(e.currentTarget)}
+          />
+          <p class={styles.hint} id="station-sheet-name-hint">
+            {#if given}
+              Shown instead of its own name, {station.name}.
+              <button
+                class={styles.inline}
+                type="button"
+                onclick={() =>
+                  stationNames.rename(station.id, '').catch((e) => (nameError = errorMessage(e)))}
+                >Use its own name</button
+              >
+            {:else}
+              Type the name you want to see for this station.
+            {/if}
+          </p>
+          {#if nameError}<p class={styles.warning} role="alert">{nameError}</p>{/if}
+        </dd>
+      </div>
       {#if station.homepage}
         <div>
           <dt>Website</dt>

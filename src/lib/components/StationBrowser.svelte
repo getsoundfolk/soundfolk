@@ -14,6 +14,7 @@
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { pickRandom, playableOf, warningOf } from '../stations';
+  import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
   import AddStationForm from './AddStationForm.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
@@ -132,7 +133,11 @@
   const matchingPersonal = $derived(
     text.trim() === ''
       ? []
-      : personal.filter((p) => p.name.toLowerCase().includes(text.trim().toLowerCase())),
+      : personal.filter((p) =>
+          [p.name, stationNames.shown(p.station_id, p.name)].some((n) =>
+            n.toLowerCase().includes(text.trim().toLowerCase()),
+          ),
+        ),
   );
 
   // ── Favorites and My stations as lists: Surprise me, Export M3U (14 §6.4) ─────────────
@@ -261,7 +266,7 @@
           <ul class={styles.list}>
             {#each player.favorites as f (f.station_id)}
               <StationRow
-                name={f.name}
+                name={stationNames.shown(f.station_id, f.name)}
                 meta={f.genre ?? ''}
                 personal={f.station_id.startsWith('user:')}
                 active={isActive(f.station_id)}
@@ -314,7 +319,7 @@
           <ul class={styles.list}>
             {#each personal as p (p.station_id)}
               <StationRow
-                name={p.name}
+                name={stationNames.shown(p.station_id, p.name)}
                 meta={p.genre ?? new URL(p.stream_url).host}
                 personal
                 active={isActive(p.station_id)}
@@ -366,7 +371,7 @@
         <ul class={styles.list}>
           {#each matchingPersonal as p (p.station_id)}
             <StationRow
-              name={p.name}
+              name={stationNames.shown(p.station_id, p.name)}
               personal
               active={isActive(p.station_id)}
               favorite={player.isFavorite(p.station_id)}
@@ -376,7 +381,7 @@
           {/each}
           {#each results as s (s.id)}
             <StationRow
-              name={s.name}
+              name={stationNames.shown(s.id, s.name)}
               meta={meta(s)}
               warning={warningOf(s)}
               active={isActive(s.id)}

@@ -5,6 +5,7 @@
 //! The connection is single and protected by a `Mutex`: accesses are short and WAL mode
 //! prevents concurrent reads (future sync worker) from blocking writes.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -351,6 +352,49 @@ impl Database {
         )?;
         Ok(deleted > 0)
     }
+
+    // ── station_names ────────────────────────────────────────────────────────
+
+    /// Names the user gave stations, by station ID.
+    pub fn station_names(&self) -> rusqlite::Result<HashMap<String, String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare("SELECT station_id, name FROM station_names")?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect()
+    }
+
+    /// The name the user gave a station, if any.
+    pub fn station_name(&self, station_id: &str) -> rusqlite::Result<Option<String>> {
+        self.conn()
+            .query_row(
+                "SELECT name FROM station_names WHERE station_id = ?1",
+                params![station_id],
+                |r| r.get(0),
+            )
+            .optional()
+    }
+
+    /// Names a station; a blank name gives it back its own. Returns the name kept, if any.
+    pub fn set_station_name(
+        &self,
+        station_id: &str,
+        name: Option<&str>,
+    ) -> rusqlite::Result<Option<String>> {
+        let name = name.map(str::trim).filter(|n| !n.is_empty());
+        let conn = self.conn();
+        match name {
+            Some(name) => conn.execute(
+                "INSERT INTO station_names (station_id, name) VALUES (?1, ?2)
+                 ON CONFLICT(station_id) DO UPDATE SET name = excluded.name",
+                params![station_id, name],
+            )?,
+            None => conn.execute(
+                "DELETE FROM station_names WHERE station_id = ?1",
+                params![station_id],
+            )?,
+        };
+        Ok(name.map(str::to_owned))
+    }
 }
 
 type Migration = fn(&Connection) -> rusqlite::Result<()>;
@@ -362,6 +406,7 @@ const MIGRATIONS: &[Migration] = &[
     history_and_likes_indexes,
     history_station_names,
     drop_station_reports,
+    station_names,
 ];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
@@ -438,6 +483,17 @@ fn history_station_names(conn: &Connection) -> rusqlite::Result<()> {
 /// was always empty, and a future report feature would need a table of its own.
 fn drop_station_reports(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch("DROP TABLE IF EXISTS station_reports;")
+}
+
+/// Version 5: the names the user gives stations. Read over the name stored with each history row,
+/// like and session, which keeps the name the station had then (the title parser relies on it).
+fn station_names(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS station_names (
+             station_id TEXT PRIMARY KEY,
+             name       TEXT NOT NULL
+         );",
+    )
 }
 
 /// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).
@@ -682,6 +738,26 @@ pub(super) mod tests {
             db.get_list("track_services").unwrap(),
             Some(vec!["bandcamp".into(), "genius".into()])
         );
+    }
+
+    #[test]
+    fn station_names_are_set_trimmed_and_cleared() {
+        let db = Database::open_in_memory().unwrap();
+        assert_eq!(db.station_name("a").unwrap(), None);
+        assert_eq!(
+            db.set_station_name("a", Some("  Groove Salad ")).unwrap(),
+            Some("Groove Salad".to_owned())
+        );
+        db.set_station_name("b", Some("Drone Zone")).unwrap();
+        db.set_station_name("b", Some("Drones")).unwrap();
+        assert_eq!(
+            db.station_name("a").unwrap().as_deref(),
+            Some("Groove Salad")
+        );
+        assert_eq!(db.station_names().unwrap().len(), 2);
+        assert_eq!(db.set_station_name("a", Some(" ")).unwrap(), None);
+        db.set_station_name("b", None).unwrap();
+        assert!(db.station_names().unwrap().is_empty());
     }
 
     #[test]

@@ -864,6 +864,36 @@ pub async fn remove_personal_station(
     with_db(&db, move |db| Ok(db.remove_personal_station(&station_id)?)).await
 }
 
+// ── Station names ──────────────────────────────────────────────────────────────
+
+/// Names the user gave stations, by station ID: shown instead of the catalog's.
+#[tauri::command]
+pub async fn get_station_names(
+    db: State<'_, Database>,
+) -> AppResult<std::collections::HashMap<String, String>> {
+    with_db(&db, |db| Ok(db.station_names()?)).await
+}
+
+/// Names a station; a blank or missing name gives it back its own. Returns the name kept. The
+/// media controls follow at once when the station is on air.
+#[tauri::command]
+pub async fn set_station_name(
+    app: AppHandle,
+    station_id: String,
+    name: Option<String>,
+) -> AppResult<Option<String>> {
+    blocking(move || {
+        let db = app.state::<Database>();
+        let kept = db.set_station_name(&station_id, name.as_deref())?;
+        let on_air = app.state::<AudioState>().station();
+        if on_air.is_some_and(|s| s.id == station_id) {
+            app.state::<CoversState>().0.rename(kept.clone());
+        }
+        Ok(kept)
+    })
+    .await
+}
+
 // ── Favorites ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
