@@ -4450,6 +4450,7 @@ dependencies = [
 name = "soundfolk"
 version = "0.2.0"
 dependencies = [
+ "base64 0.22.1",
  "cpal",
  "ebur128",
  "encoding_rs",

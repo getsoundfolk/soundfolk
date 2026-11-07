@@ -7,7 +7,8 @@
 //!   on the Cover Art Archive. Off by default: the artist and title leave the device.
 //!
 //! Sources are asked from top to bottom and the first cover found wins; a disabled source is never
-//! asked. Without any, the station's logo (its Radio-Browser favicon) is shown. While an online
+//! asked. Without any, the station's logo (its Radio-Browser favicon, kept on disk: see [`logos`])
+//! is shown. While an online
 //! lookup runs, the next source's cover is shown. A result (even "none") is cached in the database,
 //! so a track that comes back on air is not looked up again.
 //!
@@ -26,6 +27,9 @@ use crate::db::Database;
 use crate::media_controls::SystemMedia;
 use crate::musicbrainz::{LookupError, MusicBrainz};
 use crate::tracks;
+
+mod logos;
+use logos::{Logo, LogoCache};
 
 /// Setting: the cover sources in order, with their switch (JSON list of [`CoverSource`]).
 pub const SETTING_COVER_SOURCES: &str = "cover_sources";
@@ -164,7 +168,9 @@ struct State {
     /// Radio-Browser UUID of the station playing.
     station_id: Option<String>,
     /// Logos of the stations played since launch (`None`: the station has none).
-    logos: HashMap<String, Option<String>>,
+    logos: HashMap<String, Option<Logo>>,
+    /// Stations whose logo was read from disk, and fetched again if need be, since launch.
+    logos_checked: HashSet<String>,
     /// Picture last given to the media controls.
     media_picture: Option<String>,
     /// The cover sources, read from the database once, then kept by [`Covers::set_sources`].
@@ -175,6 +181,7 @@ pub struct Covers {
     app: tauri::AppHandle,
     mb: Option<Arc<MusicBrainz>>,
     media: Arc<SystemMedia>,
+    logo_cache: LogoCache,
     /// `file://` address of the Soundfolk icon, for the media controls of a station without a logo.
     app_icon: Option<String>,
     state: Mutex<State>,
@@ -208,10 +215,12 @@ impl Covers {
         media: Arc<SystemMedia>,
     ) -> Arc<Self> {
         let app_icon = app_icon_file(&app);
+        let logo_cache = LogoCache::new(app.path().app_cache_dir().ok().map(|d| d.join("logos")));
         Arc::new(Self {
             app,
             mb,
             media,
+            logo_cache,
             app_icon,
             state: Mutex::new(State::default()),
         })
@@ -261,26 +270,51 @@ impl Covers {
         );
     }
 
-    /// A station starts: its logo is fetched once per launch from the catalog, to stand in for
-    /// missing cover art. `catalog_id` is `None` for a station outside the catalog (no logo).
+    /// A station starts: its logo stands in for missing cover art. The one kept on disk is shown at
+    /// once; it is fetched from the catalog when there is none yet or it is old, once per launch.
+    /// `catalog_id` is `None` for a station outside the catalog (no logo).
     pub fn set_station(self: &Arc<Self>, catalog_id: Option<String>) {
-        let fetch = {
+        let check = {
             let mut state = self.state();
             state.station_id = catalog_id.clone();
-            catalog_id.filter(|id| !state.logos.contains_key(id))
+            catalog_id.filter(|id| state.logos_checked.insert(id.clone()))
         };
+        let Some(id) = check else {
+            return self.resolve(false);
+        };
+        let cached = self.logo_cache.cached(&id);
+        let fresh = cached.as_ref().is_some_and(|(_, stale)| !stale);
+        if let Some((logo, _)) = cached {
+            self.state().logos.insert(id.clone(), Some(logo));
+        }
         self.resolve(false);
-        let Some(id) = fetch else { return };
+        if fresh {
+            return;
+        }
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
             let catalog = this.app.state::<crate::commands::CatalogState>().0.clone();
-            let logo = match catalog.station(&id).await {
+            let favicon = match catalog.station(&id).await {
                 Ok(station) => station
                     .and_then(|s| s.favicon)
                     .and_then(|f| web_address(&f)),
                 Err(e) => {
-                    // Not remembered: tried again the next time the station starts.
+                    // Tried again the next time the station starts; a kept logo stays meanwhile.
+                    this.state().logos_checked.remove(&id);
                     return tracing::debug!("station logo not found: {e}");
+                }
+            };
+            let logo = match favicon {
+                Some(url) => match this.logo_cache.fetch(&id, &url).await {
+                    Ok(logo) => Some(logo),
+                    Err(e) => {
+                        this.state().logos_checked.remove(&id);
+                        return tracing::debug!("station logo not downloaded: {e}");
+                    }
+                },
+                None => {
+                    this.logo_cache.forget(&id);
+                    None
                 }
             };
             this.state().logos.insert(id, logo);
@@ -361,10 +395,10 @@ impl Covers {
             None => Cover {
                 title: now_playing.title.clone(),
                 logo: logo.is_some(),
-                url: logo.clone(),
+                url: logo.as_ref().map(|l| l.inline.clone()),
             },
         };
-        let picture = logo.or_else(|| self.app_icon.clone());
+        let picture = logo.and_then(|l| l.file).or_else(|| self.app_icon.clone());
         let (changed, picture_changed) = {
             let mut state = self.state();
             // The title moved on while this one was being resolved: the newer call shows it.

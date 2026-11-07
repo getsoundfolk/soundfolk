@@ -57,13 +57,13 @@
   });
 
   // Cover art of the track on air, from the sources set in ⚙ › Cover art (only while it is
-  // still the title it was found for), or the station's logo. An image that fails to load is
-  // hidden rather than shown broken.
+  // still the title it was found for), or the station's logo (inline, kept on disk by the
+  // backend). An image that fails to load is hidden rather than shown broken.
   let brokenCover = $state<string | null>(null);
   const cover = $derived.by(() => {
     const { title, url } = player.cover;
     if (!url || title !== player.nowPlaying.title || url === brokenCover) return null;
-    return /^https?:\/\//i.test(url) ? url : null;
+    return /^(https?:\/\/|data:image\/)/i.test(url) ? url : null;
   });
 
   // Volume: the filled part of the track and the speaker's waves.
