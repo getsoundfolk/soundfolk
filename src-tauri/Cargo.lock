@@ -4448,7 +4448,7 @@ dependencies = [
 
 [[package]]
 name = "soundfolk"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "ebur128",
@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "soundfolk-nowplaying"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ego-tree",
  "fastrand",
