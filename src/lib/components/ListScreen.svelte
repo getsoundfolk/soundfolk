@@ -142,6 +142,7 @@
           favorite={player.isFavorite(s.id)}
           onplay={() => player.play(playableOf(s))}
           onfavorite={() => player.toggleFavorite(playableOf(s))}
+          oninfo={() => ui.showStation(s)}
         />
       {/each}
     </ul>

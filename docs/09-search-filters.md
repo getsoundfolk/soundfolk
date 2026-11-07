@@ -183,8 +183,9 @@ anything (as raw ICY titles, see the TODO).
 Details are not shown on hover: hover does not exist on touch screens, is not reachable with the keyboard, and its
 content can be neither clicked nor copied. Hover only gives the full name and the date of the last check.
 
-The station sheet (`StationSheet.svelte`) shows the station in the player only, today; it opens for any station. Its
-parts tied to playback (track on air, recipes) show only for the station playing. From a list, in this order:
+The station sheet (`StationSheet.svelte`) opens for any station: from the player (ⓘ), and from a result or list row
+(ⓘ or a right-click), with ▶ Play and ☆ in its header to decide from there. Its parts tied to playback (track on air,
+recipes, volume) show only for the station playing. From a list, in this order (all but 3 done):
 1. Name, logo, genres, country, language, link to the website.
 2. Quality in words, figures below: "Good quality — AAC 128 kbit/s".
 3. **Other streams of this station** (its duplicates), each with its bitrate and ▶. This is where codec and bitrate

@@ -14,6 +14,8 @@
     onplay: () => void;
     onfavorite: () => void;
     onremove?: () => void;
+    /** Opens the station sheet (ⓘ, or a right-click on the row). */
+    oninfo?: () => void;
   }
 
   let {
@@ -26,10 +28,20 @@
     onplay,
     onfavorite,
     onremove,
+    oninfo,
   }: Props = $props();
 </script>
 
-<li class={styles.row} data-active={active}>
+<li
+  class={styles.row}
+  data-active={active}
+  oncontextmenu={oninfo
+    ? (e) => {
+        e.preventDefault();
+        oninfo();
+      }
+    : undefined}
+>
   <button
     class={styles.play}
     type="button"
@@ -51,6 +63,15 @@
     {/if}
   </div>
 
+  {#if oninfo}
+    <button
+      class={styles.icon}
+      type="button"
+      aria-label={`Details of ${name}`}
+      title="Details"
+      onclick={oninfo}><Icon name="info" /></button
+    >
+  {/if}
   {#if onremove}
     <button
       class={styles.icon}
