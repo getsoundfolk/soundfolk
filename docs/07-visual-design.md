@@ -24,14 +24,21 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
   read the same on every surface.
 * **Three text roles:** `--color-text` (names, titles), `--color-text-soft` / `--color-text-muted` (secondary
   information), `--color-text-subtle` (hints, timestamps). `--color-disabled` only for disabled controls.
-* **Amber is rare.** `--color-accent` (`#f0a028`, the tuner's dial light) appears only on:
+* **Orange is rare.** `--color-accent` (`#c2410c`) appears only on:
   * the play button;
   * the selected tab;
   * the station on air (a small lamp before its name);
   * the highest value of each chart.
 
-  Everything else — chips, links, toggles, secondary buttons — stays neutral. When amber is used as text or as an
-  icon on a surface, use `--color-accent-text` (darker in the light theme for contrast).
+  Everything else — chips, links, toggles, secondary buttons — stays neutral. When orange is used as text or as an
+  icon on a surface, use `--color-accent-text` (`#f97316` in the dark theme, 6.3:1 on a surface; `#c2410c` in the light one).
+  On the accent, `--color-on-accent` is white in both themes. The brand orange `#ea580c` (the logo's) is not the
+  interface's: white on it only reaches 3.6:1, short of WCAG AA for text, so buttons use the darker `#c2410c`
+  (5.2:1) in both themes. A brand color need not be an accessible interface color.
+* **The same colors on desktop and mobile; only the interactive state changes.** `--color-accent-hover`
+  (`#9a3412` light, 7.3:1 with white; `#cc4a0e` dark, 4.6:1) is the hover state on desktop and the pressed state on
+  touch screens. On mobile, hover styles go under `@media (hover: hover)`, so that a tapped button does not stay
+  lit, and the same colors move to `:active`.
 * **Status colors** (success, info, warning, error, danger) are toned to sit inside the ramp: a tinted background, a
   border and a text color per status, never a saturated fill except for a destructive confirm button.
 * `--color-like` is reserved for the heart of a liked track.
@@ -100,7 +107,7 @@ covers with 8 px corners, one-pixel low-opacity borders, filters as chips on the
 
 ## 9. Checklist for a new screen or component
 - [ ] Colors only through `--color-*` tokens, tried in both themes.
-- [ ] No amber outside the four uses of §2.
+- [ ] No orange outside the four uses of §2.
 - [ ] Text that can be cut has its full text in `title`; track titles get two lines (§6).
 - [ ] Sizes, weights and radii from the scales above.
 - [ ] Icons from `Icon.svelte`, with a label on the button.

@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* Colors: one neutral ramp per theme, one amber accent (the tuner's dial light), status colors
-   toned to sit inside the ramp. Dark is the default; src/lib/theme.ts sets `data-theme` on <html>
+/* Colors: one neutral ramp per theme, one orange accent, status colors toned to sit inside the
+   ramp. The brand orange (#ea580c, the logo's) carries white text at only 3.6:1: buttons take the
+   darker #c2410c in both themes (5.2:1 with white); orange text and icons on a dark surface take
+   a lighter #f97316. Dark is the default; src/lib/theme.ts sets `data-theme` on <html>
    to "light" or "dark", resolving Settings › Appearance › System from the desktop's preference. */
 :root {
   /* Surfaces, darkest to lightest. */
@@ -29,19 +31,19 @@
 
   /* Accent: the primary action, the selection, the station on air. `--color-accent-text` is the
      accent used as text or as an icon on a surface (darker on light themes for contrast). */
-  --color-accent: #f0a028;
-  --color-accent-hover: #ffb443;
-  --color-accent-text: #f0a028;
-  --color-on-accent: #1a1204;
-  --color-accent-tint: rgb(240 160 40 / 0.12);
-  --color-accent-ring: rgb(240 160 40 / 0.45);
+  --color-accent: #c2410c;
+  --color-accent-hover: #cc4a0e;
+  --color-accent-text: #f97316;
+  --color-on-accent: #ffffff;
+  --color-accent-tint: rgb(234 88 12 / 0.14);
+  --color-accent-ring: rgb(249 115 22 / 0.5);
   --color-focus: var(--color-accent-text);
   --color-focus-contrast: #fff;
   --color-knob: #ededed;
   --color-like: #f2667a;
 
   /* Status. */
-  --color-success: #4cc38a;
+  --color-success: #10b981;
   --color-success-text: #9ee0b0;
   --color-success-bg: #16231b;
   --color-success-border: #2a4433;
@@ -80,35 +82,35 @@
 }
 
 :root[data-theme='light'] {
-  --color-bg: #f2f2f3;
+  --color-bg: #f6f8fa;
   --color-surface: #ffffff;
-  --color-surface-raised: #f7f7f8;
+  --color-surface-raised: #f9fafb;
   --color-surface-overlay: #ffffff;
-  --color-surface-hover: #f0f0f1;
-  --color-surface-high: #ebebed;
-  --color-surface-higher: #e3e3e6;
-  --color-surface-control: #d2d2d6;
-  --color-border: rgb(23 23 23 / 0.08);
-  --color-border-strong: rgb(23 23 23 / 0.12);
-  --color-border-control: rgb(23 23 23 / 0.16);
-  --color-border-bold: rgb(23 23 23 / 0.22);
-  --color-border-hover: rgb(23 23 23 / 0.28);
-  --color-text: #171717;
-  --color-text-soft: #3d3d3d;
-  --color-text-muted: #555558;
-  --color-text-subtle: #737376;
-  --color-disabled: #a3a3a6;
-  --color-accent: #f0a028;
-  --color-accent-hover: #f5ad3d;
-  --color-accent-text: #985700;
-  --color-on-accent: #1a1204;
-  --color-accent-tint: rgb(240 160 40 / 0.16);
-  --color-accent-ring: rgb(152 87 0 / 0.45);
+  --color-surface-hover: #f3f4f6;
+  --color-surface-high: #eef0f3;
+  --color-surface-higher: #e5e7eb;
+  --color-surface-control: #d1d5db;
+  --color-border: rgb(17 24 39 / 0.1);
+  --color-border-strong: rgb(17 24 39 / 0.13);
+  --color-border-control: rgb(17 24 39 / 0.17);
+  --color-border-bold: rgb(17 24 39 / 0.23);
+  --color-border-hover: rgb(17 24 39 / 0.29);
+  --color-text: #111827;
+  --color-text-soft: #374151;
+  --color-text-muted: #4b5563;
+  --color-text-subtle: #6b7280;
+  --color-disabled: #9ca3af;
+  --color-accent: #c2410c;
+  --color-accent-hover: #9a3412;
+  --color-accent-text: #c2410c;
+  --color-on-accent: #ffffff;
+  --color-accent-tint: rgb(194 65 12 / 0.1);
+  --color-accent-ring: rgb(194 65 12 / 0.45);
   --color-focus-contrast: #fff;
   --color-knob: #ffffff;
   --color-like: #d6334f;
-  --color-success: #16a34a;
-  --color-success-text: #15803d;
+  --color-success: #059669;
+  --color-success-text: #047857;
   --color-success-bg: #effaf3;
   --color-success-border: #bfe5cb;
   --color-info: #3b5bdb;

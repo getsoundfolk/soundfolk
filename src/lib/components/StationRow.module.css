@@ -86,7 +86,7 @@
   transform: scale(0.97);
 }
 
-/* The station on air: a small amber lamp before its name, here and wherever it is listed. */
+/* The station on air: a small orange lamp before its name, here and wherever it is listed. */
 .onAir {
   display: inline-block;
   width: 0.375rem;
