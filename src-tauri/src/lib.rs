@@ -523,6 +523,7 @@ pub fn run() {
             commands::set_track_identification,
             commands::search_stations,
             commands::get_station,
+            commands::surprise_candidates,
             commands::resolve_station,
             commands::get_click_counting,
             commands::set_click_counting,

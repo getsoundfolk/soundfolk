@@ -1,11 +1,12 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
-<!-- A curated list as a Discover row (docs/10-discovery.md §5.2): its header, its first stations to
-     play in one click, Surprise me and "See all", which opens the list's screen. -->
+<!-- A curated list as a Discover row (docs/10-discovery.md §5.2): its title with its curators, one
+     line of description, "See all" (the list's screen, which also has Surprise me) and its first
+     stations to play in one click. -->
 <script lang="ts">
   import type { CuratedList, Station } from '../api';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
-  import { pickRandom, playableOf } from '../stations';
+  import { playableOf } from '../stations';
   import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
@@ -37,33 +38,29 @@
     };
   });
 
-  const healthy = $derived(stations.filter((s) => s.health.status === 'ok'));
   const favorite = $derived(lists.isFavorite(list.id));
-
-  function surprise() {
-    const pick = pickRandom(
-      healthy.length ? healthy : stations,
-      (s) => s.id === player.current?.id,
-    );
-    if (pick) player.play(playableOf(pick));
-  }
 </script>
 
 <section class={styles.row} aria-labelledby={`row-${list.id}`}>
   <header class={styles.header}>
     <div class={styles.text}>
-      <button
-        class={styles.title}
-        id={`row-${list.id}`}
-        type="button"
-        onclick={() => ui.openList(list.id)}>{list.title}</button
-      >
-      <p class={styles.meta}>
-        by {list.curators.map((c) => `@${c}`).join(', ')} · {list.items.length}
-        {list.items.length === 1 ? 'station' : 'stations'}
-      </p>
+      <h3 class={styles.heading}>
+        <button
+          class={styles.title}
+          id={`row-${list.id}`}
+          type="button"
+          onclick={() => ui.openList(list.id)}>{list.title}</button
+        >
+        <span class={styles.by}>by {list.curators.map((c) => `@${c}`).join(', ')}</span>
+      </h3>
       <p class={styles.description}>{list.description}</p>
     </div>
+    <button
+      class={styles.link}
+      type="button"
+      aria-label={`See all ${list.items.length} stations of ${list.title}`}
+      onclick={() => ui.openList(list.id)}>See all {list.items.length}</button
+    >
     <button
       class={styles.star}
       type="button"
@@ -102,11 +99,4 @@
       </li>
     {/each}
   </ul>
-
-  <div class={styles.actions}>
-    <button class={styles.link} type="button" disabled={stations.length === 0} onclick={surprise}
-      >Surprise me</button
-    >
-    <button class={styles.link} type="button" onclick={() => ui.openList(list.id)}>See all</button>
-  </div>
 </section>

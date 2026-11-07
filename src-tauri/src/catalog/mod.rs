@@ -9,6 +9,7 @@
 pub mod dedup;
 pub mod name_query;
 pub mod radio_browser;
+pub mod surprise;
 
 use std::collections::HashSet;
 use std::future::Future;
@@ -27,6 +28,10 @@ pub trait CatalogSource: Send + Sync {
     /// Several stations by their catalog IDs, in the order of `ids`; the ones the catalog no
     /// longer has are left out.
     fn stations<'a>(&'a self, ids: &'a [String]) -> CatalogFuture<'a, Vec<Station>>;
+
+    /// `limit` stations drawn at random among those the catalog's last check found up (Surprise
+    /// me, see [`surprise`]).
+    fn random<'a>(&'a self, limit: u32) -> CatalogFuture<'a, Vec<Station>>;
 
     /// Reports that a user started playing the station (popularity rankings).
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()>;

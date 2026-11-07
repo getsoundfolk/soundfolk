@@ -14,6 +14,13 @@ import {
   type TitleStatus,
 } from './api';
 import { errors } from './errors.svelte';
+import { playableOf } from './stations';
+
+/** How long a surprise station has to be heard before the next one is tried. Working streams
+ *  were measured at 0.6 to 1 s to the first sound (SomaFM near 1 s): twice the slowest. */
+const SURPRISE_WAIT_MS = 2000;
+/** Catalog draws one Surprise me may make before it gives up. */
+const SURPRISE_DRAWS = 3;
 
 class PlayerStore {
   state = $state<PlayerState>({ status: 'idle' });
@@ -35,6 +42,11 @@ class PlayerStore {
   goneFavorite = $state<string | null>(null);
   /** Favorites that Next / Previous skipped to reach the station on air. */
   skipped = $state<Skipped[]>([]);
+
+  /** Surprise me is looking for a station that plays. */
+  surprising = $state(false);
+  /** Stations already offered by Surprise me in this run: never twice. */
+  private surprised = new Set<string>();
 
   /** Audio is (or is about to be) playing: the main button shows Pause. */
   active = $derived(['connecting', 'reconnecting', 'playing'].includes(this.state.status));
@@ -105,6 +117,53 @@ class PlayerStore {
     await this.run(async () => {
       const outcome = await api.playStream(station.url, station.id, station.name);
       if (outcome.show_click_notice) this.clickNotice = true;
+    });
+  }
+
+  /** Surprise me (docs/10-discovery.md §4.1): plays a random music station that is actually
+   *  heard. Candidates come from the backend (healthy, tagged as music, not talk); each one gets
+   *  a few seconds to sound, otherwise the next is tried, silently. Choosing a station meanwhile
+   *  stops the search. */
+  async surprise() {
+    if (this.surprising) return;
+    this.surprising = true;
+    try {
+      for (let draw = 0; draw < SURPRISE_DRAWS; draw++) {
+        const found = await api.surpriseCandidates(this.current?.id ?? null);
+        for (const s of found) {
+          if (this.surprised.has(s.id)) continue;
+          this.surprised.add(s.id);
+          const station = playableOf(s);
+          await this.play(station);
+          const heard = await this.heard();
+          if (this.current?.id !== station.id) return; // the listener chose another station
+          if (heard) return;
+        }
+      }
+      await this.stop();
+      errors.report('player', 'Nothing playable came up. Try Surprise me again.');
+    } catch (e) {
+      errors.report('player', e);
+    } finally {
+      this.surprising = false;
+    }
+  }
+
+  /** Waits until the station just started is heard (true), fails or stays silent (false). */
+  private heard(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const start = Date.now();
+      const timer = setInterval(() => {
+        const status = this.state.status;
+        const done = status === 'playing' || status === 'paused';
+        // Reconnecting right after a start means the stream failed and the engine retries:
+        // for a surprise, the next station is quicker.
+        const failed = status === 'error' || status === 'reconnecting';
+        if (done || failed || Date.now() - start > SURPRISE_WAIT_MS) {
+          clearInterval(timer);
+          resolve(done);
+        }
+      }, 200);
     });
   }
 

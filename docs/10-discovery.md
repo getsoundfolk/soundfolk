@@ -103,6 +103,13 @@ One tap plays a station drawn at random among those matching the active chips. B
 
 No chips selected is fine: the whole catalog, same floor.
 
+**Built so far** (a small button beside the search box, which comes first in Discover, `catalog/surprise.rs`, `player.surprise()`): a random draw of 60
+stations the catalog found up, kept only when their tags name a kind of music and none of talk (news, talk, sport,
+podcast, religion…), not HLS, bitrate unknown or ≥ 64 kbit/s; about a third of a draw passes. Maintained entries
+first, then each candidate gets 2 s to be heard (working streams measured at 0.6 to 1 s), and is dropped at once if the engine reports a failure or starts
+reconnecting. Three draws at most. Not yet: chips, the history and favorites
+exclusions, Another one.
+
 ### 4.2 Scan
 The tuner of an old radio: Soundfolk changes station on its own every few seconds until the listener stops on one.
 

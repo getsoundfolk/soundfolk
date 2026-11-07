@@ -228,6 +228,9 @@ export const api = {
   searchStations: (query: SearchQuery) => invoke<SearchPage>('search_stations', { query }),
   /** A catalog station by its id (a Radio-Browser UUID); null when the catalog no longer has it. */
   getStation: (stationId: string) => invoke<Station | null>('get_station', { stationId }),
+  /** Healthy music stations drawn at random, in the order to try them (Surprise me). */
+  surpriseCandidates: (exclude: string | null) =>
+    invoke<Station[]>('surprise_candidates', { exclude }),
 
   listFavorites: () => invoke<Favorite[]>('list_favorites'),
   addFavorite: (favorite: Favorite) => invoke<void>('add_favorite', { favorite }),

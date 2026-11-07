@@ -261,6 +261,18 @@ impl RadioBrowser {
 }
 
 impl CatalogSource for RadioBrowser {
+    fn random<'a>(&'a self, limit: u32) -> CatalogFuture<'a, Vec<Station>> {
+        Box::pin(async move {
+            let params = [
+                ("order", "random".to_owned()),
+                ("hidebroken", "true".to_owned()),
+                ("limit", limit.clamp(1, super::MAX_LIMIT).to_string()),
+            ];
+            let body = self.get("json/stations/search", &params).await?;
+            Ok(parse_stations(&body)?.0)
+        })
+    }
+
     fn search<'a>(&'a self, query: &'a SearchQuery) -> CatalogFuture<'a, SearchPage> {
         Box::pin(async move {
             let q = query.sanitized()?;

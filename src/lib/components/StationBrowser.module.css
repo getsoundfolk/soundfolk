@@ -96,8 +96,47 @@
   scrollbar-gutter: stable; /* fixed width: no shift when the scrollbar comes and goes */
 }
 
+/* The search box first, Surprise me small beside it (docs/10-discovery.md §3). */
+.searchRow {
+  display: flex;
+  gap: 0.5rem;
+  flex: none;
+}
+
+.surprise {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 0.5rem;
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease);
+}
+
+.surprise:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+}
+
+.surprise:disabled {
+  color: var(--color-text-muted);
+  cursor: progress;
+}
+
+.surprise:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
 .search {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border-strong);
   border-radius: 0.5rem;
@@ -182,6 +221,14 @@
   margin: 0;
   font-size: 1rem;
   font-weight: 500;
+}
+
+/* Search results: "Lists", then "Stations", when both are there. */
+.resultsTitle {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
 }
 
 .link {

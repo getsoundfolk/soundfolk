@@ -397,16 +397,25 @@
     {:else if openedList && listTab === 'discover'}
       <ListScreen list={openedList} back="Discover" />
     {:else}
-      <input
-        class={styles.search}
-        type="search"
-        bind:this={searchField}
-        placeholder="Search"
-        aria-label="Search stations and lists"
-        bind:value={text}
-        spellcheck="false"
-        autocomplete="off"
-      />
+      <div class={styles.searchRow}>
+        <input
+          class={styles.search}
+          type="search"
+          bind:this={searchField}
+          placeholder="Search stations and lists"
+          aria-label="Search stations and lists"
+          bind:value={text}
+          spellcheck="false"
+          autocomplete="off"
+        />
+        <button
+          class={styles.surprise}
+          type="button"
+          disabled={player.surprising}
+          title={player.surprising ? 'Finding a station…' : 'Play a random station'}
+          onclick={() => player.surprise()}><Icon name="shuffle" size={16} />Surprise me</button
+        >
+      </div>
 
       {#if text.trim() === ''}
         {#each lists.all as l (l.id)}
@@ -419,6 +428,7 @@
         {/each}
       {:else}
         {#if matchingLists.length}
+          <h2 class={styles.resultsTitle}>Lists</h2>
           <ul class={styles.cardStrip} aria-label="Matching lists">
             {#each matchingLists as l (l.id)}
               <li class={styles.card}>
@@ -429,6 +439,7 @@
               </li>
             {/each}
           </ul>
+          <h2 class={styles.resultsTitle}>Stations</h2>
         {/if}
 
         <ul class={styles.list}>

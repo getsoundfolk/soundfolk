@@ -17,7 +17,7 @@ use crate::audio::{
     self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, RecipeTest, StationRef,
     TitleStatus, WebTitles,
 };
-use crate::catalog::{CatalogSource, SearchPage, SearchQuery, Station};
+use crate::catalog::{surprise, CatalogSource, SearchPage, SearchQuery, Station};
 use crate::covers::{self, Cover, CoverSource, Covers};
 use crate::db::{
     Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, Stats,
@@ -760,6 +760,20 @@ pub async fn get_station(
 ) -> AppResult<Option<Station>> {
     Ok(catalog.0.station(&station_id).await?)
 }
+
+/// Stations drawn in the catalog for Surprise me: up for music, in the order to try them
+/// (see [`surprise`]). Can be empty; the frontend then draws again.
+#[tauri::command]
+pub async fn surprise_candidates(
+    catalog: State<'_, CatalogState>,
+    exclude: Option<String>,
+) -> AppResult<Vec<Station>> {
+    let draw = catalog.0.random(SURPRISE_DRAW).await?;
+    Ok(surprise::candidates(draw, exclude.as_deref()))
+}
+
+/// How many stations one Surprise me request draws: about half pass the filters.
+const SURPRISE_DRAW: u32 = 60;
 
 /// What the player needs to play a station, whatever its origin.
 #[derive(Debug, Serialize)]
