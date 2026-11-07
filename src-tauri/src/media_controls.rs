@@ -413,26 +413,32 @@ fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
     play_favorite(app, next, Vec::new())
 }
 
-/// Plays `next`, and tells the window which station is now on air.
+/// Plays `next`, and tells the window which station is now on air: before the sound output opens
+/// (a few hundred ms), so the new name shows at once, with *Connecting…*, while the engine clears
+/// the previous title.
 fn play_favorite(app: &tauri::AppHandle, next: Favorite, skipped: Vec<Skipped>) -> AppResult<()> {
-    let outcome = start_station(
-        app,
-        next.stream_url.clone(),
-        Some(next.station_id.clone()),
-        Some(next.name.clone()),
-    )?;
-    let change = StationChange {
-        id: next.station_id,
-        name: next.name,
-        url: next.stream_url,
+    let mut change = StationChange {
+        id: next.station_id.clone(),
+        name: next.name.clone(),
+        url: next.stream_url.clone(),
         genre: next.genre,
-        show_click_notice: outcome.show_click_notice,
+        show_click_notice: false,
         skipped,
     };
+    emit_station(app, &change);
+    let outcome = start_station(app, next.stream_url, Some(next.station_id), Some(next.name))?;
+    // Known only once playing: the window shows the click-counting notice on the same station.
+    if outcome.show_click_notice {
+        change.show_click_notice = true;
+        emit_station(app, &change);
+    }
+    Ok(())
+}
+
+fn emit_station(app: &tauri::AppHandle, change: &StationChange) {
     if let Err(e) = app.emit(STATION_EVENT, change) {
         tracing::warn!("failed to emit the new station: {e}");
     }
-    Ok(())
 }
 
 /// The favorite before or after `current` in the list, wrapping around. From a station that is not

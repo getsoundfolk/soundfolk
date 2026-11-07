@@ -89,6 +89,9 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
   on one line beside a small one when compact; the full text in `title`. Artist and title come apart from the source
   when it gives them that way, otherwise as the history split them; a title the history did not log (a jingle) is
   shown whole, and a title that only repeats the station's name is no track.
+* **Changing station:** the new station's name shows at once, with *Connecting…*; the previous title, artist, up next
+  and cover are hidden until something comes for the new station (`onAir.svelte.ts` keeps each with the station it
+  came for), so the new station never seems to play the old track.
 * **Track notifications and History** stay centered on tracks: their job is the track, not the listening.
 * **Track titles in History** wrap to two lines before the ellipsis, the artist on the line below.
 * Station names, list names and secondary lines stay on **one line** with an ellipsis.
