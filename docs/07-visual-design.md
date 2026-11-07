@@ -63,9 +63,16 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * Tiles in a grid have equal heights (Discover).
 
 ## 6. Long text
-* **Track titles** (the player, History) wrap to **two lines** before the ellipsis: "Artist - Title" rarely fits one
-  line of a narrow window.
+* **The player** gives each piece its line, beside a 112 px cover: the **title** (two lines before the ellipsis),
+  the **artist**, then the **station**; play and a short volume slider sit below them, still beside the cover, so the
+  large cover costs no height. The player is the only view of the track on air: there is no larger "now playing"
+  screen for the cover to grow into (a compact mini-player is in `TODO.md`). Artist and title come apart from the source when it gives them that way,
+  otherwise as the history split them; a title the history did not log (a jingle, the station's own name) is shown
+  whole. Without a title, the station alone.
+* **Track titles in History** wrap to two lines before the ellipsis, the artist on the line below.
 * Station names, list names and secondary lines stay on **one line** with an ellipsis.
+* **The player's status line** shows only what the controls do not: *Connecting…*, *Reconnecting…*, an error.
+  *Playing*, *Paused* and *Stopped* are said by the play button and the title, and stay for screen readers only.
 * Wherever text can be cut, its element carries the full text in `title`.
 * No scrolling text (marquee): it loops, which §7 rules out.
 

@@ -113,8 +113,10 @@ listening stats must be crossed with the sessions.
   station logo otherwise.
 - [x] Export the history (CSV / JSON).
 - [ ] Search filters by codec and bitrate (country and tag already exist).
-- [ ] Follow the system light / dark theme (today dark only).
-- [ ] Compact mini-player, optionally always on top.
+- [x] Follow the system light / dark theme: Settings › Appearance, System / Light / Dark (`src/lib/theme.ts`).
+- [ ] Compact mini-player, optionally always on top: a small window (cover of 56–80 px, title, artist,
+  play / pause, volume) beside the full one. The full player stays the only view of the track on air, hence its
+  112 px cover.
 - [ ] Measure memory use and keep a target (< ~50 MB idle while playing) — the main argument against Electron
   players.
 

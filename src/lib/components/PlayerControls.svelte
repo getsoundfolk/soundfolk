@@ -23,18 +23,25 @@
   } as const;
 
   const status = $derived(errors.player ? 'error' : player.state.status);
+  // Playing, paused and stopped are already said by the play button and the title on air: the
+  // line is shown only while connecting, reconnecting or failing, and stays for screen readers.
+  const quiet = $derived(status === 'playing' || status === 'paused' || status === 'idle');
   const message = $derived(
     errors.player ??
       ('message' in player.state ? player.state.message : LABELS[player.state.status]),
   );
-  // Current title if the stream announces one, otherwise the selected station.
-  // The station is named as in the list: the stream's own `icy-name` is often
-  // a mount point ("fipworld-hifi.aac") or a placeholder.
+  // Title, artist and station each on their line. Artist and title come apart from the source
+  // when it gives them that way, otherwise as the history split them; a title the history did
+  // not log (the station's own name, a jingle) is shown whole. Without a title, the station
+  // alone. The station is named as in the list: the stream's own `icy-name` is often a mount
+  // point ("fipworld-hifi.aac") or a placeholder.
   // A name the user gave the station comes first.
   const stationName = $derived(
     player.current ? stationNames.shown(player.current.id, player.current.name) : null,
   );
-  const headline = $derived(player.nowPlaying.title ?? stationName ?? 'No station');
+  const split = $derived(player.nowPlaying.track ?? history.onAir);
+  const headline = $derived(split?.title ?? player.nowPlaying.title ?? stationName ?? 'No station');
+  const artist = $derived(player.nowPlaying.title ? (split?.artist ?? null) : null);
   const subline = $derived(player.nowPlaying.title ? stationName : null);
   // Announced by the station's page: the next track, and when it starts.
   const upNext = $derived.by(() => {
@@ -152,8 +159,8 @@
           class={styles.cover}
           data-logo={player.cover.logo === true}
           src={cover}
-          width="56"
-          height="56"
+          width="112"
+          height="112"
           alt=""
           referrerpolicy="no-referrer"
           onerror={() => (brokenCover = cover)}
@@ -161,8 +168,8 @@
       {:else}
         <svg
           class={styles.placeholder}
-          width="28"
-          height="28"
+          width="44"
+          height="44"
           viewBox="0 0 24 24"
           fill="currentColor"
         >
@@ -172,131 +179,136 @@
         </svg>
       {/if}
     </div>
-    <div class={styles.info}>
-      <p class={styles.headline} title={headline}>{headline}</p>
-      {#if subline}<p class={styles.subline}>{subline}</p>{/if}
-      {#if upNext}
-        <p class={styles.next} title={upNext.text}>
-          Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
-        </p>
-      {/if}
-      {#if lists.forCurrent.length && player.current}
-        <button class={styles.inLists} type="button" onclick={ui.openStation}>
-          In {lists.forCurrent.length}
-          {lists.forCurrent.length === 1 ? 'list' : 'lists'}
-        </button>
-      {/if}
-    </div>
-    {#if history.onAir}
-      {@const track = history.onAir}
-      <button
-        class={styles.like}
-        type="button"
-        aria-pressed={track.liked}
-        aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
-        data-on={track.liked}
-        onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
-        ><Icon name="heart" size={18} filled={track.liked} /></button
-      >
-    {/if}
-    {#if donation && player.current}
-      <button
-        class={styles.donate}
-        type="button"
-        title={`Donate to ${stationName} (${donation.domain})`}
-        onclick={() => openUrl(donation!.url).catch((e) => errors.report('player', e))}
-        >Donate</button
-      >
-    {/if}
-    <button
-      class={styles.gear}
-      type="button"
-      aria-label="Station details"
-      title="Station details"
-      disabled={!player.current}
-      onclick={ui.openStation}><Icon name="info" size={18} /></button
-    >
-    <button
-      class={styles.gear}
-      type="button"
-      aria-label="Settings"
-      title="Settings"
-      bind:this={gear}
-      onclick={ui.openSettings}><Icon name="settings" size={18} /></button
-    >
-  </div>
-
-  <div class={styles.row}>
-    <button
-      class={styles.button}
-      type="button"
-      data-active={player.active}
-      aria-label={player.active ? 'Pause' : 'Play'}
-      title={player.active ? 'Pause' : 'Play'}
-      disabled={!player.current}
-      onclick={() => player.toggle()}
-    >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        {#if player.active}
-          <rect x="6" y="5" width="4" height="14" rx="1" />
-          <rect x="14" y="5" width="4" height="14" rx="1" />
-        {:else}
-          <path
-            transform="translate(-1.5 0)"
-            d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"
-          />
-        {/if}
-      </svg>
-    </button>
-
-    <div class={styles.volume} onwheel={onWheel}>
-      <button
-        class={styles.speaker}
-        type="button"
-        aria-label={player.muted ? 'Unmute' : 'Mute'}
-        aria-pressed={player.muted}
-        title={player.muted ? 'Unmute' : 'Mute'}
-        onclick={() => player.toggleMute()}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
-          {#if level === 0}
-            <path d="m16 9 5 6m0-6-5 6" />
-          {:else}
-            <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
-            {#if level > 0.5}<path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" />{/if}
+    <div class={styles.body}>
+      <div class={styles.heading}>
+        <div class={styles.info}>
+          <p class={styles.headline} title={headline}>{headline}</p>
+          {#if artist}<p class={styles.artist} title={artist}>{artist}</p>{/if}
+          {#if subline}<p class={styles.subline} title={subline}>{subline}</p>{/if}
+          {#if upNext}
+            <p class={styles.next} title={upNext.text}>
+              Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
+            </p>
           {/if}
-        </svg>
-      </button>
-      <input
-        class={styles.slider}
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        aria-label="Volume"
-        aria-valuetext={player.muted ? `Muted (${percent} %)` : `${percent} %`}
-        title={`Volume ${percent} %`}
-        data-muted={player.muted}
-        style:--fill={`${player.volume * 100}%`}
-        value={player.volume}
-        oninput={(e) => player.setVolume(e.currentTarget.valueAsNumber)}
-        onchange={() => player.saveVolume()}
-      />
+          {#if lists.forCurrent.length && player.current}
+            <button class={styles.inLists} type="button" onclick={ui.openStation}>
+              In {lists.forCurrent.length}
+              {lists.forCurrent.length === 1 ? 'list' : 'lists'}
+            </button>
+          {/if}
+        </div>
+        {#if history.onAir}
+          {@const track = history.onAir}
+          <button
+            class={styles.like}
+            type="button"
+            aria-pressed={track.liked}
+            aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
+            data-on={track.liked}
+            onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
+            ><Icon name="heart" size={18} filled={track.liked} /></button
+          >
+        {/if}
+        {#if donation && player.current}
+          <button
+            class={styles.donate}
+            type="button"
+            title={`Donate to ${stationName} (${donation.domain})`}
+            onclick={() => openUrl(donation!.url).catch((e) => errors.report('player', e))}
+            >Donate</button
+          >
+        {/if}
+        <button
+          class={styles.gear}
+          type="button"
+          aria-label="Station details"
+          title="Station details"
+          disabled={!player.current}
+          onclick={ui.openStation}><Icon name="info" size={18} /></button
+        >
+        <button
+          class={styles.gear}
+          type="button"
+          aria-label="Settings"
+          title="Settings"
+          bind:this={gear}
+          onclick={ui.openSettings}><Icon name="settings" size={18} /></button
+        >
+      </div>
+
+      <div class={styles.row}>
+        <button
+          class={styles.button}
+          type="button"
+          data-active={player.active}
+          aria-label={player.active ? 'Pause' : 'Play'}
+          title={player.active ? 'Pause' : 'Play'}
+          disabled={!player.current}
+          onclick={() => player.toggle()}
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            {#if player.active}
+              <rect x="6" y="5" width="4" height="14" rx="1" />
+              <rect x="14" y="5" width="4" height="14" rx="1" />
+            {:else}
+              <path
+                transform="translate(-1.5 0)"
+                d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z"
+              />
+            {/if}
+          </svg>
+        </button>
+
+        <div class={styles.volume} onwheel={onWheel}>
+          <button
+            class={styles.speaker}
+            type="button"
+            aria-label={player.muted ? 'Unmute' : 'Mute'}
+            aria-pressed={player.muted}
+            title={player.muted ? 'Unmute' : 'Mute'}
+            onclick={() => player.toggleMute()}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
+              {#if level === 0}
+                <path d="m16 9 5 6m0-6-5 6" />
+              {:else}
+                <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
+                {#if level > 0.5}<path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" />{/if}
+              {/if}
+            </svg>
+          </button>
+          <input
+            class={styles.slider}
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            aria-label="Volume"
+            aria-valuetext={player.muted ? `Muted (${percent} %)` : `${percent} %`}
+            title={`Volume ${percent} %`}
+            data-muted={player.muted}
+            style:--fill={`${player.volume * 100}%`}
+            value={player.volume}
+            oninput={(e) => player.setVolume(e.currentTarget.valueAsNumber)}
+            onchange={() => player.saveVolume()}
+          />
+        </div>
+      </div>
     </div>
   </div>
 
-  <p class={styles.status} data-status={status} role="status">
+  <p class={styles.status} data-status={status} data-quiet={quiet} role="status">
     <span class={styles.dot} aria-hidden="true"></span>
     {message}
   </p>
