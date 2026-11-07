@@ -118,16 +118,18 @@
     openUrl(url).catch((e) => (error = errorMessage(e)));
   }
 
-  /** Saves the name typed (on Enter or when the field loses focus); blank gives back its own. */
+  /** Saves the name typed (on Enter or when the field loses focus). Its own name, or a blank
+   *  field, gives the station back its own name. */
   async function rename(input: HTMLInputElement) {
     if (!station) return;
     nameError = null;
     try {
-      await stationNames.rename(station.id, input.value);
+      const typed = input.value.trim();
+      await stationNames.rename(station.id, typed === station.name.trim() ? '' : typed);
     } catch (e) {
       nameError = errorMessage(e);
     }
-    input.value = stationNames.given(station.id) ?? '';
+    input.value = stationNames.given(station.id) ?? station.name;
   }
 
   async function edit() {
@@ -195,15 +197,14 @@
             id="station-sheet-name"
             class={styles.input}
             type="text"
-            value={given ?? ''}
-            placeholder={station.name}
+            value={given ?? station.name}
             aria-describedby="station-sheet-name-hint"
             spellcheck="false"
             autocomplete="off"
             onkeydown={(e) => {
               if (e.key === 'Enter') e.currentTarget.blur();
               // Escape closes the sheet: the name typed is dropped, not saved.
-              else if (e.key === 'Escape') e.currentTarget.value = given ?? '';
+              else if (e.key === 'Escape') e.currentTarget.value = given ?? station.name;
             }}
             onchange={(e) => rename(e.currentTarget)}
           />
@@ -218,7 +219,7 @@
                 >Use its own name</button
               >
             {:else}
-              Type the name you want to see for this station.
+              Change it to see this station under another name.
             {/if}
           </p>
           {#if nameError}<p class={styles.warning} role="alert">{nameError}</p>{/if}
