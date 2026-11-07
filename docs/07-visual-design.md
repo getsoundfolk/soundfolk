@@ -62,14 +62,35 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
   sheets, tiles); `999px` for pills and `50%` for round buttons.
 * Tiles in a grid have equal heights (Discover).
 
-## 6. Motion
+## 6. Long text
+* **Track titles** (the player, History) wrap to **two lines** before the ellipsis: "Artist - Title" rarely fits one
+  line of a narrow window.
+* Station names, list names and secondary lines stay on **one line** with an ellipsis.
+* Wherever text can be cut, its element carries the full text in `title`.
+* No scrolling text (marquee): it loops, which §7 rules out.
+
+## 7. Motion
 * One easing curve, `--ease`, and short durations (`--duration-fast`, 150 ms) for hover and state changes.
 * Motion confirms an action; it never loops or pulses for attention.
 * Every animation has a `prefers-reduced-motion: reduce` fallback that removes it.
 
-## 7. Checklist for a new screen or component
+## 8. Choices against common requests
+Feedback on other music and radio players (Play Store, Reddit, GitHub; a synthesis without sources, so hypotheses)
+asks for a few things Soundfolk deliberately does not do:
+* **A pure black dark theme.** The dark background stays a near-black grey (`#121213`): it limits the halo of light
+  text on black and leaves room for a ramp of raised surfaces. A `data-theme='black'` variant can come with the mobile
+  clients, where OLED screens make it worthwhile.
+* **Bitrate and codec badges on rows** ("128k MP3", "FLAC"). Lists keep to the human badges of
+  [06-ui-principles.md](06-ui-principles.md) §5 (*HD*, *ad-free*…); technical details stay in the station sheet.
+* **Soft shadows under cover art.** A raised element takes the next step of the ramp (§2), not a shadow.
+
+The same feedback confirms choices already made: no promotional content, the play button as the single focal point,
+covers with 8 px corners, one-pixel low-opacity borders, filters as chips on the results.
+
+## 9. Checklist for a new screen or component
 - [ ] Colors only through `--color-*` tokens, tried in both themes.
 - [ ] No amber outside the four uses of §2.
+- [ ] Text that can be cut has its full text in `title`; track titles get two lines (§6).
 - [ ] Sizes, weights and radii from the scales above.
 - [ ] Icons from `Icon.svelte`, with a label on the button.
 - [ ] Hover and focus visible (`--color-focus`), reduced motion respected.

@@ -56,7 +56,6 @@
   min-width: 0;
 }
 
-.headline,
 .subline,
 .next {
   margin: 0;
@@ -65,9 +64,19 @@
   white-space: nowrap;
 }
 
+/* The track on air: "Artist - Title" rarely fits one line of a narrow window, so it gets two
+   before the ellipsis; the full text stays in the tooltip. */
 .headline {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
   font-size: 1rem;
   font-weight: 500;
+  line-height: 1.3;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .subline {

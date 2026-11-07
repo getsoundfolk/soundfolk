@@ -113,7 +113,6 @@
   user-select: text;
 }
 
-.title,
 .meta {
   margin: 0;
   overflow: hidden;
@@ -121,9 +120,18 @@
   white-space: nowrap;
 }
 
+/* Track titles are long: two lines before the ellipsis, the full text in the tooltip. */
 .title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
   font-size: 0.875rem;
   font-weight: 500;
+  line-height: 1.3;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
 }
 
 .meta {

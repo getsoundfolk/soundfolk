@@ -310,8 +310,8 @@
               title="Double-click to copy"
               ondblclick={() => copy(displayTitle(row), 'Title copied')}
             >
-              <p class={styles.title}>{row.title}</p>
-              <p class={styles.meta}>{meta(row)}</p>
+              <p class={styles.title} title={row.title}>{row.title}</p>
+              <p class={styles.meta} title={meta(row)}>{meta(row)}</p>
             </div>
 
             <div class={styles.actions}>

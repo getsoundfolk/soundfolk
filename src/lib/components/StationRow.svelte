@@ -41,11 +41,11 @@
   </button>
 
   <div class={styles.text}>
-    <p class={styles.name}>
+    <p class={styles.name} title={name}>
       {#if active}<span class={styles.onAir} aria-hidden="true"></span>{/if}{name}
       {#if personal}<span class={styles.badge}>personal</span>{/if}
     </p>
-    {#if meta}<p class={styles.meta}>{meta}</p>{/if}
+    {#if meta}<p class={styles.meta} title={meta}>{meta}</p>{/if}
     {#if warning}
       <p class={styles.warning}>{warning}</p>
     {/if}
