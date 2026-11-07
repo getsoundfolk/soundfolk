@@ -11,31 +11,35 @@
   } from '../api';
   import { rovingKeydown } from '../a11y';
   import { errors } from '../errors.svelte';
+  import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
+  import { pickRandom, playableOf, warningOf } from '../stations';
   import { ui } from '../ui.svelte';
   import AddStationForm from './AddStationForm.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
-  import ListsPanel from './ListsPanel.svelte';
+  import ListRow from './ListRow.svelte';
+  import ListScreen from './ListScreen.svelte';
   import StationRow from './StationRow.svelte';
   import styles from './StationBrowser.module.css';
 
-  type Tab = 'history' | 'search' | 'lists' | 'favorites' | 'personal';
+  // The three destinations of docs/06-ui-principles.md §1: what is mine, what others offer, what I
+  // heard.
+  type Tab = 'listen' | 'discover' | 'history';
   const TABS: { id: Tab; label: string }[] = [
+    { id: 'listen', label: 'Listen' },
+    { id: 'discover', label: 'Discover' },
     { id: 'history', label: 'History' },
-    { id: 'search', label: 'Search' },
-    { id: 'lists', label: 'Lists' },
-    { id: 'favorites', label: 'Favorites' },
-    { id: 'personal', label: 'My stations' },
   ];
   const PAGE = 30;
 
-  let tab = $state<Tab>('history');
+  let tab = $state<Tab>('listen');
 
-  // A list opened from elsewhere (the station sheet) shows in the Lists tab.
+  // A list opened from elsewhere (the station sheet, a favorite) shows in Discover.
   $effect(() => {
-    if (ui.listRequest) tab = 'lists';
+    if (ui.listRequest) tab = 'discover';
   });
+  const openedList = $derived(ui.listId ? lists.get(ui.listId) : null);
 
   // ── Search (online catalog) ──────────────────────────────────────────
   let text = $state('');
@@ -76,23 +80,34 @@
   let searched: string | null = null;
 
   // Debounced search: wait for a pause in typing so the API is not hit on every keystroke.
-  // The catalog is only queried once the Search tab is open, and not again for the same text.
+  // The catalog is only queried once text is typed in Discover, and not again for the same text;
+  // without text, Discover shows its rows.
   $effect(() => {
-    if (tab !== 'search') return;
+    if (tab !== 'discover') return;
     const query = text.trim();
     if (query === searched) return;
-    const timer = setTimeout(
-      () => {
-        searched = query;
-        search(true);
-      },
-      query === '' ? 0 : 300,
-    );
+    if (query === '') {
+      ++requestId;
+      searched = '';
+      results = [];
+      nextOffset = null;
+      loading = false;
+      searchError = null;
+      return;
+    }
+    const timer = setTimeout(() => {
+      searched = query;
+      search(true);
+    }, 300);
     return () => clearTimeout(timer);
   });
 
+  // Typing: the matching lists first, as one row, then the stations (14 §7 D).
+  const matchingLists = $derived(lists.matching(text));
+
   // ── Personal stations ──────────────────────────────────────────────────────────
   let personal = $state<PersonalStation[]>([]);
+  let adding = $state(false);
   const loadPersonal = async () => {
     try {
       personal = await api.listPersonalStations();
@@ -119,14 +134,27 @@
       : personal.filter((p) => p.name.toLowerCase().includes(text.trim().toLowerCase())),
   );
 
+  // ── Favorites and My stations as lists: Surprise me, Export M3U (14 §6.4) ─────────────
+  let listNotice = $state<string | null>(null);
+  let listError = $state<string | null>(null);
+
+  function surpriseFrom(pool: Playable[]) {
+    const pick = pickRandom(pool, (p) => p.id === player.current?.id);
+    if (pick) player.play(pick);
+  }
+
+  async function exportMine(list: 'favorites' | 'my_stations') {
+    listNotice = null;
+    listError = null;
+    try {
+      const file = await api.exportMyList(list);
+      listNotice = `${file.count} ${file.count === 1 ? 'station' : 'stations'} saved to Downloads: ${file.file_name}`;
+    } catch (e) {
+      listError = errorMessage(e);
+    }
+  }
+
   // ── Conversions to what the player can play ───────────────────────────
-  const fromStation = (s: Station): Playable => ({
-    id: s.id,
-    name: s.name,
-    url: s.url,
-    genre: s.tags[0] ?? null,
-    homepage: s.homepage,
-  });
   const fromPersonal = (p: PersonalStation): Playable => ({
     id: p.station_id,
     name: p.name,
@@ -149,15 +177,9 @@
       .filter(Boolean)
       .join(' · ');
 
-  function warning(s: Station): string | null {
-    if (s.health.status !== 'unreachable') return null;
-    const last = s.health.last_ok ? new Date(s.health.last_ok) : null;
-    return last && !Number.isNaN(last.getTime())
-      ? `Unreachable at last check (last success: ${last.toLocaleDateString(undefined, { dateStyle: 'medium' })})`
-      : 'Unreachable at last check';
-  }
-
+  const stationsLabel = (n: number) => `${n} ${n === 1 ? 'station' : 'stations'}`;
   const isActive = (id: string) => player.current?.id === id;
+  const favoriteCount = $derived(player.favorites.length + lists.favorites.length);
 </script>
 
 <section class={styles.root} aria-label="Stations">
@@ -174,8 +196,7 @@
         onclick={() => (tab = t.id)}
       >
         {t.label}
-        {#if t.id === 'favorites' && player.favorites.length}<span class={styles.count}
-            >{player.favorites.length}</span
+        {#if t.id === 'listen' && favoriteCount}<span class={styles.count}>{favoriteCount}</span
           >{/if}
       </button>
     {/each}
@@ -184,94 +205,201 @@
   <div class={styles.panel} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
     {#if tab === 'history'}
       <HistoryPanel />
-    {:else if tab === 'search'}
+    {:else if tab === 'listen'}
+      {#if listNotice}<p class={styles.notice} role="status">{listNotice}</p>{/if}
+      {#if listError}<p class={styles.error} role="alert">{listError}</p>{/if}
+
+      <section class={styles.section} aria-labelledby="favorites-title">
+        <header class={styles.sectionHeader}>
+          <h2 class={styles.sectionTitle} id="favorites-title">Favorites</h2>
+          {#if player.favorites.length}
+            <button
+              class={styles.link}
+              type="button"
+              onclick={() => surpriseFrom(player.favorites.map(fromFavorite))}>Surprise me</button
+            >
+            <button class={styles.link} type="button" onclick={() => exportMine('favorites')}
+              >Export M3U</button
+            >
+          {/if}
+        </header>
+        {#if favoriteCount === 0}
+          <p class={styles.hint}>
+            Tap ☆ on a station or a list to keep it here.
+            <button class={styles.link} type="button" onclick={() => (tab = 'discover')}
+              >Discover stations</button
+            >
+          </p>
+        {/if}
+        {#if lists.favorites.length}
+          <ul class={styles.cards}>
+            {#each lists.favorites as l (l.id)}
+              <li class={styles.card}>
+                <button class={styles.cardOpen} type="button" onclick={() => ui.openList(l.id)}>
+                  <span class={styles.cardTitle}>{l.title}</span>
+                  <span class={styles.cardMeta}
+                    >List by {l.curators.map((c) => `@${c}`).join(', ')} · {stationsLabel(
+                      l.items.length,
+                    )}</span
+                  >
+                </button>
+                <button
+                  class={styles.star}
+                  type="button"
+                  aria-pressed="true"
+                  aria-label={`Remove ${l.title} from favorites`}
+                  title="Remove from favorites"
+                  onclick={() => lists.toggleFavorite(l.id).catch(() => {})}>★</button
+                >
+              </li>
+            {/each}
+          </ul>
+        {/if}
+        {#if player.favorites.length}
+          <ul class={styles.list}>
+            {#each player.favorites as f (f.station_id)}
+              <StationRow
+                name={f.name}
+                meta={f.genre ?? ''}
+                personal={f.station_id.startsWith('user:')}
+                active={isActive(f.station_id)}
+                favorite
+                onplay={() => player.play(fromFavorite(f))}
+                onfavorite={() => player.toggleFavorite(fromFavorite(f))}
+              />
+            {/each}
+          </ul>
+        {/if}
+      </section>
+
+      <section class={styles.section} aria-labelledby="mine-title">
+        <header class={styles.sectionHeader}>
+          <h2 class={styles.sectionTitle} id="mine-title">My stations</h2>
+          {#if personal.length}
+            <button
+              class={styles.link}
+              type="button"
+              onclick={() => surpriseFrom(personal.map(fromPersonal))}>Surprise me</button
+            >
+            <button class={styles.link} type="button" onclick={() => exportMine('my_stations')}
+              >Export M3U</button
+            >
+          {/if}
+          <button
+            class={styles.link}
+            type="button"
+            aria-expanded={adding}
+            onclick={() => (adding = !adding)}>{adding ? 'Cancel' : '+ Add a station'}</button
+          >
+        </header>
+        <ErrorBanner area="stations" />
+        {#if adding}
+          <AddStationForm
+            onadded={() => {
+              adding = false;
+              loadPersonal();
+            }}
+          />
+        {/if}
+        {#if personal.length === 0 && !adding}
+          <p class={styles.hint}>
+            Stations you add by their stream address. They stay on this device.
+          </p>
+        {:else}
+          <ul class={styles.list}>
+            {#each personal as p (p.station_id)}
+              <StationRow
+                name={p.name}
+                meta={p.genre ?? new URL(p.stream_url).host}
+                personal
+                active={isActive(p.station_id)}
+                favorite={player.isFavorite(p.station_id)}
+                onplay={() => player.play(fromPersonal(p))}
+                onfavorite={() => player.toggleFavorite(fromPersonal(p))}
+                onremove={() => removePersonal(p)}
+              />
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {:else if openedList}
+      <ListScreen list={openedList} />
+    {:else}
       <input
         class={styles.search}
         type="search"
-        placeholder="Search stations by name…"
-        aria-label="Search stations"
+        placeholder="Search stations and lists…"
+        aria-label="Search stations and lists"
         bind:value={text}
         spellcheck="false"
         autocomplete="off"
       />
 
-      <ul class={styles.list}>
-        {#each matchingPersonal as p (p.station_id)}
-          <StationRow
-            name={p.name}
-            personal
-            active={isActive(p.station_id)}
-            favorite={player.isFavorite(p.station_id)}
-            onplay={() => player.play(fromPersonal(p))}
-            onfavorite={() => player.toggleFavorite(fromPersonal(p))}
-          />
+      {#if text.trim() === ''}
+        {#each lists.all as l (l.id)}
+          <ListRow list={l} />
+        {:else}
+          <p class={styles.empty}>
+            No lists yet. They are downloaded once a day from soundfolk-stations; type a name to
+            search the stations.
+          </p>
         {/each}
-        {#each results as s (s.id)}
-          <StationRow
-            name={s.name}
-            meta={meta(s)}
-            warning={warning(s)}
-            active={isActive(s.id)}
-            favorite={player.isFavorite(s.id)}
-            onplay={() => player.play(fromStation(s))}
-            onfavorite={() => player.toggleFavorite(fromStation(s))}
-          />
-        {/each}
-      </ul>
-
-      {#if searchError}
-        <p class={styles.error} role="alert">{searchError}</p>
-      {:else if loading && results.length === 0}
-        <p class={styles.empty}>Searching…</p>
-      {:else if !loading && results.length === 0}
-        <p class={styles.empty}>No stations found.</p>
-      {/if}
-
-      {#if hasMore && !searchError}
-        <button class={styles.more} type="button" disabled={loading} onclick={() => search(false)}>
-          {loading ? 'Loading…' : 'Show more'}
-        </button>
-      {/if}
-    {:else if tab === 'lists'}
-      <ListsPanel />
-    {:else if tab === 'favorites'}
-      {#if player.favorites.length === 0}
-        <p class={styles.empty}>No favorites yet. Tap a station’s star to add it.</p>
       {:else}
+        {#if matchingLists.length}
+          <ul class={styles.cardStrip} aria-label="Matching lists">
+            {#each matchingLists as l (l.id)}
+              <li class={styles.card}>
+                <button class={styles.cardOpen} type="button" onclick={() => ui.openList(l.id)}>
+                  <span class={styles.cardTitle}>{l.title}</span>
+                  <span class={styles.cardMeta}>List · {stationsLabel(l.items.length)}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+
         <ul class={styles.list}>
-          {#each player.favorites as f (f.station_id)}
-            <StationRow
-              name={f.name}
-              meta={f.genre ?? ''}
-              personal={f.station_id.startsWith('user:')}
-              active={isActive(f.station_id)}
-              favorite
-              onplay={() => player.play(fromFavorite(f))}
-              onfavorite={() => player.toggleFavorite(fromFavorite(f))}
-            />
-          {/each}
-        </ul>
-      {/if}
-    {:else}
-      <ErrorBanner area="stations" />
-      <AddStationForm onadded={loadPersonal} />
-      {#if personal.length === 0}
-        <p class={styles.empty}>No personal stations. They stay on this device.</p>
-      {:else}
-        <ul class={styles.list}>
-          {#each personal as p (p.station_id)}
+          {#each matchingPersonal as p (p.station_id)}
             <StationRow
               name={p.name}
-              meta={p.genre ?? new URL(p.stream_url).host}
               personal
               active={isActive(p.station_id)}
               favorite={player.isFavorite(p.station_id)}
               onplay={() => player.play(fromPersonal(p))}
               onfavorite={() => player.toggleFavorite(fromPersonal(p))}
-              onremove={() => removePersonal(p)}
+            />
+          {/each}
+          {#each results as s (s.id)}
+            <StationRow
+              name={s.name}
+              meta={meta(s)}
+              warning={warningOf(s)}
+              active={isActive(s.id)}
+              favorite={player.isFavorite(s.id)}
+              onplay={() => player.play(playableOf(s))}
+              onfavorite={() => player.toggleFavorite(playableOf(s))}
             />
           {/each}
         </ul>
+
+        {#if searchError}
+          <p class={styles.error} role="alert">{searchError}</p>
+        {:else if loading && results.length === 0}
+          <p class={styles.empty}>Searching…</p>
+        {:else if !loading && results.length === 0 && matchingPersonal.length === 0}
+          <p class={styles.empty}>No stations found.</p>
+        {/if}
+
+        {#if hasMore && !searchError}
+          <button
+            class={styles.more}
+            type="button"
+            disabled={loading}
+            onclick={() => search(false)}
+          >
+            {loading ? 'Loading…' : 'Show more'}
+          </button>
+        {/if}
       {/if}
     {/if}
   </div>

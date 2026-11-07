@@ -112,3 +112,140 @@
   opacity: 0.6;
   cursor: progress;
 }
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.section + .section {
+  margin-top: 0.6rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+}
+
+.sectionTitle {
+  flex: 1;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.link:hover {
+  color: var(--color-text);
+  text-decoration: underline;
+}
+
+.hint,
+.notice {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.cards,
+.cardStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cardStrip {
+  flex-direction: row;
+  overflow-x: auto;
+  padding-bottom: 0.3rem;
+}
+
+.cardStrip > .card {
+  flex: none;
+  width: 12rem;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-right: 0.3rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  background: var(--color-surface-raised);
+}
+
+.card:hover {
+  border-color: var(--color-border-hover);
+}
+
+.cardOpen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardTitle,
+.cardMeta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardTitle {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.cardMeta {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+}
+
+.star {
+  flex: none;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 1.05rem;
+  cursor: pointer;
+}
+
+.star:hover {
+  background: var(--color-surface-high);
+}
+
+.link:focus-visible,
+.cardOpen:focus-visible,
+.star:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}

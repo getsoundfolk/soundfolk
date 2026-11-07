@@ -209,6 +209,11 @@ export const api = {
     invoke<ListRef[]>('get_lists_for_station', { stationId, url }),
   getCuratedListStations: (id: string) => invoke<Station[]>('get_curated_list_stations', { id }),
   exportCuratedList: (id: string) => invoke<ExportedFile>('export_curated_list', { id }),
+  getFavoriteLists: () => invoke<string[]>('get_favorite_lists'),
+  setFavoriteList: (id: string, favorite: boolean) =>
+    invoke<string[]>('set_favorite_list', { id, favorite }),
+  exportMyList: (list: 'favorites' | 'my_stations') =>
+    invoke<ExportedFile>('export_my_list', { list }),
   getVolume: () => invoke<number | null>('get_volume'),
   saveVolume: (volume: number) => invoke<void>('save_volume', { volume }),
   getPlayerState: () => invoke<PlayerState>('get_player_state'),

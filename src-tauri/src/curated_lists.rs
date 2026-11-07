@@ -19,8 +19,9 @@ use serde::{Deserialize, Serialize};
 use soundfolk_nowplaying::recipe::Match;
 
 use crate::catalog::{Health, Station};
-use crate::commands::{save_download, CatalogState, ExportedFile};
+use crate::commands::{save_download, with_db, CatalogState, ExportedFile};
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
+use crate::db::Database;
 use crate::error::AppResult;
 
 /// Where the lists are published. `v1` is the format: a change older apps can't read moves it.
@@ -214,8 +215,95 @@ pub async fn export_curated_list(
         &app,
         &format!("soundfolk-{}", list.id),
         "m3u",
-        &m3u(&stations),
+        &m3u(stations.iter().map(|s| (s.name.as_str(), s.url.as_str()))),
         stations.len(),
+    )
+}
+
+/// Settings key of the lists marked as favorites: their ids, in the order they were marked.
+const FAVORITE_LISTS: &str = "favorite_lists";
+
+/// The ids of the lists the listener marked as favorites (14 §6.4). Only the id is kept: a list
+/// that left `lists.json` is simply not shown, and comes back if it is published again.
+#[tauri::command]
+pub async fn get_favorite_lists(db: tauri::State<'_, Database>) -> AppResult<Vec<String>> {
+    with_db(&db, |db| {
+        Ok(db.get_list(FAVORITE_LISTS)?.unwrap_or_default())
+    })
+    .await
+}
+
+/// Marks or unmarks a list as a favorite; returns the favorite list ids.
+#[tauri::command]
+pub async fn set_favorite_list(
+    db: tauri::State<'_, Database>,
+    id: String,
+    favorite: bool,
+) -> AppResult<Vec<String>> {
+    if !is_list_id(&id) {
+        return Err(format!("not a list id: {id}").into());
+    }
+    with_db(&db, move |db| {
+        let mut ids = db.get_list(FAVORITE_LISTS)?.unwrap_or_default();
+        ids.retain(|i| *i != id);
+        if favorite {
+            ids.push(id);
+        }
+        db.set_list(FAVORITE_LISTS, &ids)?;
+        Ok(ids)
+    })
+    .await
+}
+
+/// A list id as soundfolk-stations writes them (lower case, digits, `-`): never a comma, which
+/// separates the ids in the setting.
+fn is_list_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// The listener's stored lists that can be exported, like a curated list.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MyList {
+    Favorites,
+    MyStations,
+}
+
+/// Saves the favorites (stations only) or the personal stations as an M3U playlist.
+#[tauri::command]
+pub async fn export_my_list(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, Database>,
+    list: MyList,
+) -> AppResult<ExportedFile> {
+    let entries: Vec<(String, String)> = with_db(&db, move |db| {
+        Ok(match list {
+            MyList::Favorites => db
+                .list_favorites()?
+                .into_iter()
+                .map(|f| (f.name, f.stream_url))
+                .collect(),
+            MyList::MyStations => db
+                .list_personal_stations()?
+                .into_iter()
+                .map(|p| (p.name, p.stream_url))
+                .collect(),
+        })
+    })
+    .await?;
+    let stem = match list {
+        MyList::Favorites => "soundfolk-favorites",
+        MyList::MyStations => "soundfolk-my-stations",
+    };
+    save_download(
+        &app,
+        stem,
+        "m3u",
+        &m3u(entries.iter().map(|(n, u)| (n.as_str(), u.as_str()))),
+        entries.len(),
     )
 }
 
@@ -231,13 +319,13 @@ fn read_cached(dir: &Path) -> Option<Vec<CuratedList>> {
     daily_list::read_cached(dir, FILES, parse)
 }
 
-/// M3U playlist of a list's stations, in the list's order.
-pub fn m3u(stations: &[Station]) -> String {
+/// M3U playlist of `(name, stream URL)` pairs, in their order.
+pub fn m3u<'a>(stations: impl IntoIterator<Item = (&'a str, &'a str)>) -> String {
     let mut out = String::from("#EXTM3U\n");
-    for station in stations {
+    for (name, url) in stations {
         // A line break in a name would start a line the players read as a URL.
-        let name = station.name.replace(['\r', '\n'], " ");
-        out.push_str(&format!("#EXTINF:-1,{name}\n{}\n", station.url));
+        let name = name.replace(['\r', '\n'], " ");
+        out.push_str(&format!("#EXTINF:-1,{name}\n{url}\n"));
     }
     out
 }
@@ -316,28 +404,22 @@ mod tests {
 
     #[test]
     fn m3u_keeps_the_order_and_one_line_per_name() {
-        let station = |name: &str, url: &str| Station {
-            id: String::new(),
-            name: name.into(),
-            url: url.into(),
-            homepage: None,
-            favicon: None,
-            tags: Vec::new(),
-            country: None,
-            country_code: None,
-            language: None,
-            codec: None,
-            bitrate: 0,
-            votes: 0,
-            health: Health::Ok,
-        };
         assert_eq!(
-            m3u(&[
-                station("Groove\nSalad", "https://a.example/1"),
-                station("FIP", "https://b.example/2")
+            m3u([
+                ("Groove\nSalad", "https://a.example/1"),
+                ("FIP", "https://b.example/2")
             ]),
             "#EXTM3U\n#EXTINF:-1,Groove Salad\nhttps://a.example/1\n#EXTINF:-1,FIP\nhttps://b.example/2\n"
         );
+    }
+
+    #[test]
+    fn list_ids_never_hold_a_comma() {
+        assert!(is_list_id("fr-community-radios"));
+        assert!(is_list_id("top40"));
+        assert!(!is_list_id(""));
+        assert!(!is_list_id("a,b"));
+        assert!(!is_list_id("Ambient"));
     }
 
     #[test]

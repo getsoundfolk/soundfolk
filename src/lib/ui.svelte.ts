@@ -9,19 +9,19 @@ class UiStore {
 
   openSettings = () => (this.settingsOpen = true);
   closeSettings = () => (this.settingsOpen = false);
-  /** The curated list shown in the Lists tab, or null for all the lists. */
+  /** The curated list shown in Discover, or null for Discover itself. */
   listId = $state<string | null>(null);
 
   openStation = () => (this.stationOpen = true);
   closeStation = () => (this.stationOpen = false);
-  /** Shows a list in the Lists tab, over whatever covered the home screen. */
+  /** Shows a list in Discover, over whatever covered the home screen. */
   openList = (id: string | null) => {
     this.stationOpen = false;
     this.settingsOpen = false;
     this.listId = id;
-    this.listRequest++;
+    if (id) this.listRequest++;
   };
-  /** Bumped on every `openList`: the station browser switches to the Lists tab. */
+  /** Bumped when a list is opened: the station browser switches to Discover. */
   listRequest = $state(0);
 }
 

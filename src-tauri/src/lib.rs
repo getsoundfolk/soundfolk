@@ -533,6 +533,9 @@ pub fn run() {
             curated_lists::get_lists_for_station,
             curated_lists::get_curated_list_stations,
             curated_lists::export_curated_list,
+            curated_lists::get_favorite_lists,
+            curated_lists::set_favorite_list,
+            curated_lists::export_my_list,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")
