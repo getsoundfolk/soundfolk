@@ -72,6 +72,9 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * **Radii on a scale:** `0.375rem` (small controls, chips), `0.5rem` (rows, buttons, inputs), `0.75rem` (cards,
   sheets, tiles); `999px` for pills and `50%` for round buttons.
 * Tiles in a grid have equal heights (Discover).
+* **Fixed widths:** nothing moves sideways because of content. A panel that scrolls keeps its scrollbar's room
+  (`scrollbar-gutter: stable`), so typing a search or opening a short list does not widen it; buttons whose label
+  changes (Finding…, Play/Pause) keep their width.
 
 ## 6. Long text
 * **The player** gives each piece its line, beside a 112 px cover. **The station leads** (1 rem, semibold, one line):
@@ -123,5 +126,6 @@ covers with 8 px corners, one-pixel low-opacity borders, filters as chips on the
 - [ ] No orange outside the four uses of §2.
 - [ ] Text that can be cut has its full text in `title`; track titles get two lines (§6).
 - [ ] Sizes, weights and radii from the scales above.
+- [ ] Widths do not change with content: scrolling panels have `scrollbar-gutter: stable` (§5).
 - [ ] Icons from `Icon.svelte`, with a label on the button.
 - [ ] Hover and focus visible (`--color-focus`), reduced motion respected.

@@ -61,6 +61,7 @@
   min-height: 0;
   padding: 1rem 1rem 1.25rem;
   overflow-y: auto;
+  scrollbar-gutter: stable; /* fixed width: no shift when the scrollbar comes and goes */
   /* Positioned descendants scroll and clip with the content instead of growing the document. */
   position: relative;
 }
