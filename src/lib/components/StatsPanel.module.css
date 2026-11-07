@@ -146,10 +146,11 @@
   padding: 0;
 }
 
-/* Label | bar | value: the bar track takes the room left. */
+/* Label | bar | value: the bar track takes the room left. The value column has a fixed width, so
+   every row's track starts and ends at the same place whatever its figure (07 §5). */
 .bar {
   display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(3rem, 1fr) auto;
+  grid-template-columns: minmax(0, 1.3fr) minmax(3rem, 1fr) 3rem;
   align-items: center;
   gap: 0.5rem;
   list-style: none;
@@ -197,7 +198,6 @@
 }
 
 .value {
-  min-width: 1.5rem;
   font-size: 0.75rem;
   font-variant-numeric: tabular-nums;
   text-align: right;

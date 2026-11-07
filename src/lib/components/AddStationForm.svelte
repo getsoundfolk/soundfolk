@@ -52,9 +52,9 @@
     class={styles.button}
     type="submit"
     disabled={pending || url.trim() === '' || name.trim() === ''}
+    aria-busy={pending}
+    title={pending ? 'Testing stream…' : undefined}>Add</button
   >
-    {pending ? 'Testing stream…' : 'Add'}
-  </button>
   <p class={styles.hint}>
     The stream is tested before it is saved. The station stays on this device.
   </p>

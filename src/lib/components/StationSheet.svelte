@@ -445,14 +445,24 @@
             </button>
           {/if}
           {#if recipe}
-            <button class={styles.button} type="button" disabled={testing} onclick={runTest}>
-              {testing ? 'Reading the page…' : 'Test'}
-            </button>
+            <button
+              class={styles.button}
+              type="button"
+              disabled={testing}
+              aria-busy={testing}
+              title={testing ? 'Reading the page…' : undefined}
+              onclick={runTest}>Test</button
+            >
           {/if}
           {#if recipe?.origin === 'local'}
-            <button class={styles.button} type="button" disabled={sharing} onclick={share}>
-              {sharing ? 'Reading the page…' : 'Share this recipe'}
-            </button>
+            <button
+              class={styles.button}
+              type="button"
+              disabled={sharing}
+              aria-busy={sharing}
+              title={sharing ? 'Reading the page…' : undefined}
+              onclick={share}>Share this recipe</button
+            >
           {/if}
           {#if status?.state === 'none' && !recipe}
             <button

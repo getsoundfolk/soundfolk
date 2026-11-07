@@ -406,10 +406,10 @@
             class={styles.more}
             type="button"
             disabled={loading}
-            onclick={() => search(false)}
+            aria-busy={loading}
+            title={loading ? 'Loading…' : undefined}
+            onclick={() => search(false)}>Show more</button
           >
-            {loading ? 'Loading…' : 'Show more'}
-          </button>
         {/if}
       {/if}
     {/if}
