@@ -217,7 +217,7 @@ stations = [
 | `description` | yes | text | Same language as `title`; 140 characters at most, one sentence | row header, list screen, search |
 | `curators` | yes | logins | 1 to 3 GitHub logins; the first answers CI issues | "by @login", search |
 | `checked` | yes | date | Last full review by hand; never shown (06 §6) | yearly review (§6.2) |
-| `use` | yes | ids | 1 to 3, from `vocab.toml` | Use chip |
+| `use` | yes | ids | 1 to 3, from `vocab.toml` | Use chip (once there are about ten lists) |
 | `genres` | yes | ids | 0 to 3, from `vocab.toml` (08 §3.1 families); empty = no dominant genre | Genre chip |
 
 **Stations:** `stations`, an array of Radio-Browser UUIDs, 5 to 40, in the curator's order, no UUID twice. Nothing
@@ -329,8 +329,14 @@ else per station:
   the player (06 §2: station, track, ♡, donation link).
 * **A list's screen:** title, description, "by @login" (each curator), number of stations, stations in the curator's
   order (dead ones ranked last with a warning, 09 §5.2), Surprise me inside the list, **Export M3U**.
-* **Where lists are browsed:** §7. Until the Discover tab of 09 exists, a **Lists** tab between Search and
-  Favorites shows them, sorted by title, each opening its screen.
+* **Where lists are browsed:** §7. Discover shows one row per list; Listen shows the lists marked ♡ among the
+  favorites (06 §1).
+* **♡ on a list**, on its screen and its row: the same gesture as for a station, no "follow" of its own. A list
+  marked ♡ stays on the device (the list's id, nothing else); if it disappears from `lists.json`, it disappears from
+  the favorites too, without a message.
+* **One list screen** for every stored list: a curated list, Favorites, My stations (and personal lists in v2), each
+  with Surprise me and Export M3U. Rows computed from a query (search, Trending, a genre) are not lists: their content
+  changes at each visit, so they have no export.
 * **Suggest a list** (Discover, end of the rows): opens the repository's contributing page. A list is several
   stations and a text: a pull request, or an issue form for those without Git.
 
@@ -381,8 +387,8 @@ English (§4). Titles say what is in the list rather than a mood, and avoid
 | `eclectic-discovery` | Independent stations | discovery | Human programming, independent stations | Radio Paradise, KEXP, WXPN, WFMU, NTS… |
 | `public-cultural` | Public radio music channels | discovery, calm | Music channels of public broadcasters, one or two per broadcaster, from many countries | FIP, France Musique, Klara, NPO Radio 4, Rai Radio Classica, NRK Klassisk, ICI Musique… |
 
-At launch the Use chip offers Focus, Calme, Découverte and Émissions; Énergie appears with the first list that uses
-it.
+The Use chip comes once there are about ten lists (09 §3); it will then offer the uses the lists have, Énergie only
+with the first list that uses it.
 
 No rule caps how many stations one network or broadcaster brings: a list of every FIP channel is a fine list. The
 one test, when the maintainer reviews a pull request, is that the stations match the title and the description.
@@ -437,13 +443,17 @@ filters; the search box searches the side that is shown.
   *what I heard* (the split C brought, kept).
 * "In N lists" and the station sheet chips open the list screen directly.
 * With four lists at launch, Discover gets four more rows among the others: nothing looks empty.
-* Cost: nothing in 06 changes. 09 §3 gains the Use chip and the lists among the rows. The Curator filter of §6.5
-  becomes text search on the login. Browsing lists as a grid of cards is not offered; if the lists grow to several
+* Cost: nothing in 06 changes. 09 §3 gains the lists among the rows (and later the Use chip). The Curator filter of
+  §6.5 becomes text search on the login. Browsing lists as a grid of cards is not offered; if the lists grow to several
   dozen, a "All lists" screen (one level down, same chips) can be added without changing the rest.
 
 **Decided (2026-11-06): D.** It is A without A's flaw: lists and stations share one set of filters instead of each
 having its own, so the screen stays one level with chips, as 06 §1 asks. No exception to write, no extra level.
 09 §3 and §5.2 are updated; 06 §1 only gains personal lists under Listen.
+
+**Simplified (2026-11-07):** no "follow": ♡ on a list puts it in Favorites, next to the stations (§6.4). No type chip
+(All · Stations · Lists) and no Use chip at launch: with four lists, the rows and the favorites are short enough;
+both come when the lists grow (06 §8, 09 §3). My stations stays its own entry in Listen, under Favorites.
 
 ---
 
@@ -454,7 +464,8 @@ found station by station.
 2. App: fetch lists, `lists_for_station`, chips on the sheet, "In N lists" in the player, the list screen, M3U export.
    The reader ignores unknown keys (§6.4), with a test reading a `lists.json` that has one: no
    `deny_unknown_fields` there, unlike the recipe structs.
-3. The lists as Discover rows, the Use chip, lists first in search results (§7 D, with the Discover tab of 09).
+3. Listen / Discover / History in place of the tabs; ♡ on a list; the lists as Discover rows; lists first in search
+   results (§7 D). The interim Lists tab goes. The Use chip later (§6.5).
 4. soundfolk-stations: `[ad_free]` section, lint, daily URL check; entries for the known stations (SomaFM, Radio
    Paradise, FIP family, KEXP…), each with its proof.
 5. App: read `ad_free` from `v1/stations.json`; badge; the chip and the row come with 08 and 09.

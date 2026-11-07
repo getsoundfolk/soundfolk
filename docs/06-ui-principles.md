@@ -12,8 +12,9 @@ these.
 
 ## 1. Navigation
 * **Three labelled destinations**, no more:
-  * **Listen:** resume the last station, then favorites (catalog and personal stations together), later the
-    listener's own lists ([14-curated-lists.md](14-curated-lists.md) §7);
+  * **Listen:** resume the last station, then **Favorites** (catalog stations, personal stations and curated lists
+    marked ♡, together) and **My stations** (the stations added by hand, where they are added and removed), always
+    in that place; later the listener's own lists ([14-curated-lists.md](14-curated-lists.md) §7);
   * **Discover:** search, filters and collections, published curated lists included, under one set of chips;
   * **History:** tracks heard, likes and stats.
 * Settings live in a menu, not in the main navigation.
@@ -66,7 +67,10 @@ these.
   when there is genuinely nothing to show — and then nothing is shown instead.
 
 ## 8. One list per concept, one layout per list
-* **Favorites** contain catalog and personal stations together; personal ones carry a small *personal* badge.
+* **Favorites** contain catalog and personal stations together, and the curated lists marked ♡; personal stations
+  carry a small *personal* badge. Lists and stations mixed in one screen are filtered with a type chip (All ·
+  Stations · Lists), not split into tabs, and only once there are enough lists for it to matter (§4).
+* A list keeps its own order (the curator's, or the listener's); chips filter it, they never re-sort it.
 * A given list always uses the same layout. Grid vs. list is a single, global choice, if offered at all.
 
 ## 9. Respect while listening

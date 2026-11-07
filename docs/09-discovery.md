@@ -64,10 +64,11 @@ need our own data (§5.2).
 
 One screen, one level (06 §1), never empty (06 §3). From top to bottom:
 
-1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language), plus **Use**,
-   which only curated lists have ([14-curated-lists.md](14-curated-lists.md) §6.5). The chips are shared with
-   search: what is selected in one is selected in the other. They filter the rows too: a row stays when its
-   collection or list matches.
+1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language). The chips are
+   shared with search: what is selected in one is selected in the other. They filter the rows too: a row stays when
+   its collection or list matches. **Use**, the chip only curated lists have
+   ([14-curated-lists.md](14-curated-lists.md) §6.5), comes once there are about ten lists: with four rows all
+   visible, it filters nothing.
 2. **Scan** — next to Surprise me (§4.2).
 3. **Collections** — horizontal rows of stations, one per collection (§5): personal ones first, then the curated
    lists (§5.2), then the rule collections. A list's row shows its title, "by @login" and one line of description.
