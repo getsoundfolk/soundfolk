@@ -168,8 +168,10 @@
 }
 
 .cardStrip {
+  flex: none;
   flex-direction: row;
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 0.25rem;
 }
 

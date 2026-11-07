@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 .row {
   display: flex;
+  flex: none; /* the Discover panel scrolls; a row never shrinks to fit it */
   flex-direction: column;
   gap: 0.5rem;
 }
@@ -80,7 +81,12 @@
   margin: 0;
   padding: 0 0 0.25rem;
   list-style: none;
-  overflow-x: auto;
+  /* scroll, not auto: when the tiles are there at the first layout (the stations come from the
+     cache on coming back from the list's screen), WebKitGTK leaves the scrollbar that appears out
+     of the strip's height, and it covers the bottom of the tiles. A row has ten stations, more
+     than the panel shows, so the scrollbar is there anyway. */
+  overflow-x: scroll;
+  overflow-y: hidden;
   scroll-snap-type: x proximity;
 }
 
