@@ -94,6 +94,9 @@
 
   const fileName = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
+  /** A Radio-Browser station uuid: other ids (personal stations…) have no page there. */
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   /** Codecs that sound as good as MP3 at about half the bitrate. */
   const EFFICIENT = /aac|opus|ogg|vorbis/i;
   const LOSSLESS = /flac|alac|wav/i;
@@ -394,10 +397,25 @@
           </div>
           <div>
             <dt>Catalog id</dt>
-            <dd class={styles.mono}>{catalog.id}</dd>
+            <dd class={styles.mono}>
+              {#if UUID.test(catalog.id)}
+                <!-- The station's page on Radio-Browser: its history of changes, clicks and checks. -->
+                <button
+                  class={styles.link}
+                  type="button"
+                  title="Open on Radio-Browser"
+                  onclick={() => open(`https://www.radio-browser.info/history/${catalog.id}`)}
+                  >{catalog.id}</button
+                >
+              {:else}
+                {catalog.id}
+              {/if}
+            </dd>
           </div>
         </dl>
       </details>
+      <!-- Without the track section (station not playing), a link that fails to open says so here. -->
+      {#if error && !playing}<p class={styles.alert} role="alert">{error}</p>{/if}
     {/if}
 
     {#if inLists.length}

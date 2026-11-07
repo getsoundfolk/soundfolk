@@ -8,6 +8,7 @@
   background: var(--color-surface);
   color: var(--color-text);
   overflow-y: auto;
+  scrollbar-gutter: stable; /* fixed width: no shift when the scrollbar comes and goes */
 }
 
 .sheet::backdrop {
@@ -270,8 +271,23 @@
   cursor: pointer;
 }
 
-.link:hover {
+.link {
   text-decoration: underline;
+  text-decoration-color: var(--color-border-strong);
+  text-underline-offset: 0.2em;
+}
+
+.link:hover {
+  color: var(--color-text);
+  text-decoration-color: currentColor;
+}
+
+.alert {
+  margin: 0;
+  padding: 0 1rem 0.75rem;
+  color: var(--color-danger-text);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
 }
 
 .close:focus-visible,
