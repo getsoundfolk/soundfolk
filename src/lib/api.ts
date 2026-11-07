@@ -224,6 +224,8 @@ export const api = {
     invoke<CoverSource[]>('set_cover_sources', { sources }),
 
   searchStations: (query: SearchQuery) => invoke<SearchPage>('search_stations', { query }),
+  /** A catalog station by its id (a Radio-Browser UUID); null when the catalog no longer has it. */
+  getStation: (stationId: string) => invoke<Station | null>('get_station', { stationId }),
 
   listFavorites: () => invoke<Favorite[]>('list_favorites'),
   addFavorite: (favorite: Favorite) => invoke<void>('add_favorite', { favorite }),

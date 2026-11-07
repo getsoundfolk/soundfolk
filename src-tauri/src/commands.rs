@@ -17,7 +17,7 @@ use crate::audio::{
     self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, RecipeTest, StationRef,
     TitleStatus, WebTitles,
 };
-use crate::catalog::{CatalogSource, SearchPage, SearchQuery};
+use crate::catalog::{CatalogSource, SearchPage, SearchQuery, Station};
 use crate::covers::{self, Cover, CoverSource, Covers};
 use crate::db::{
     Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, Stats,
@@ -749,6 +749,16 @@ pub async fn search_stations(
         .map(|f| f.station_id)
         .collect();
     Ok(catalog.0.search(&query).await?)
+}
+
+/// A catalog station by its id, with what the station sheet shows (genres, country, quality…).
+/// `None` when the catalog no longer has it.
+#[tauri::command]
+pub async fn get_station(
+    catalog: State<'_, CatalogState>,
+    station_id: String,
+) -> AppResult<Option<Station>> {
+    Ok(catalog.0.station(&station_id).await?)
 }
 
 /// What the player needs to play a station, whatever its origin.

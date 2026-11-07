@@ -508,6 +508,7 @@ pub fn run() {
             commands::get_cover,
             commands::set_track_identification,
             commands::search_stations,
+            commands::get_station,
             commands::resolve_station,
             commands::get_click_counting,
             commands::set_click_counting,

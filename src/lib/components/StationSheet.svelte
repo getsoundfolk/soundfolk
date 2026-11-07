@@ -33,8 +33,13 @@
   /** Gain Constant volume applies to the station, in dB (null when off or not playing). */
   let level = $state<number | null>(null);
 
-  /** The catalog station opened from a list, with its genres, country, quality…; null from the player. */
-  const catalog = $derived(ui.sheetStation);
+  /** The station in the player as the catalog has it, read when the sheet opens from the player. */
+  let fetched = $state<Station | null>(null);
+  /** The catalog station shown, with its country, quality…: the one opened from a list, or the
+   *  one in the player once read from the catalog; null for a personal station. */
+  const catalog = $derived(
+    ui.sheetStation ?? (fetched && fetched.id === player.current?.id ? fetched : null),
+  );
   const station = $derived(catalog ?? player.current);
   /** The parts tied to playback (track on air, recipes, volume) show only for the station playing. */
   const playing = $derived(!!station && player.current?.id === station.id);
@@ -59,6 +64,22 @@
     } else if (!ui.stationOpen && dialog.open) {
       dialog.close();
     }
+  });
+
+  // Opened from the player: the same details as from a list, once the catalog answers.
+  $effect(() => {
+    const id = player.current?.id;
+    if (!ui.stationOpen || ui.sheetStation || !id || !UUID.test(id) || fetched?.id === id) return;
+    let current = true;
+    api
+      .getStation(id)
+      .then((found) => {
+        if (current) fetched = found;
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
   });
 
   $effect(() => {
