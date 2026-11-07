@@ -102,6 +102,14 @@ listening stats must be crossed with the sessions.
   at 48 kHz). If it moves by more than ~0.5 s/h, or gaps show up with no network cause: replace `rubato::Fft` by
   rubato's high-quality sinc `Async` resampler, its ratio nudged by a few ppm from the buffer fill (not `Slip`,
   the cheap variant). Desktop only: on mobile `AVPlayer` / `ExoPlayer` keep the hardware decoding (battery).
+- [ ] Suggest corrections to a station's catalog entry. Done and parked on branch `radio-database-corrections`
+  (station sheet → "Suggest a correction": checks stream, website and logo, fills in what it finds, opens GitLab
+  with radio-database's JSON file). Parked because the channel is barely processed (checked 2026-11-05): no merge
+  request merged since May 2025 (227 open), 37 of 41 issues open, the maintainer commits from other sources; and a
+  non-member needs a fork first (GitLab's new-file page answers 404 until then). Resume if the maintainer says
+  which channel he reads (his FAQ also gives an e-mail). Lighter variant: keep the checks, then link to
+  https://www.radio-browser.info/owners (stream owners' `icy-*` headers, applied within 24 h) and to a prefilled
+  issue (`/-/issues/new?issue[title]=…&issue[description]=…` works without a fork).
 
 **From desktop radio player feedback (r/selfhosted, r/linux…)** — not yet in the app:
 - [x] Tray menu: play / pause, mute, switch between favorite stations.
@@ -119,6 +127,9 @@ listening stats must be crossed with the sessions.
   (which closes: one web view at a time). Full (560 × 180: cover, track, volume, ♥, favorites or recent titles,
   previous / play / next favorite) or compact (320 × 88); size and position kept. From the player's header or the
   tray menu; back from its own button, the tray or a window manager close.
+- [ ] Sleep timer in the player: stop after 15 / 30 / 60 min, the volume fading out over the last minute.
+- [ ] Import favorites and personal stations (M3U, JSON); the M3U export exists (Listen → Export M3U). Personal
+  stations kept as they are, Radio-Browser stations matched by UUID, else by stream.
 - [ ] Measure memory use and keep a target (< ~50 MB idle while playing) — the main argument against Electron
   players.
 
