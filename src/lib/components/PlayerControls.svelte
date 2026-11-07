@@ -81,16 +81,17 @@
     void lists.version;
     lists.refreshFor(player.current);
   });
-
-  // Back from the settings: focus returns to the gear that opened them.
-  let gear: HTMLButtonElement | undefined = $state();
-  let wasOpen = false;
-  $effect(() => {
-    const open = ui.settingsOpen;
-    if (wasOpen && !open) gear?.focus();
-    wasOpen = open;
-  });
 </script>
+
+{#snippet info()}
+  <button
+    class={styles.gear}
+    type="button"
+    aria-label="Station details"
+    title="Station details"
+    onclick={ui.openStation}><Icon name="info" size={16} /></button
+  >
+{/snippet}
 
 <section class={styles.root} aria-label="Player">
   <div class={styles.top}>
@@ -123,68 +124,61 @@
       {/if}
     </div>
     <div class={styles.body}>
-      <div class={styles.heading}>
-        <div class={styles.info}>
+      <!-- Each button at the end of the line it acts on: ♡ on the track's title, ⓘ on the
+           station's name. ♡ keeps its place while the history logs the title, so the title never
+           changes width under it. -->
+      <div class={styles.info}>
+        <div class={styles.line}>
           <p class={styles.headline} title={headline}>{headline}</p>
-          {#if artist}<p class={styles.artist} title={artist}>{artist}</p>{/if}
-          {#if subline}<p class={styles.subline} title={subline}>{subline}</p>{/if}
-          {#if upNext}
-            <p class={styles.next} title={upNext.text}>
-              Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
-            </p>
-          {/if}
-          {#if lists.forCurrent.length && player.current}
-            <button class={styles.inLists} type="button" onclick={ui.openStation}>
-              In {lists.forCurrent.length}
-              {lists.forCurrent.length === 1 ? 'list' : 'lists'}
-            </button>
+          {#if history.onAir}
+            {@const track = history.onAir}
+            <button
+              class={styles.like}
+              type="button"
+              aria-pressed={track.liked}
+              aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
+              title={track.liked ? 'Unlike' : 'Like'}
+              data-on={track.liked}
+              onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
+              ><Icon name="heart" size={18} filled={track.liked} /></button
+            >
+          {:else if subline}
+            <span class={styles.slot} aria-hidden="true"></span>
+          {:else if player.current}
+            {@render info()}
           {/if}
         </div>
-        {#if history.onAir}
-          {@const track = history.onAir}
-          <button
-            class={styles.like}
-            type="button"
-            aria-pressed={track.liked}
-            aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
-            data-on={track.liked}
-            onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
-            ><Icon name="heart" size={18} filled={track.liked} /></button
-          >
+        {#if artist}<p class={styles.artist} title={artist}>{artist}</p>{/if}
+        {#if subline}
+          <div class={styles.line}>
+            <p class={styles.subline} title={subline}>{subline}</p>
+            {@render info()}
+          </div>
         {/if}
-        {#if donation && player.current}
-          <button
-            class={styles.donate}
-            type="button"
-            title={`Donate to ${stationName} (${donation.domain})`}
-            onclick={() => openUrl(donation!.url).catch((e) => errors.report('player', e))}
-            >Donate</button
-          >
+        {#if upNext}
+          <p class={styles.next} title={upNext.text}>
+            Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
+          </p>
         {/if}
-        <button
-          class={styles.gear}
-          type="button"
-          aria-label="Station details"
-          title="Station details"
-          disabled={!player.current}
-          onclick={ui.openStation}><Icon name="info" size={18} /></button
-        >
-        <button
-          class={styles.gear}
-          type="button"
-          aria-label="Mini player"
-          title="Mini player"
-          onclick={() => api.openMiniPlayer().catch((e) => errors.report('player', e))}
-          ><Icon name="mini" size={18} /></button
-        >
-        <button
-          class={styles.gear}
-          type="button"
-          aria-label="Settings"
-          title="Settings"
-          bind:this={gear}
-          onclick={ui.openSettings}><Icon name="settings" size={18} /></button
-        >
+        {#if (donation || lists.forCurrent.length) && player.current}
+          <p class={styles.links}>
+            {#if donation}
+              <button
+                class={styles.donate}
+                type="button"
+                title={`Donate to ${stationName} (${donation.domain})`}
+                onclick={() => openUrl(donation!.url).catch((e) => errors.report('player', e))}
+                >Donate</button
+              >
+            {/if}
+            {#if lists.forCurrent.length}
+              <button class={styles.inLists} type="button" onclick={ui.openStation}>
+                In {lists.forCurrent.length}
+                {lists.forCurrent.length === 1 ? 'list' : 'lists'}
+              </button>
+            {/if}
+          </p>
+        {/if}
       </div>
 
       <div class={styles.row}>

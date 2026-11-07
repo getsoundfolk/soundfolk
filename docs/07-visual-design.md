@@ -65,7 +65,9 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 ## 6. Long text
 * **The player** gives each piece its line, beside a 112 px cover: the **title** (two lines before the ellipsis),
   the **artist**, then the **station**; play and a short volume slider sit below them, still beside the cover, so the
-  large cover costs no height. There is no larger "now playing" screen for the cover to grow
+  large cover costs no height. Each button sits at the end of the line it acts on: ♡ after the title, ⓘ after the
+  station; the other lines keep the whole width. Mini player and settings act on the app, not on the station: they
+  sit at the end of the tab bar. There is no larger "now playing" screen for the cover to grow
   into. The **mini player** (its own always-on-top window, which replaces the main
   one) shows the same lines from the same code (`onAir.svelte.ts`), over the cover at full size, or beside a small
   one when compact; on one line each, the full text in `title`. Artist and title come apart from the source when it gives them that way,

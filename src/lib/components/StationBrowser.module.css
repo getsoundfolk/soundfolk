@@ -10,9 +10,43 @@
   overflow: hidden;
 }
 
-.tabs {
+.bar {
   display: flex;
+  align-items: center;
+  gap: 0.125rem;
   border-bottom: 1px solid var(--color-border);
+}
+
+.tabs {
+  flex: 1;
+  display: flex;
+  align-self: stretch;
+  min-width: 0;
+}
+
+/* Mini player and settings: quiet icons at the end of the tab bar. */
+.tool {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.tool:hover {
+  background: var(--color-surface-high);
+  color: var(--color-text);
+}
+
+.tool:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 .tab {

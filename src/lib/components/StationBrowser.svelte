@@ -209,29 +209,58 @@
       .filter(Boolean)
       .join(' · ');
 
+  // Back from the settings: focus returns to the gear that opened them.
+  let gear: HTMLButtonElement | undefined = $state();
+  let wasOpen = false;
+  $effect(() => {
+    const open = ui.settingsOpen;
+    if (wasOpen && !open) gear?.focus();
+    wasOpen = open;
+  });
+
   const stationsLabel = (n: number) => `${n} ${n === 1 ? 'station' : 'stations'}`;
   const isActive = (id: string) => player.current?.id === id;
   const favoriteCount = $derived(player.favorites.length + lists.favorites.length);
 </script>
 
 <section class={styles.root} aria-label="Stations">
-  <div class={styles.tabs} role="tablist" tabindex="-1" onkeydown={rovingKeydown}>
-    {#each TABS as t (t.id)}
-      <button
-        class={styles.tab}
-        type="button"
-        role="tab"
-        id={`tab-${t.id}`}
-        aria-selected={tab === t.id}
-        tabindex={tab === t.id ? 0 : -1}
-        aria-controls={`panel-${t.id}`}
-        onclick={() => (tab = t.id)}
-      >
-        {t.label}
-        {#if t.id === 'listen' && favoriteCount}<span class={styles.count}>{favoriteCount}</span
-          >{/if}
-      </button>
-    {/each}
+  <!-- The tabs, then the window's own buttons at the end of the bar: they act on the app, not on
+       the station on air, so they stay out of the player. -->
+  <div class={styles.bar}>
+    <div class={styles.tabs} role="tablist" tabindex="-1" onkeydown={rovingKeydown}>
+      {#each TABS as t (t.id)}
+        <button
+          class={styles.tab}
+          type="button"
+          role="tab"
+          id={`tab-${t.id}`}
+          aria-selected={tab === t.id}
+          tabindex={tab === t.id ? 0 : -1}
+          aria-controls={`panel-${t.id}`}
+          onclick={() => (tab = t.id)}
+        >
+          {t.label}
+          {#if t.id === 'listen' && favoriteCount}<span class={styles.count}>{favoriteCount}</span
+            >{/if}
+        </button>
+      {/each}
+    </div>
+    <button
+      class={styles.tool}
+      type="button"
+      aria-label="Mini player"
+      title="Mini player"
+      onclick={() => api.openMiniPlayer().catch((e) => errors.report('player', e))}
+      ><Icon name="mini" size={18} /></button
+    >
+    <button
+      class={styles.tool}
+      type="button"
+      aria-label="Settings"
+      title="Settings"
+      bind:this={gear}
+      onclick={ui.openSettings}><Icon name="settings" size={18} /></button
+    >
   </div>
 
   <div class={styles.panel} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>

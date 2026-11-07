@@ -82,7 +82,8 @@ URL and ticks the licence box. A bot checks it and opens the pull request. Only 
   on `donations:updated`, sent after a download that changed the list.
 
 ## 3. The link in the player
-Between ♡ and ⓘ, a **Donate** button whose tooltip names the station and the domain ("Donate to Radio Zinzine
+Under the track and the station, a small **Donate** button (beside *In N lists* when the station is in curated
+lists) whose tooltip names the station and the domain ("Donate to Radio Zinzine
 (helloasso.com)"). It is always there when the
 station has a link, whatever the reminder settings. It opens with `openUrl`, in the system browser. It uses no
 heart icon: ♡ already means "like this track".
