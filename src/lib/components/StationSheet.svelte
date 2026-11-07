@@ -314,12 +314,7 @@
         </dd>
       </div>
       {#if catalog}
-        {#if catalog.tags.length}
-          <div>
-            <dt>Genres</dt>
-            <dd>{catalog.tags.slice(0, 4).join(', ')}</dd>
-          </div>
-        {/if}
+        <!-- No genres until the tags map to translated genres (§3.1): raw tags are in the technical details. -->
         {#if catalog.country || catalog.country_code}
           <div>
             <dt>Country</dt>
