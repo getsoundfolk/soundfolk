@@ -190,7 +190,8 @@ recipes, volume) show only for the station playing. From a list, in this order (
 2. Quality in words, figures below: "Good quality — AAC 128 kbit/s".
 3. **Other streams of this station** (its duplicates), each with its bitrate and ▶. This is where codec and bitrate
    help: choosing between two streams of the same station.
-4. Folded, "Technical details": stream URL, raw tags, votes, clicks, last check.
+4. Folded, "Technical details": raw tags, votes, clicks, last check. The stream URL stays in sight, under the website:
+   two copies of a station often differ only by where their stream points.
 
 The listen count goes to the entry actually played (its UUID), not to the one the row showed.
 

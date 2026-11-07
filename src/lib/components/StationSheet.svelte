@@ -350,12 +350,11 @@
           </dd>
         </div>
       {/if}
-      {#if !catalog}
-        <div>
-          <dt>Stream</dt>
-          <dd class={styles.mono}>{station.url}</dd>
-        </div>
-      {/if}
+      <!-- In sight: two copies of a station often differ only by where their stream points. -->
+      <div>
+        <dt>Stream</dt>
+        <dd class={styles.mono}>{station.url}</dd>
+      </div>
       {#if level !== null}
         <div>
           <dt>Volume</dt>
@@ -372,10 +371,6 @@
       <details class={styles.technical}>
         <summary>Technical details</summary>
         <dl class={styles.details}>
-          <div>
-            <dt>Stream</dt>
-            <dd class={styles.mono}>{catalog.url}</dd>
-          </div>
           {#if catalog.tags.length}
             <div>
               <dt>Tags</dt>
