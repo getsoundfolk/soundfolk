@@ -73,7 +73,9 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
   sheets, tiles); `999px` for pills and `50%` for round buttons.
 * Tiles in a grid have equal heights (Discover).
 * **Fixed widths:** nothing moves sideways because of content. A panel that scrolls keeps its scrollbar's room
-  (`scrollbar-gutter: stable`), so typing a search or opening a short list does not widen it; buttons whose label
+  (`scrollbar-gutter: stable`), so typing a search or opening a short list does not widen it. A panel that rarely
+  scrolls (the station sheet) or says so otherwise (the mini player's fading list) shows no scrollbar at all
+  (`scrollbar-width: none`) rather than a blank strip; buttons whose label
   changes (Finding…, Play/Pause) keep their width.
 
 ## 6. Long text

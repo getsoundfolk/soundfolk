@@ -8,7 +8,14 @@
   background: var(--color-surface);
   color: var(--color-text);
   overflow-y: auto;
-  scrollbar-gutter: stable; /* fixed width: no shift when the scrollbar comes and goes */
+  /* No scrollbar, and no room kept for one: it would show as a blank strip down the right of a
+     sheet that rarely scrolls (a small window, the technical details open). The wheel scrolls it,
+     and nothing shifts when it starts to. */
+  scrollbar-width: none;
+}
+
+.sheet::-webkit-scrollbar {
+  display: none;
 }
 
 /* Focused itself when opened with the mouse: no ring around the whole sheet. */
