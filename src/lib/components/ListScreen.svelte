@@ -14,7 +14,8 @@
   import Icon from './Icon.svelte';
   import styles from './ListScreen.module.css';
 
-  let { list }: { list: CuratedList } = $props();
+  /** `back` names the screen the back button returns to: the tab the list was opened in. */
+  let { list, back }: { list: CuratedList; back: string } = $props();
 
   let stations = $state<Station[]>([]);
   let loading = $state(false);
@@ -84,7 +85,7 @@
 
 <div class={styles.screen}>
   <button class={styles.back} type="button" onclick={() => ui.openList(null)}
-    ><Icon name="back" /> Discover</button
+    ><Icon name="back" /> {back}</button
   >
   <header class={styles.header}>
     <div class={styles.titleLine}>

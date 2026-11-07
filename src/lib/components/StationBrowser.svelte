@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import {
     api,
     errorMessage,
@@ -38,9 +38,15 @@
 
   let tab = $state<Tab>('listen');
 
-  // A list opened from elsewhere (the station sheet, a favorite) shows in Discover.
+  // A list opens in the tab it was opened from: a favorite list in Listen, a Discover row in
+  // Discover. From History (the station sheet's "In N lists"), it opens in Discover.
+  let listTab = $state<Tab>('discover');
   $effect(() => {
-    if (ui.listRequest) tab = 'discover';
+    if (!ui.listRequest) return;
+    untrack(() => {
+      listTab = tab === 'listen' ? 'listen' : 'discover';
+      tab = listTab;
+    });
   });
   const openedList = $derived(ui.listId ? lists.get(ui.listId) : null);
 
@@ -223,6 +229,8 @@
   <div class={styles.panel} role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
     {#if tab === 'history'}
       <HistoryPanel />
+    {:else if tab === 'listen' && openedList && listTab === 'listen'}
+      <ListScreen list={openedList} back="Listen" />
     {:else if tab === 'listen'}
       {#if listNotice}<p class={styles.notice} role="status">{listNotice}</p>{/if}
       {#if listError}<p class={styles.error} role="alert">{listError}</p>{/if}
@@ -349,8 +357,8 @@
           </ul>
         {/if}
       </section>
-    {:else if openedList}
-      <ListScreen list={openedList} />
+    {:else if openedList && listTab === 'discover'}
+      <ListScreen list={openedList} back="Discover" />
     {:else}
       <input
         class={styles.search}

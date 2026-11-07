@@ -12,7 +12,7 @@ class UiStore {
 
   openSettings = () => (this.settingsOpen = true);
   closeSettings = () => (this.settingsOpen = false);
-  /** The curated list shown in Discover, or null for Discover itself. */
+  /** The curated list shown in Listen or Discover, or null for the tab itself. */
   listId = $state<string | null>(null);
 
   /** Opens the sheet on the station in the player. */
@@ -26,14 +26,14 @@ class UiStore {
     this.stationOpen = true;
   };
   closeStation = () => (this.stationOpen = false);
-  /** Shows a list in Discover, over whatever covered the home screen. */
+  /** Shows a list in the current tab, over whatever covered the home screen. */
   openList = (id: string | null) => {
     this.stationOpen = false;
     this.settingsOpen = false;
     this.listId = id;
     if (id) this.listRequest++;
   };
-  /** Bumped when a list is opened: the station browser switches to Discover. */
+  /** Bumped when a list is opened: the station browser shows it in the current tab. */
   listRequest = $state(0);
 }
 
