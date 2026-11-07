@@ -19,6 +19,12 @@ onwards.
 * **Launch at login (desktop):** off by default, turned on in ⚙. Soundfolk then starts in the notification area,
   without its window (and so without its web view) and without playing; the last station is loaded, so Play in the
   tray menu or on the media keys starts it. If no notification area icon can show, the window opens after all.
+* **Next / Previous favorite (desktop):** in the tray menu and on the media keys. A favorite proven not to broadcast
+  before its first sound (404, server refusing connections… while Internet works) is skipped, since whoever zaps
+  from there is not looking at the window; the window then lists what was skipped and why. Without proof (no network,
+  no Internet) the player waits as usual; a favorite gone from the catalog stops there so that the window can offer
+  to remove it; after a full turn without sound, the last error is shown. A station chosen in the window is never
+  skipped.
 * **Track notifications (desktop):** off by default, turned on in ⚙. Each new track in the history (not a repeated
   title, nor the station's name between tracks) shows a desktop notification while the window does not have the
   focus: title, then artist and station. On Linux each one replaces the previous one and is transient, so a long

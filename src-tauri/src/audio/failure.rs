@@ -141,9 +141,10 @@ impl Failure {
             Self::Refused => "its server refuses connections".into(),
             Self::NoAnswer => "its server does not answer".into(),
             Self::Unreachable(detail) => format!("its server cannot be reached ({detail})"),
-            Self::Http(status @ (404 | 410)) => {
-                format!("the stream no longer exists (HTTP {status})")
-            }
+            // On Icecast and Shoutcast, a 404 is also a mount whose source is not connected right
+            // now (off air, broadcast hours): only a 410 says the stream is gone for good.
+            Self::Http(404) => "the stream is not on air (HTTP 404)".into(),
+            Self::Http(410) => "the stream no longer exists (HTTP 410)".into(),
             Self::Http(status @ 500..) => format!("its server has a problem (HTTP {status})"),
             Self::Http(status) => format!("the stream is refused (HTTP {status})"),
             Self::Stopped(_) => "the stream stopped".into(),
@@ -251,7 +252,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_removed_stream_is_an_http_error() {
+    async fn a_missing_stream_is_an_http_error() {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}/gone.mp3", listener.local_addr().unwrap());
         std::thread::spawn(move || {
@@ -261,7 +262,12 @@ mod tests {
         });
         let failure = connect(&url).await;
         assert_eq!(failure, Failure::Http(404));
-        assert_eq!(failure.reason(), "the stream no longer exists (HTTP 404)");
+        // Not "no longer exists": an Icecast mount answers 404 while its source is off air
+        assert_eq!(failure.reason(), "the stream is not on air (HTTP 404)");
+        assert_eq!(
+            Failure::Http(410).reason(),
+            "the stream no longer exists (HTTP 410)"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

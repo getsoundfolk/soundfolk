@@ -10,6 +10,15 @@
 //! Linux only for now: Windows needs the window's HWND and macOS the main thread's run loop.
 //! Elsewhere [`SystemMedia`] does nothing. The tray menu drives the player through [`control`] too,
 //! so that it can never behave differently from the media keys.
+//!
+//! Next and previous skip a favorite that is proven not to broadcast before its first sound (the
+//! engine only gives up at once when the station is at fault, see `audio/failure.rs`): someone
+//! zapping from the tray or the media keys is not looking at the window, and silence would explain
+//! nothing. Without proof (no network, no Internet) the player waits as usual; a favorite gone
+//! from the catalog stops the zapping, so that the window can offer to remove it; after a full
+//! turn without sound, the last error is shown. The window lists what was skipped.
+
+use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -31,6 +40,128 @@ struct StationChange {
     genre: Option<String>,
     /// The window must show the click-counting notice (once only).
     show_click_notice: bool,
+    /// Favorites skipped on the way, because they did not broadcast.
+    skipped: Vec<Skipped>,
+}
+
+/// A favorite skipped by Next / Previous.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct Skipped {
+    name: String,
+    /// Why, as the player said it.
+    reason: String,
+}
+
+/// The Next / Previous in progress, until its station is heard (Tauri state).
+#[derive(Default)]
+pub struct Zap(Mutex<Option<Zapping>>);
+
+impl Zap {
+    fn lock(&self) -> MutexGuard<'_, Option<Zapping>> {
+        self.0.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct Zapping {
+    forward: bool,
+    /// The favorite being tried.
+    station_id: String,
+    /// Favorites tried so far, this one included.
+    tried: usize,
+    skipped: Vec<Skipped>,
+}
+
+/// What a failed favorite leads to.
+#[derive(Debug, PartialEq)]
+enum Skip {
+    /// The error is shown.
+    Stop,
+    /// The next favorite is played.
+    To(Favorite, Vec<Skipped>),
+}
+
+impl Zapping {
+    /// The favorite tried failed with `message`: the next one, unless all have been tried.
+    fn skip(&mut self, favorites: &[Favorite], message: &str) -> Skip {
+        if self.tried >= favorites.len() {
+            return Skip::Stop;
+        }
+        let Some(next) = neighbour(favorites, Some(&self.station_id), self.forward).cloned() else {
+            return Skip::Stop;
+        };
+        let name = favorites
+            .iter()
+            .find(|f| f.station_id == self.station_id)
+            .map_or_else(|| self.station_id.clone(), |f| f.name.clone());
+        let reason = message
+            .strip_prefix("The station is not broadcasting: ")
+            .unwrap_or(message)
+            .to_owned();
+        self.skipped.push(Skipped { name, reason });
+        self.station_id = next.station_id.clone();
+        self.tried += 1;
+        Skip::To(next, self.skipped.clone())
+    }
+}
+
+/// Called for every player state, after [`crate::favorite_repair::on_state`]; returns the state
+/// to show. A favorite started by Next / Previous that fails before its first sound gives way to
+/// the next one.
+pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerState {
+    let Some(zap) = app.try_state::<Zap>() else {
+        return state;
+    };
+    let mut zap = zap.lock();
+    let message = match &state {
+        PlayerState::Error(message) => message,
+        // Still trying: the zapping goes on.
+        PlayerState::Connecting | PlayerState::Reconnecting(_) => return state,
+        // Heard, or stopped: it is over.
+        PlayerState::Playing | PlayerState::Paused | PlayerState::Idle => {
+            *zap = None;
+            return state;
+        }
+    };
+    let Some(zapping) = zap.as_mut() else {
+        return state;
+    };
+    let on_air = app
+        .try_state::<AudioState>()
+        .and_then(|audio| audio.station())
+        .map(|s| s.id);
+    // Another station failed: one started from the window, or the previous one before the
+    // favorite took its place.
+    if on_air.as_deref() != Some(zapping.station_id.as_str()) {
+        return state;
+    }
+    // Gone from the catalog: the window offers to remove it.
+    if message == crate::favorite_repair::GONE {
+        *zap = None;
+        return state;
+    }
+    let favorites = match app.state::<Database>().list_favorites() {
+        Ok(favorites) => favorites,
+        Err(e) => {
+            tracing::warn!("cannot skip to the next favorite: {e}");
+            *zap = None;
+            return state;
+        }
+    };
+    let Skip::To(next, skipped) = zapping.skip(&favorites, message) else {
+        *zap = None;
+        return state;
+    };
+    let shown = PlayerState::Reconnecting(format!("Skipping {}…", skipped[skipped.len() - 1].name));
+    tracing::info!(station = %next.station_id, "favorite not broadcasting: skipping to the next one");
+    // Starting a station waits for the sound output, and the engine may be locked by the caller.
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(e) = play_favorite(&app, next, skipped) {
+            tracing::warn!("cannot skip to the next favorite: {e}");
+        }
+    });
+    shown
 }
 
 #[cfg(target_os = "linux")]
@@ -257,6 +388,19 @@ fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
     let Some(next) = neighbour(&favorites, current.as_deref(), forward).cloned() else {
         return Ok(());
     };
+    if let Some(zap) = app.try_state::<Zap>() {
+        *zap.lock() = Some(Zapping {
+            forward,
+            station_id: next.station_id.clone(),
+            tried: 1,
+            skipped: Vec::new(),
+        });
+    }
+    play_favorite(app, next, Vec::new())
+}
+
+/// Plays `next`, and tells the window which station is now on air.
+fn play_favorite(app: &tauri::AppHandle, next: Favorite, skipped: Vec<Skipped>) -> AppResult<()> {
     let outcome = start_station(
         app,
         next.stream_url.clone(),
@@ -269,6 +413,7 @@ fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
         url: next.stream_url,
         genre: next.genre,
         show_click_notice: outcome.show_click_notice,
+        skipped,
     };
     if let Err(e) = app.emit(STATION_EVENT, change) {
         tracing::warn!("failed to emit the new station: {e}");
@@ -350,6 +495,57 @@ mod tests {
         assert_eq!(id(Some("other"), true), Some("a"));
         assert_eq!(id(None, false), Some("c"));
         assert_eq!(neighbour(&[], Some("a"), true).map(|f| &f.station_id), None);
+    }
+
+    fn zapping(id: &str, forward: bool) -> Zapping {
+        Zapping {
+            forward,
+            station_id: id.into(),
+            tried: 1,
+            skipped: Vec::new(),
+        }
+    }
+
+    const NOT_ON_AIR: &str = "The station is not broadcasting: the stream is not on air (HTTP 404)";
+
+    #[test]
+    fn a_silent_favorite_gives_way_to_the_next_one() {
+        let favorites = [favorite("a"), favorite("b"), favorite("c")];
+        let mut zap = zapping("a", true);
+        let Skip::To(next, skipped) = zap.skip(&favorites, NOT_ON_AIR) else {
+            panic!("not skipped");
+        };
+        assert_eq!(next.station_id, "b");
+        assert_eq!(
+            skipped,
+            [Skipped {
+                name: "A".into(),
+                reason: "the stream is not on air (HTTP 404)".into(),
+            }]
+        );
+        assert_eq!(zap.station_id, "b");
+        // Previous goes backward
+        let mut zap = zapping("a", false);
+        assert!(matches!(zap.skip(&favorites, NOT_ON_AIR), Skip::To(f, _) if f.station_id == "c"));
+    }
+
+    #[test]
+    fn zapping_stops_after_a_full_turn() {
+        let favorites = [favorite("a"), favorite("b"), favorite("c")];
+        let mut zap = zapping("a", true);
+        assert!(matches!(zap.skip(&favorites, NOT_ON_AIR), Skip::To(..)));
+        let Skip::To(_, skipped) = zap.skip(&favorites, "Cannot open the sound output") else {
+            panic!("not skipped");
+        };
+        // A message without the usual start is kept whole
+        assert_eq!(skipped[1].reason, "Cannot open the sound output");
+        // a, b and c tried: c's error is shown
+        assert_eq!(zap.skip(&favorites, NOT_ON_AIR), Skip::Stop);
+        // A single favorite is never skipped
+        assert_eq!(
+            zapping("a", true).skip(&[favorite("a")], NOT_ON_AIR),
+            Skip::Stop
+        );
     }
 
     #[test]

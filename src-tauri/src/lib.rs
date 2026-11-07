@@ -380,6 +380,7 @@ pub fn run() {
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
                     let state = favorite_repair::on_state(&state_handle, state);
+                    let state = media_controls::on_state(&state_handle, state);
                     track_session(&state_handle, &session_station, &session_logged, &state);
                     commands::schedule_click(&state_handle, &state);
                     state_media.show_state(&state);
@@ -409,6 +410,7 @@ pub fn run() {
                 web_titles,
             );
             app.manage(favorite_repair::FavoriteRepair::default());
+            app.manage(media_controls::Zap::default());
             engine.set_normalize(volume::constant_volume(&app.state::<Database>()));
             engine.set_level_memory(Arc::new(volume::DatabaseLevels(app.handle().clone())));
             app.manage(AudioState::new(engine, on_air));

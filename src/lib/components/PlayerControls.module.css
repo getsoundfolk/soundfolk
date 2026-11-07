@@ -337,6 +337,13 @@
   background: var(--color-error-strong);
 }
 
+/* A favorite that Next / Previous skipped: said once, quietly, under the status. */
+.skipped {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-soft);
+}
+
 /* "Remove it from your favorites?" under the error of a favorite gone from the catalog. */
 .ask {
   display: flex;

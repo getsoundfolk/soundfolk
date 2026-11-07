@@ -9,6 +9,7 @@ import {
   type Playable,
   type PlayerState,
   type RecipeNotice,
+  type Skipped,
   type StationChange,
   type TitleStatus,
 } from './api';
@@ -31,6 +32,8 @@ class PlayerStore {
   recipeNotice = $state<RecipeNotice | null>(null);
   /** Favorite that failed and is no longer in the catalog: the player offers to remove it. */
   goneFavorite = $state<string | null>(null);
+  /** Favorites that Next / Previous skipped to reach the station on air. */
+  skipped = $state<Skipped[]>([]);
 
   /** Audio is (or is about to be) playing: the main button shows Pause. */
   active = $derived(['connecting', 'reconnecting', 'playing'].includes(this.state.status));
@@ -56,7 +59,9 @@ class PlayerStore {
       ),
       // Station switched from the system media controls (next / previous favorite)
       listen<StationChange>('player:station', (e) => {
-        const { show_click_notice, ...station } = e.payload;
+        const { show_click_notice, skipped, ...station } = e.payload;
+        // The same station again is a retry at its new address: what was skipped still stands.
+        if (station.id !== this.current?.id) this.skipped = skipped ?? [];
         this.current = station;
         if (show_click_notice) this.clickNotice = true;
       }),
@@ -93,6 +98,7 @@ class PlayerStore {
 
   async play(station: Playable) {
     this.current = station;
+    this.skipped = [];
     await this.run(async () => {
       const outcome = await api.playStream(station.url, station.id, station.name);
       if (outcome.show_click_notice) this.clickNotice = true;

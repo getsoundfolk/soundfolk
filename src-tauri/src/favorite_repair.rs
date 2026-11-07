@@ -29,7 +29,7 @@ const STATION_EVENT: &str = "player:station";
 const LOOKING_UP: &str = "Looking for the station's new address…";
 /// Tells the window that the favorite on air is no longer in the catalog (payload: its ID).
 const GONE_EVENT: &str = "favorite:gone";
-const GONE: &str = "This station is no longer in the catalog.";
+pub(crate) const GONE: &str = "This station is no longer in the catalog.";
 
 /// The favorite being started, if the current playback is one (Tauri state).
 #[derive(Default)]

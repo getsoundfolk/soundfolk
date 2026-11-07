@@ -74,7 +74,8 @@ HTTP ─▶ stream-download ─▶ ICY filter ─▶ symphonia ─▶ convert �
     * *Sign in to the network (captive portal) — waiting…*: the system says so, or the network answered HTTP 511;
     * *The station is not broadcasting (reason) — retrying…*: proven — its address answered with an HTTP client
       error, or Internet works (Radio-Browser answers). Reasons in plain words: its server refuses connections, does
-      not answer, its address no longer exists, the stream no longer exists (HTTP 404), its server has a problem
+      not answer, its address no longer exists, the stream is not on air (HTTP 404: on Icecast, also a mount
+      whose source is off air), the stream no longer exists (HTTP 410), its server has a problem
       (HTTP 5xx), the stream stopped, it does not send playable audio;
     * *Cannot play the station (what was seen) — retrying…*: no proof either way (e.g. macOS, which has no system
       check, or the signals disagree): facts only — "its server's address cannot be found", not "no longer exists".

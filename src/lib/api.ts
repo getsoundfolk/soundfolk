@@ -392,8 +392,16 @@ export interface LocalRecipes {
   errors: { file: string; error: string }[];
 }
 
+/** A favorite that Next / Previous skipped, because it did not broadcast. */
+export interface Skipped {
+  name: string;
+  reason: string;
+}
+
 export interface StationChange extends Playable {
   show_click_notice: boolean;
+  /** Favorites skipped on the way (none when the backend retries the same station). */
+  skipped?: Skipped[];
 }
 
 /** What a failed command rejects with (`AppError` in error.rs). */

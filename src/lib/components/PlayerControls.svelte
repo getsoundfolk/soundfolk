@@ -296,6 +296,10 @@
     {message}
   </p>
 
+  {#each player.skipped as { name, reason } (name)}
+    <p class={styles.skipped}>Skipped {name}: {reason}</p>
+  {/each}
+
   {#if status === 'error' && player.goneFavorite && player.isFavorite(player.goneFavorite)}
     <p class={styles.ask}>
       Remove it from your favorites?
