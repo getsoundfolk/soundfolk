@@ -21,16 +21,19 @@
 //! station there. Their picture is the station's logo, or the Soundfolk icon when it has none.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use stream_download::http::reqwest::Url;
 use tauri::{Emitter, Manager};
 
 use crate::audio::NowPlaying;
 use crate::db::Database;
 use crate::media_controls::SystemMedia;
 use crate::musicbrainz::{LookupError, MusicBrainz};
+use crate::notifications::TrackNotifications;
 use crate::tracks;
 
 mod deezer;
@@ -421,6 +424,10 @@ impl Covers {
                 }
             }
         });
+        // Nothing more to wait for: a track notification waiting for its picture can be shown.
+        let settled = lookup
+            .is_none()
+            .then(|| (url.clone(), logo.as_ref().and_then(|l| l.file.clone())));
         if let (Some(source), Some((track_key, parsed))) = (lookup, query) {
             self.look_up(source, source.cache_key(&track_key), parsed);
         }
@@ -450,6 +457,9 @@ impl Covers {
             state.media_picture = picture.clone();
             (changed, picture_changed)
         };
+        if let Some((cover, logo)) = settled {
+            self.notify_picture(now_playing.title.clone(), cover, logo);
+        }
         if title_changed || picture_changed {
             self.media.show_now_playing(
                 &now_playing,
@@ -463,6 +473,44 @@ impl Covers {
                 tracing::warn!("failed to emit the cover: {e}");
             }
         }
+    }
+
+    /// Gives the track notification waiting for this title its picture: the cover, downloaded to
+    /// the cache folder (the desktop wants a file), else the station's logo.
+    fn notify_picture(
+        self: &Arc<Self>,
+        title: Option<String>,
+        cover: Option<String>,
+        logo: Option<String>,
+    ) {
+        let Some(notifications) = self.app.try_state::<TrackNotifications>() else {
+            return;
+        };
+        if !notifications.waits_for(title.as_deref()) {
+            return;
+        }
+        let logo = logo
+            .and_then(|l| Url::parse(&l).ok())
+            .and_then(|l| l.to_file_path().ok());
+        let Some(cover) = cover else {
+            return notifications.picture(title.as_deref(), logo);
+        };
+        let this = self.clone();
+        tauri::async_runtime::spawn(async move {
+            let path = match this
+                .logo_cache
+                .download(&cover, NOTIFICATION_MAX_BYTES)
+                .await
+            {
+                Ok((bytes, ext, _)) => notification_file(&this.app, &bytes, ext),
+                Err(e) => {
+                    tracing::debug!("cover not downloaded for the notification: {e}");
+                    None
+                }
+            };
+            let notifications = this.app.state::<TrackNotifications>();
+            notifications.picture(title.as_deref(), path.or(logo));
+        });
     }
 
     fn can_look_up(&self, source: SourceId) -> bool {
@@ -529,6 +577,32 @@ impl Covers {
             }
             this.resolve(false);
         });
+    }
+}
+
+/// Bigger than this, a cover is not downloaded for a notification.
+const NOTIFICATION_MAX_BYTES: usize = 4 * 1024 * 1024;
+
+/// Writes the cover of a track notification to the cache folder, replacing the previous one. Each
+/// cover gets its own name: a desktop may keep an image by its path.
+fn notification_file(app: &tauri::AppHandle, bytes: &[u8], ext: &str) -> Option<PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let dir = app.path().app_cache_dir().ok()?.join("notification");
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    let path = dir.join(format!("{:016x}.{ext}", hasher.finish()));
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten().filter(|e| e.path() != path) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let written = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, bytes));
+    match written {
+        Ok(()) => Some(path),
+        Err(e) => {
+            tracing::debug!("cover not written for the notification: {e}");
+            None
+        }
     }
 }
 

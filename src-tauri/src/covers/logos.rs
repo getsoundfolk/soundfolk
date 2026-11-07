@@ -128,6 +128,16 @@ impl LogoCache {
 
     /// Downloads a logo and keeps it for the station.
     pub async fn fetch(&self, id: &str, url: &str) -> Result<Logo, String> {
+        let (bytes, ext, media_type) = self.download(url, MAX_BYTES).await?;
+        Ok(logo_of(&bytes, media_type, self.store(id, ext, &bytes)))
+    }
+
+    /// Downloads an image of at most `max` bytes: its bytes, extension and media type.
+    pub async fn download(
+        &self,
+        url: &str,
+        max: usize,
+    ) -> Result<(Vec<u8>, &'static str, &'static str), String> {
         let client = self.client.as_ref().ok_or("no HTTP client")?;
         let mut response = client
             .get(url)
@@ -135,21 +145,18 @@ impl LogoCache {
             .await
             .and_then(|r| r.error_for_status())
             .map_err(|e| e.to_string())?;
-        if response
-            .content_length()
-            .is_some_and(|n| n > MAX_BYTES as u64)
-        {
-            return Err("logo too big".into());
+        if response.content_length().is_some_and(|n| n > max as u64) {
+            return Err("image too big".into());
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
             bytes.extend_from_slice(&chunk);
-            if bytes.len() > MAX_BYTES {
-                return Err("logo too big".into());
+            if bytes.len() > max {
+                return Err("image too big".into());
             }
         }
         let (ext, media_type) = format_of(&bytes).ok_or("not an image")?;
-        Ok(logo_of(&bytes, media_type, self.store(id, ext, &bytes)))
+        Ok((bytes, ext, media_type))
     }
 
     /// Writes a logo to the cache folder (replacing one of another format); its `file://` address.

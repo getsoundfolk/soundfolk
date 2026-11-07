@@ -6,9 +6,15 @@
 //! same title, or sending its own name between tracks, notifies nothing. On Linux, each
 //! notification replaces the previous one and is marked transient, so a long listen does not fill
 //! the notification list.
+//!
+//! The notification shows the track's cover, else the station's logo. It waits for them
+//! (`covers.rs`), at most [`PICTURE_WAIT`]: a cover already known comes at once, one looked up
+//! online after a moment.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tauri::{AppHandle, State};
 
@@ -19,6 +25,8 @@ use crate::error::AppResult;
 use crate::tracks::ParsedTitle;
 
 const SETTING_TRACK_NOTIFICATIONS: &str = "track_notifications";
+/// A notification waits this long for its picture at most, then goes without it.
+const PICTURE_WAIT: Duration = Duration::from_secs(4);
 
 /// Whether the main window has the focus: no notification then, the player shows the track.
 /// Followed from the window's events (`lib.rs`), never asked from here: the title arrives on the
@@ -37,6 +45,18 @@ pub struct TrackNotifications {
     identifier: String,
     /// The last notification shown (its id on Linux, to replace it). Also keeps them in order.
     last: Arc<Mutex<Option<u32>>>,
+    /// The notification waiting for its picture.
+    pending: Arc<Mutex<Option<Pending>>>,
+    /// Numbers the notifications, so that a late timer leaves a newer one alone.
+    count: Arc<AtomicU64>,
+}
+
+struct Pending {
+    number: u64,
+    /// The title on air (`NowPlaying.title`), as the covers name it.
+    title: Option<String>,
+    summary: String,
+    body: String,
 }
 
 impl TrackNotifications {
@@ -54,6 +74,8 @@ impl TrackNotifications {
             icon,
             identifier,
             last: Arc::default(),
+            pending: Arc::default(),
+            count: Arc::default(),
         }
     }
 
@@ -80,15 +102,77 @@ impl TrackNotifications {
         let parsed = now_playing.parsed(raw, station);
         let label = label.map(str::trim).filter(|l| !l.is_empty());
         let (summary, body) = text(&parsed, label.or(station));
-        let (icon, identifier, last) = (
-            self.icon.clone(),
-            self.identifier.clone(),
-            self.last.clone(),
-        );
+        let number = self.count.fetch_add(1, Ordering::Relaxed) + 1;
+        *self.lock_pending() = Some(Pending {
+            number,
+            title: now_playing.title.clone(),
+            summary,
+            body,
+        });
+        // Without a picture in time, the notification goes without it.
+        let (pending, shower) = (self.pending.clone(), self.shower());
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(PICTURE_WAIT).await;
+            let late = {
+                let mut pending = pending.lock().unwrap_or_else(|p| p.into_inner());
+                pending.take_if(|p| p.number == number)
+            };
+            if let Some(late) = late {
+                shower.show(late, None);
+            }
+        });
+    }
+
+    /// Whether a notification waits for the picture of this title.
+    pub fn waits_for(&self, title: Option<&str>) -> bool {
+        self.lock_pending()
+            .as_ref()
+            .is_some_and(|p| p.title.as_deref() == title)
+    }
+
+    /// The picture of this title is known (`None`: it has none): its notification shows.
+    pub fn picture(&self, title: Option<&str>, picture: Option<PathBuf>) {
+        let pending = self.lock_pending().take_if(|p| p.title.as_deref() == title);
+        if let Some(pending) = pending {
+            self.shower().show(pending, picture);
+        }
+    }
+
+    fn lock_pending(&self) -> std::sync::MutexGuard<'_, Option<Pending>> {
+        self.pending.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn shower(&self) -> Shower {
+        Shower {
+            icon: self.icon.clone(),
+            identifier: self.identifier.clone(),
+            last: self.last.clone(),
+        }
+    }
+}
+
+/// What showing a notification needs, away from [`TrackNotifications`].
+struct Shower {
+    icon: Option<String>,
+    identifier: String,
+    last: Arc<Mutex<Option<u32>>>,
+}
+
+impl Shower {
+    fn show(self, pending: Pending, picture: Option<PathBuf>) {
         // Showing waits for the desktop (D-Bus on Linux): not on the audio thread.
         tauri::async_runtime::spawn_blocking(move || {
-            let mut last = last.lock().unwrap_or_else(|p| p.into_inner());
-            match imp::show(&summary, &body, icon.as_deref(), &identifier, *last) {
+            let mut last = self.last.lock().unwrap_or_else(|p| p.into_inner());
+            let picture = picture.as_deref().and_then(|p| p.to_str());
+            let shown = imp::show(
+                &pending.summary,
+                &pending.body,
+                self.icon.as_deref(),
+                picture,
+                &self.identifier,
+                *last,
+            );
+            match shown {
                 Ok(id) => *last = id,
                 Err(e) => tracing::warn!("track notification not shown: {e}"),
             }
@@ -114,6 +198,7 @@ mod imp {
         summary: &str,
         body: &str,
         icon: Option<&str>,
+        picture: Option<&str>,
         _identifier: &str,
         replaces: Option<u32>,
     ) -> Result<Option<u32>, String> {
@@ -125,6 +210,9 @@ mod imp {
             .hint(Hint::Transient(true));
         if let Some(icon) = icon {
             notification.icon(icon);
+        }
+        if let Some(picture) = picture {
+            notification.image_path(picture);
         }
         if let Some(id) = replaces {
             notification.id(id);
@@ -145,6 +233,7 @@ mod imp {
         summary: &str,
         body: &str,
         _icon: Option<&str>,
+        picture: Option<&str>,
         identifier: &str,
         _replaces: Option<u32>,
     ) -> Result<Option<u32>, String> {
@@ -153,6 +242,9 @@ mod imp {
             .appname("Soundfolk")
             .summary(summary)
             .body(body);
+        if let Some(picture) = picture {
+            notification.image_path(picture);
+        }
         // Installed, the app has its own identity; a development build borrows PowerShell's
         // (Windows) or the Terminal's (macOS), which every system knows.
         #[cfg(windows)]
