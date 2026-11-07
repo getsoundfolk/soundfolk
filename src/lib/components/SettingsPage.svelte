@@ -10,14 +10,17 @@
     type HistorySummary,
     type LocalRecipes,
   } from '../api';
+  import { rovingKeydown } from '../a11y';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
   import { checkCustom, MAX_CUSTOM, SERVICE_GROUPS, TRACK_SERVICES } from '../trackLinks';
+  import { savedTheme, setTheme, type Theme } from '../theme';
   import { trackServices } from '../trackServices.svelte';
   import { ui } from '../ui.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import OrderedSources, { type SourceItem } from './OrderedSources.svelte';
+  import Icon from './Icon.svelte';
   import styles from './SettingsPage.module.css';
 
   let clickCounting = $state(true);
@@ -28,6 +31,17 @@
   let constantVolume = $state(true);
   let version = $state<string | null>(null);
   let back: HTMLButtonElement | undefined = $state();
+  let theme = $state<Theme>(savedTheme());
+  const THEMES: { id: Theme; label: string }[] = [
+    { id: 'system', label: 'System' },
+    { id: 'light', label: 'Light' },
+    { id: 'dark', label: 'Dark' },
+  ];
+
+  function changeTheme(next: Theme) {
+    theme = next;
+    setTheme(next);
+  }
 
   // Form to add a site to the track menu.
   let adding = $state(false);
@@ -297,7 +311,7 @@
 <section class={styles.root} aria-labelledby="settings-title">
   <header class={styles.header}>
     <button class={styles.back} type="button" bind:this={back} onclick={ui.closeSettings}>
-      <span aria-hidden="true">←</span> Back
+      <Icon name="back" /> Back
     </button>
     <h1 class={styles.heading} id="settings-title">Settings</h1>
   </header>
@@ -305,6 +319,37 @@
   <div class={styles.error}><ErrorBanner area="settings" /></div>
 
   <div class={styles.body}>
+    <section class={styles.group} aria-labelledby="settings-appearance">
+      <h2 class={styles.groupTitle} id="settings-appearance">Appearance</h2>
+
+      <div class={styles.option} data-static="true">
+        <span class={styles.text}>
+          <span class={styles.name} id="settings-theme">Theme</span>
+          <span class={styles.detail}
+            >System follows the light or dark setting of your desktop.</span
+          >
+        </span>
+        <div
+          class={styles.segmented}
+          role="radiogroup"
+          tabindex="-1"
+          aria-labelledby="settings-theme"
+          onkeydown={rovingKeydown}
+        >
+          {#each THEMES as t (t.id)}
+            <button
+              class={styles.segment}
+              type="button"
+              role="radio"
+              aria-checked={theme === t.id}
+              tabindex={theme === t.id ? 0 : -1}
+              onclick={() => changeTheme(t.id)}>{t.label}</button
+            >
+          {/each}
+        </div>
+      </div>
+    </section>
+
     <section class={styles.group} aria-labelledby="settings-startup">
       <h2 class={styles.groupTitle} id="settings-startup">Startup</h2>
 
@@ -414,8 +459,8 @@
             <span class={styles.name}>My recipes</span>
             <span class={styles.detail}>
               {#if !localRecipes || localRecipes.count === 0}
-                Recipes you write to read a station's website. Start from a station's details (ⓘ in
-                the player).
+                Recipes you write to read a station's website. Start from Station details in the
+                player.
               {:else}
                 {localRecipes.count === 1
                   ? '1 recipe'
@@ -467,7 +512,7 @@
     <section class={styles.group} aria-labelledby="settings-services">
       <h2 class={styles.groupTitle} id="settings-services">Find this track on</h2>
       <p class={styles.groupIntro}>
-        Choose the sites listed in a track's ⋯ menu in your history. They open a search in your
+        Choose the sites listed in the menu of a track in your history. They open a search in your
         browser: no account, nothing sent until you click.
       </p>
 
@@ -561,7 +606,9 @@
             </div>
           </form>
         {:else if trackServices.custom.length < MAX_CUSTOM}
-          <button class={styles.addSite} type="button" onclick={openForm}>+ Add a site</button>
+          <button class={styles.addSite} type="button" onclick={openForm}
+            ><Icon name="plus" size={14} /> Add a site</button
+          >
         {:else}
           <p class={styles.hint}>You can add up to {MAX_CUSTOM} sites.</p>
         {/if}
@@ -620,8 +667,7 @@
             {:else if summary.count === 0}
               The history is empty.
             {:else}
-              {tracks(summary.count)}{#if since}
-                since {since}{/if}. Liked tracks are kept.
+              {tracks(summary.count)}{since ? ` since ${since}` : ''}. Liked tracks are kept.
             {/if}
           </span>
           {#if confirmingClear && summary?.count}

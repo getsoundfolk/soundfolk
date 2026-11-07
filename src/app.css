@@ -1,64 +1,74 @@
 /* SPDX-License-Identifier: MPL-2.0 */
+/* Colors: one neutral ramp per theme, one amber accent (the tuner's dial light), status colors
+   toned to sit inside the ramp. The theme follows the system unless Settings › Appearance sets
+   `data-theme` on <html> (src/lib/theme.ts). The light values are written twice, once for an
+   explicit choice and once for a light system theme, since plain CSS cannot share them. */
 :root {
   /* Surfaces, darkest to lightest. */
-  --color-bg: #121216;
-  --color-surface: #1a1a21;
-  --color-surface-raised: #20202a;
-  --color-surface-overlay: #262632;
-  --color-surface-hover: #272733;
-  --color-surface-high: #2c2c36;
-  --color-surface-higher: #34343f;
-  --color-surface-control: #3a3a46;
+  --color-bg: #121213;
+  --color-surface: #19191b;
+  --color-surface-raised: #1f1f21;
+  --color-surface-overlay: #232325;
+  --color-surface-hover: #232325;
+  --color-surface-high: #29292c;
+  --color-surface-higher: #303033;
+  --color-surface-control: #3a3a3e;
 
-  /* Borders. */
-  --color-border: #2c2c36;
-  --color-border-strong: #34343f;
-  --color-border-control: #3a3a46;
-  --color-border-bold: #4a4a56;
-  --color-border-hover: #55556a;
+  /* Hairlines: the primary text color at low opacity. */
+  --color-border: rgb(237 237 237 / 0.08);
+  --color-border-strong: rgb(237 237 237 / 0.11);
+  --color-border-control: rgb(237 237 237 / 0.15);
+  --color-border-bold: rgb(237 237 237 / 0.2);
+  --color-border-hover: rgb(237 237 237 / 0.24);
 
-  /* Text, brightest to dimmest. */
-  --color-text: #ececf1;
-  --color-text-soft: #c9c9d6;
-  --color-text-muted: #9a9aab;
-  --color-text-subtle: #7c7c8c;
-  --color-disabled: #5a5a66;
+  /* Text: primary, secondary, muted. */
+  --color-text: #ededed;
+  --color-text-soft: #c2c2c6;
+  --color-text-muted: #a1a1a6;
+  --color-text-subtle: #85858b;
+  --color-disabled: #5c5c61;
 
-  /* Accent: buttons, focus rings, selection. */
+  /* Accent: the primary action, the selection, the station on air. `--color-accent-text` is the
+     accent used as text or as an icon on a surface (darker on light themes for contrast). */
   --color-accent: #f0a028;
   --color-accent-hover: #ffb443;
+  --color-accent-text: #f0a028;
   --color-on-accent: #1a1204;
   --color-accent-tint: rgb(240 160 40 / 0.12);
   --color-accent-ring: rgb(240 160 40 / 0.45);
-  --color-focus: var(--color-accent);
+  --color-focus: var(--color-accent-text);
   --color-focus-contrast: #fff;
-  --color-knob: var(--color-text);
-  --color-like: #ff6b81;
+  --color-knob: #ededed;
+  --color-like: #f2667a;
 
   /* Status. */
-  --color-success: #3ddc84;
+  --color-success: #4cc38a;
   --color-success-text: #9ee0b0;
-  --color-success-bg: #17261c;
-  --color-success-border: #2f4a37;
+  --color-success-bg: #16231b;
+  --color-success-border: #2a4433;
   --color-info: #8aa4ff;
-  --color-warning-bg: #2a2214;
-  --color-warning-border: #4a3a1c;
+  --color-warning-bg: #262014;
+  --color-warning-border: #46381c;
   --color-warning-border-strong: #5a4a2c;
-  --color-error: #ff8a80;
-  --color-error-strong: #ff5252;
-  --color-error-bg: #2a171a;
-  --color-error-border: #5a2c32;
+  --color-error: #f28b82;
+  --color-error-strong: #e5484d;
+  --color-error-bg: #261718;
+  --color-error-border: #542c30;
   --color-danger: #d9534f;
   --color-on-danger: #fff;
   --color-danger-text: #f3b3b8;
-  --color-danger-bg: #3a1f22;
-  --color-danger-border: #6b3a3a;
+  --color-danger-bg: #351e20;
+  --color-danger-border: #653838;
 
   /* Shadows and backdrops. */
   --color-shadow: rgb(0 0 0 / 0.35);
   --color-shadow-strong: rgb(0 0 0 / 0.45);
   --color-shadow-knob: rgb(0 0 0 / 0.5);
   --color-backdrop: rgb(0 0 0 / 0.55);
+
+  /* One easing curve, a few durations. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 150ms;
 
   color-scheme: dark;
   font-family:
@@ -70,6 +80,112 @@
   color: var(--color-text);
 }
 
+:root[data-theme='light'] {
+  --color-bg: #f2f2f3;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f7f7f8;
+  --color-surface-overlay: #ffffff;
+  --color-surface-hover: #f0f0f1;
+  --color-surface-high: #ebebed;
+  --color-surface-higher: #e3e3e6;
+  --color-surface-control: #d2d2d6;
+  --color-border: rgb(23 23 23 / 0.08);
+  --color-border-strong: rgb(23 23 23 / 0.12);
+  --color-border-control: rgb(23 23 23 / 0.16);
+  --color-border-bold: rgb(23 23 23 / 0.22);
+  --color-border-hover: rgb(23 23 23 / 0.28);
+  --color-text: #171717;
+  --color-text-soft: #3d3d3d;
+  --color-text-muted: #555558;
+  --color-text-subtle: #737376;
+  --color-disabled: #a3a3a6;
+  --color-accent: #f0a028;
+  --color-accent-hover: #f5ad3d;
+  --color-accent-text: #985700;
+  --color-on-accent: #1a1204;
+  --color-accent-tint: rgb(240 160 40 / 0.16);
+  --color-accent-ring: rgb(152 87 0 / 0.45);
+  --color-focus-contrast: #fff;
+  --color-knob: #ffffff;
+  --color-like: #d6334f;
+  --color-success: #16a34a;
+  --color-success-text: #15803d;
+  --color-success-bg: #effaf3;
+  --color-success-border: #bfe5cb;
+  --color-info: #3b5bdb;
+  --color-warning-bg: #fff8ea;
+  --color-warning-border: #f0d9a8;
+  --color-warning-border-strong: #e3c27e;
+  --color-error: #c62828;
+  --color-error-strong: #b91c1c;
+  --color-error-bg: #fdf2f2;
+  --color-error-border: #f2c4c4;
+  --color-danger: #d32f2f;
+  --color-on-danger: #fff;
+  --color-danger-text: #b42323;
+  --color-danger-bg: #fdf0f0;
+  --color-danger-border: #efbcbc;
+  --color-shadow: rgb(0 0 0 / 0.08);
+  --color-shadow-strong: rgb(0 0 0 / 0.14);
+  --color-shadow-knob: rgb(0 0 0 / 0.3);
+  --color-backdrop: rgb(0 0 0 / 0.3);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --color-bg: #f2f2f3;
+    --color-surface: #ffffff;
+    --color-surface-raised: #f7f7f8;
+    --color-surface-overlay: #ffffff;
+    --color-surface-hover: #f0f0f1;
+    --color-surface-high: #ebebed;
+    --color-surface-higher: #e3e3e6;
+    --color-surface-control: #d2d2d6;
+    --color-border: rgb(23 23 23 / 0.08);
+    --color-border-strong: rgb(23 23 23 / 0.12);
+    --color-border-control: rgb(23 23 23 / 0.16);
+    --color-border-bold: rgb(23 23 23 / 0.22);
+    --color-border-hover: rgb(23 23 23 / 0.28);
+    --color-text: #171717;
+    --color-text-soft: #3d3d3d;
+    --color-text-muted: #555558;
+    --color-text-subtle: #737376;
+    --color-disabled: #a3a3a6;
+    --color-accent: #f0a028;
+    --color-accent-hover: #f5ad3d;
+    --color-accent-text: #985700;
+    --color-on-accent: #1a1204;
+    --color-accent-tint: rgb(240 160 40 / 0.16);
+    --color-accent-ring: rgb(152 87 0 / 0.45);
+    --color-focus-contrast: #fff;
+    --color-knob: #ffffff;
+    --color-like: #d6334f;
+    --color-success: #16a34a;
+    --color-success-text: #15803d;
+    --color-success-bg: #effaf3;
+    --color-success-border: #bfe5cb;
+    --color-info: #3b5bdb;
+    --color-warning-bg: #fff8ea;
+    --color-warning-border: #f0d9a8;
+    --color-warning-border-strong: #e3c27e;
+    --color-error: #c62828;
+    --color-error-strong: #b91c1c;
+    --color-error-bg: #fdf2f2;
+    --color-error-border: #f2c4c4;
+    --color-danger: #d32f2f;
+    --color-on-danger: #fff;
+    --color-danger-text: #b42323;
+    --color-danger-bg: #fdf0f0;
+    --color-danger-border: #efbcbc;
+    --color-shadow: rgb(0 0 0 / 0.08);
+    --color-shadow-strong: rgb(0 0 0 / 0.14);
+    --color-shadow-knob: rgb(0 0 0 / 0.3);
+    --color-backdrop: rgb(0 0 0 / 0.3);
+    color-scheme: light;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -79,4 +195,19 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: var(--color-bg);
+}
+
+/* Figures line up wherever they appear. */
+:root {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A button holding a line icon centers it, and spaces it from a label next to it. Zero
+   specificity, so a component's own `display` wins. */
+:where(button:has(> svg)) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
 }

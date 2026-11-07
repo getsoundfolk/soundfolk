@@ -21,6 +21,7 @@
   import ListRow from './ListRow.svelte';
   import ListScreen from './ListScreen.svelte';
   import StationRow from './StationRow.svelte';
+  import Icon from './Icon.svelte';
   import styles from './StationBrowser.module.css';
 
   // The three destinations of docs/06-ui-principles.md §1: what is mine, what others offer, what I
@@ -225,7 +226,7 @@
         </header>
         {#if favoriteCount === 0}
           <p class={styles.hint}>
-            Tap ☆ on a station or a list to keep it here.
+            Star a station or a list to keep it here.
             <button class={styles.link} type="button" onclick={() => (tab = 'discover')}
               >Discover stations</button
             >
@@ -249,7 +250,8 @@
                   aria-pressed="true"
                   aria-label={`Remove ${l.title} from favorites`}
                   title="Remove from favorites"
-                  onclick={() => lists.toggleFavorite(l.id).catch(() => {})}>★</button
+                  onclick={() => lists.toggleFavorite(l.id).catch(() => {})}
+                  ><Icon name="star" filled /></button
                 >
               </li>
             {/each}
@@ -289,7 +291,10 @@
             class={styles.link}
             type="button"
             aria-expanded={adding}
-            onclick={() => (adding = !adding)}>{adding ? 'Cancel' : '+ Add a station'}</button
+            onclick={() => (adding = !adding)}
+            >{#if !adding}<Icon name="plus" size={14} />{/if}{adding
+              ? 'Cancel'
+              : 'Add a station'}</button
           >
         </header>
         <ErrorBanner area="stations" />
@@ -328,7 +333,7 @@
       <input
         class={styles.search}
         type="search"
-        placeholder="Search stations and lists…"
+        placeholder="Search"
         aria-label="Search stations and lists"
         bind:value={text}
         spellcheck="false"

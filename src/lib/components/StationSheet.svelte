@@ -15,6 +15,7 @@
   import { player } from '../player.svelte';
   import { displayTitle } from '../trackLinks';
   import { ui } from '../ui.svelte';
+  import Icon from './Icon.svelte';
   import styles from './StationSheet.module.css';
 
   let dialog: HTMLDialogElement | undefined = $state();
@@ -165,7 +166,7 @@
     <header class={styles.header}>
       <h2 class={styles.title} id="station-sheet-title">{station.name}</h2>
       <button class={styles.close} type="button" aria-label="Close" onclick={ui.closeStation}
-        >✕</button
+        ><Icon name="x" /></button
       >
     </header>
 

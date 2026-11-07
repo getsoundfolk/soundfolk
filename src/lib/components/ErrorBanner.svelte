@@ -2,6 +2,7 @@
 <!-- The error of one area of the window, until dismissed or cleared by that area's next action. -->
 <script lang="ts">
   import { errors, type ErrorArea } from '../errors.svelte';
+  import Icon from './Icon.svelte';
   import styles from './ErrorBanner.module.css';
 
   let { area }: { area: ErrorArea } = $props();
@@ -14,7 +15,7 @@
       class={styles.close}
       type="button"
       aria-label="Dismiss"
-      onclick={() => errors.clear(area)}>✕</button
+      onclick={() => errors.clear(area)}><Icon name="x" /></button
     >
   </p>
 {/if}

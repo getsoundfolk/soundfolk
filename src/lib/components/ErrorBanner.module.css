@@ -2,13 +2,13 @@
 .error {
   display: flex;
   align-items: flex-start;
-  gap: 0.6rem;
+  gap: 0.5rem;
   margin: 0.5rem 0;
-  padding: 0.5rem 0.7rem;
+  padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
   background: var(--color-danger-bg);
   color: var(--color-danger-text);
-  font-size: 0.8rem;
+  font-size: 0.8125rem;
 }
 
 .text {

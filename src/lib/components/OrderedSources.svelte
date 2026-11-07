@@ -17,6 +17,7 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import { flip } from 'svelte/animate';
+  import Icon from './Icon.svelte';
   import styles from './OrderedSources.module.css';
 
   let {
@@ -118,7 +119,7 @@
     </span>
     {#if !isDefault}
       <button class={styles.reset} type="button" onclick={onreset}>
-        <span aria-hidden="true">↺</span> Restore defaults
+        <Icon name="reset" size={14} /> Restore defaults
       </button>
     {/if}
   </div>
@@ -141,7 +142,7 @@
           onpointermove={drag}
           onpointerup={endDrag}
           onpointercancel={endDrag}
-          onkeydown={(e) => onkeydown(e, index)}>⠿</button
+          onkeydown={(e) => onkeydown(e, index)}><Icon name="grip" /></button
         >
         <span class={styles.rank} aria-hidden="true">{index + 1}</span>
         <label class={styles.option}>

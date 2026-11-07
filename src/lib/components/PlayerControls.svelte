@@ -9,6 +9,7 @@
   import { displayTitle } from '../trackLinks';
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
+  import Icon from './Icon.svelte';
   import styles from './PlayerControls.module.css';
 
   const LABELS = {
@@ -190,7 +191,7 @@
         aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
         data-on={track.liked}
         onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
-        >{track.liked ? '♥' : '♡'}</button
+        ><Icon name="heart" size={18} filled={track.liked} /></button
       >
     {/if}
     {#if donation && player.current}
@@ -208,7 +209,7 @@
       aria-label="Station details"
       title="Station details"
       disabled={!player.current}
-      onclick={ui.openStation}>ⓘ</button
+      onclick={ui.openStation}><Icon name="info" size={18} /></button
     >
     <button
       class={styles.gear}
@@ -216,7 +217,7 @@
       aria-label="Settings"
       title="Settings"
       bind:this={gear}
-      onclick={ui.openSettings}>⚙&#xFE0E;</button
+      onclick={ui.openSettings}><Icon name="settings" size={18} /></button
     >
   </div>
 

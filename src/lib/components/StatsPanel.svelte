@@ -110,6 +110,7 @@
     {#each items as item (item.label + (item.detail ?? ''))}
       <li
         class={styles.bar}
+        data-peak={top > 0 && item.count === top}
         title={`${format(item)}${item.detail ? ` — ${item.detail}` : ''}: ${item.count}`}
       >
         <span class={styles.label}>
@@ -129,7 +130,11 @@
   {@const top = Math.max(...values, 0)}
   <div class={styles.columns} style:--count={values.length}>
     {#each values as value, i (i)}
-      <div class={styles.column} title={`${labels[i]}: ${format(value)}`}>
+      <div
+        class={styles.column}
+        data-peak={top > 0 && value === top}
+        title={`${labels[i]}: ${format(value)}`}
+      >
         <span class={styles.stick}
           ><span class={styles.rise} style:height={height(value, top)}></span></span
         >
@@ -241,7 +246,11 @@
             ]
               .filter(Boolean)
               .join(' · ')}
-            <li class={styles.bar} title={`${s.name}: ${meta}`}>
+            <li
+              class={styles.bar}
+              data-peak={stationMax > 0 && stationValue(s) === stationMax}
+              title={`${s.name}: ${meta}`}
+            >
               <span class={styles.label}>{s.name}<span class={styles.detail}>{meta}</span></span>
               <span class={styles.track}
                 ><span class={styles.fill} style:width={width(stationValue(s), stationMax)}

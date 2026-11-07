@@ -10,6 +10,7 @@
   import { pickRandom, playableOf, shortMeta, warningOf } from '../stations';
   import { ui } from '../ui.svelte';
   import StationRow from './StationRow.svelte';
+  import Icon from './Icon.svelte';
   import styles from './ListScreen.module.css';
 
   let { list }: { list: CuratedList } = $props();
@@ -81,7 +82,9 @@
 </script>
 
 <div class={styles.screen}>
-  <button class={styles.back} type="button" onclick={() => ui.openList(null)}>‹ Discover</button>
+  <button class={styles.back} type="button" onclick={() => ui.openList(null)}
+    ><Icon name="back" /> Discover</button
+  >
   <header class={styles.header}>
     <div class={styles.titleLine}>
       <h2 class={styles.title}>{list.title}</h2>
@@ -94,7 +97,7 @@
           : `Add ${list.title} to favorites`}
         title={favorite ? 'Remove from favorites' : 'Add to favorites'}
         data-on={favorite}
-        onclick={toggleFavorite}>{favorite ? '★' : '☆'}</button
+        onclick={toggleFavorite}><Icon name="star" size={18} filled={favorite} /></button
       >
     </div>
     <p class={styles.description}>{list.description}</p>

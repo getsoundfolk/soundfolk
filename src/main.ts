@@ -4,6 +4,9 @@ import { Menu } from '@tauri-apps/api/menu';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import './app.css';
 import App from './App.svelte';
+import { applyTheme, savedTheme } from './lib/theme';
+
+applyTheme(savedTheme());
 
 // The webview's own right-click menu (Back, Reload, Inspect, Copy Link with
 // Highlight…) makes no sense in the app. Over selected text it is replaced by

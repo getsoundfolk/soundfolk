@@ -3,6 +3,7 @@
 <script lang="ts">
   import { player } from '../player.svelte';
   import { ui } from '../ui.svelte';
+  import Icon from './Icon.svelte';
   import styles from './RecipeNotice.module.css';
 
   const DISPLAY_MS = 10_000;
@@ -30,7 +31,7 @@
       class={styles.close}
       type="button"
       aria-label="Dismiss"
-      onclick={() => (player.recipeNotice = null)}>✕</button
+      onclick={() => (player.recipeNotice = null)}><Icon name="x" /></button
     >
   </aside>
 {/if}

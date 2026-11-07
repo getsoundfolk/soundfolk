@@ -7,6 +7,7 @@
   import { player } from '../player.svelte';
   import { pickRandom, playableOf } from '../stations';
   import { ui } from '../ui.svelte';
+  import Icon from './Icon.svelte';
   import styles from './ListRow.module.css';
 
   let { list }: { list: CuratedList } = $props();
@@ -71,7 +72,8 @@
         : `Add ${list.title} to favorites`}
       title={favorite ? 'Remove from favorites' : 'Add to favorites'}
       data-on={favorite}
-      onclick={() => lists.toggleFavorite(list.id).catch(() => {})}>{favorite ? '★' : '☆'}</button
+      onclick={() => lists.toggleFavorite(list.id).catch(() => {})}
+      ><Icon name="star" filled={favorite} /></button
     >
   </header>
 
@@ -87,7 +89,10 @@
           onclick={() => player.play(playableOf(s))}
         >
           <span class={styles.name}>{s.name}</span>
-          <span class={styles.small}>{s.country_code ?? ''}</span>
+          <span class={styles.small}
+            >{#if player.current?.id === s.id}<span class={styles.onAir} aria-hidden="true"
+              ></span>On air{:else}{s.country_code ?? ''}{/if}</span
+          >
         </button>
       </li>
     {:else}

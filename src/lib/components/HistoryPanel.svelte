@@ -10,6 +10,7 @@
   import { displayTitle, shareText } from '../trackLinks';
   import { trackServices } from '../trackServices.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
+  import Icon from './Icon.svelte';
   import styles from './HistoryPanel.module.css';
   import StatsPanel from './StatsPanel.svelte';
 
@@ -261,7 +262,7 @@
     <input
       class={styles.filter}
       type="search"
-      placeholder="Filter by title, artist, station…"
+      placeholder="Filter"
       aria-label="Filter the history"
       bind:value={text}
       spellcheck="false"
@@ -281,7 +282,7 @@
     {#if text.trim()}
       Nothing matches “{text.trim()}”.
     {:else if view === 'liked'}
-      No liked tracks yet. Tap ♡ next to a title to keep it here.
+      No liked tracks yet. Like a title to keep it here.
     {:else}
       No tracks yet. The titles announced by the stations you listen to will appear here.
     {/if}
@@ -299,7 +300,8 @@
               aria-pressed={row.liked}
               aria-label={row.liked ? `Unlike ${row.title}` : `Like ${row.title}`}
               data-on={row.liked}
-              onclick={() => history.toggleLike(row, 'history')}>{row.liked ? '♥' : '♡'}</button
+              onclick={() => history.toggleLike(row, 'history')}
+              ><Icon name="heart" filled={row.liked} /></button
             >
 
             <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -319,7 +321,7 @@
                 aria-label={`Actions for ${row.title}`}
                 aria-haspopup="menu"
                 aria-expanded={menu?.id === row.id}
-                onclick={(e) => toggleMenu(row, e.currentTarget)}>⋯</button
+                onclick={(e) => toggleMenu(row, e.currentTarget)}><Icon name="more" /></button
               >
               {#if menu?.id === row.id}
                 <div
