@@ -3,14 +3,18 @@
 //!
 //! * **Station**: the cover the station's page or streaming server gives with the title (recipes,
 //!   AzuraCast). Nothing more leaves the device.
+//! * **Deezer**: the track is looked up on Deezer's public search, which gives its album's cover
+//!   in one request (see [`deezer`]). Off by default: the artist and title leave the device.
 //! * **Cover Art Archive**: the track is looked up on MusicBrainz, then the front cover of its album
-//!   on the Cover Art Archive. Off by default: the artist and title leave the device.
+//!   on the Cover Art Archive. Off by default: the artist and title leave the device. Slow: its
+//!   images are served by the Internet Archive, often after several seconds.
 //!
 //! Sources are asked from top to bottom and the first cover found wins; a disabled source is never
 //! asked. Without any, the station's logo (its Radio-Browser favicon, kept on disk: see [`logos`])
-//! is shown. While an online
-//! lookup runs, the next source's cover is shown. A result (even "none") is cached in the database,
-//! so a track that comes back on air is not looked up again.
+//! is shown. Online sources are looked up one at a time, in order: the next one only when the one
+//! before has no cover. While a lookup runs, the cover of a source further down is shown. A result
+//! (even "none") is cached in the database for each source, so a track that comes back on air is
+//! not looked up again.
 //!
 //! The desktop's media controls (MPRIS) show the station, not the track: next / previous change the
 //! station there. Their picture is the station's logo, or the Soundfolk icon when it has none.
@@ -28,7 +32,9 @@ use crate::media_controls::SystemMedia;
 use crate::musicbrainz::{LookupError, MusicBrainz};
 use crate::tracks;
 
+mod deezer;
 mod logos;
+use deezer::Deezer;
 use logos::{Logo, LogoCache};
 
 /// Setting: the cover sources in order, with their switch (JSON list of [`CoverSource`]).
@@ -42,7 +48,19 @@ const RETRY_FAILED: Duration = Duration::from_secs(300);
 #[serde(rename_all = "snake_case")]
 pub enum SourceId {
     Station,
+    Deezer,
     CoverArtArchive,
+}
+
+impl SourceId {
+    /// Key of a track's cover from this online source in the database cache. The Cover Art
+    /// Archive keeps the bare track key it had when it was the only online source.
+    fn cache_key(self, track_key: &str) -> String {
+        match self {
+            Self::Deezer => format!("deezer:{track_key}"),
+            Self::Station | Self::CoverArtArchive => track_key.to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +75,10 @@ fn default_sources() -> Vec<CoverSource> {
         CoverSource {
             id: SourceId::Station,
             enabled: true,
+        },
+        CoverSource {
+            id: SourceId::Deezer,
+            enabled: false,
         },
         CoverSource {
             id: SourceId::CoverArtArchive,
@@ -139,16 +161,17 @@ enum Answer {
     Lookup,
 }
 
-/// The first cover found, asking the enabled sources in order, and whether a lookup must run.
+/// The first cover found, asking the enabled sources in order, and the first source that must be
+/// looked up before it (the ones below wait for its answer).
 fn pick(
     sources: &[CoverSource],
     mut ask: impl FnMut(SourceId) -> Answer,
-) -> (Option<String>, bool) {
-    let mut lookup = false;
+) -> (Option<String>, Option<SourceId>) {
+    let mut lookup = None;
     for source in sources.iter().filter(|s| s.enabled) {
         match ask(source.id) {
             Answer::Found(url) => return (Some(url), lookup),
-            Answer::Lookup => lookup = true,
+            Answer::Lookup => lookup = lookup.or(Some(source.id)),
             Answer::None => {}
         }
     }
@@ -163,6 +186,7 @@ struct State {
     /// The name the user gave the station, shown instead of its own.
     label: Option<String>,
     shown: Cover,
+    /// Lookups running, and failed lately, by cache key ([`SourceId::cache_key`]).
     in_flight: HashSet<String>,
     failed: HashMap<String, Instant>,
     /// Radio-Browser UUID of the station playing.
@@ -180,6 +204,7 @@ struct State {
 pub struct Covers {
     app: tauri::AppHandle,
     mb: Option<Arc<MusicBrainz>>,
+    deezer: Option<Arc<Deezer>>,
     media: Arc<SystemMedia>,
     logo_cache: LogoCache,
     /// `file://` address of the Soundfolk icon, for the media controls of a station without a logo.
@@ -219,6 +244,7 @@ impl Covers {
         Arc::new(Self {
             app,
             mb,
+            deezer: Deezer::new().map(Arc::new),
             media,
             logo_cache,
             app_icon,
@@ -362,28 +388,28 @@ impl Covers {
         let sources = self.sources(&db);
         let query = online_query(&now_playing, station.as_deref());
 
-        let (url, lookup) = pick(&sources, |source| match source {
-            SourceId::Station => station_cover(&now_playing).map_or(Answer::None, Answer::Found),
-            SourceId::CoverArtArchive => {
-                let Some((key, _)) = &query else {
-                    return Answer::None;
-                };
-                match db.cached_cover(key) {
-                    Ok(Some(Some(url))) => Answer::Found(url),
-                    Ok(Some(None)) => Answer::None,
-                    Ok(None) if self.mb.is_some() => Answer::Lookup,
-                    Ok(None) => Answer::None,
-                    Err(e) => {
-                        tracing::warn!("cover cache not read: {e}");
-                        Answer::None
-                    }
+        let (url, lookup) = pick(&sources, |source| {
+            if source == SourceId::Station {
+                return station_cover(&now_playing).map_or(Answer::None, Answer::Found);
+            }
+            let Some((track_key, _)) = &query else {
+                return Answer::None;
+            };
+            let key = source.cache_key(track_key);
+            match db.cached_cover(&key) {
+                Ok(Some(Some(url))) => Answer::Found(url),
+                Ok(Some(None)) => Answer::None,
+                // Failed lately (network): the next source is asked meanwhile.
+                Ok(None) if self.can_look_up(source) && !self.failed_lately(&key) => Answer::Lookup,
+                Ok(None) => Answer::None,
+                Err(e) => {
+                    tracing::warn!("cover cache not read: {e}");
+                    Answer::None
                 }
             }
         });
-        if lookup {
-            if let Some((key, parsed)) = query {
-                self.look_up(key, parsed);
-            }
+        if let (Some(source), Some((track_key, parsed))) = (lookup, query) {
+            self.look_up(source, source.cache_key(&track_key), parsed);
         }
 
         let cover = match url {
@@ -426,21 +452,47 @@ impl Covers {
         }
     }
 
-    /// Looks the track up in the background (once at a time, not again soon after a failure), then
-    /// chooses the cover again.
-    fn look_up(self: &Arc<Self>, key: String, parsed: tracks::ParsedTitle) {
-        let Some(mb) = self.mb.clone() else { return };
-        {
-            let mut state = self.state();
-            state.failed.retain(|_, at| at.elapsed() < RETRY_FAILED);
-            if state.failed.contains_key(&key) || !state.in_flight.insert(key.clone()) {
-                return;
-            }
+    fn can_look_up(&self, source: SourceId) -> bool {
+        match source {
+            SourceId::Station => false,
+            SourceId::Deezer => self.deezer.is_some(),
+            SourceId::CoverArtArchive => self.mb.is_some(),
+        }
+    }
+
+    fn failed_lately(&self, key: &str) -> bool {
+        let mut state = self.state();
+        state.failed.retain(|_, at| at.elapsed() < RETRY_FAILED);
+        state.failed.contains_key(key)
+    }
+
+    /// Looks the track up on an online source in the background (once at a time, not again soon
+    /// after a failure), then chooses the cover again.
+    fn look_up(self: &Arc<Self>, source: SourceId, key: String, parsed: tracks::ParsedTitle) {
+        if !self.can_look_up(source) || self.failed_lately(&key) {
+            return;
+        }
+        if !self.state().in_flight.insert(key.clone()) {
+            return;
         }
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
-            let artist = parsed.artist.as_deref().unwrap_or_default();
-            let result = find_cover(&mb, artist, &parsed.title).await;
+            let result = match source {
+                SourceId::Deezer => match &this.deezer {
+                    Some(deezer) => deezer.find_cover(&parsed).await,
+                    None => Ok(None),
+                },
+                SourceId::CoverArtArchive => match &this.mb {
+                    Some(mb) => {
+                        let artist = parsed.artist.as_deref().unwrap_or_default();
+                        find_cover(mb, artist, &parsed.title)
+                            .await
+                            .map_err(|e| e.to_string())
+                    }
+                    None => Ok(None),
+                },
+                SourceId::Station => Ok(None),
+            };
             let db = this.app.state::<Database>();
             match &result {
                 Ok(url) => {
@@ -448,7 +500,7 @@ impl Covers {
                         tracing::warn!("cover not cached: {e}");
                     }
                 }
-                Err(e) => tracing::debug!("cover lookup failed: {e}"),
+                Err(e) => tracing::debug!("cover lookup on {source:?} failed: {e}"),
             }
             {
                 let mut state = this.state();
@@ -525,6 +577,10 @@ mod tests {
                     id: SourceId::Station,
                     enabled: true
                 },
+                CoverSource {
+                    id: SourceId::Deezer,
+                    enabled: false
+                },
             ]
         );
         let twice = vec![
@@ -573,25 +629,25 @@ mod tests {
 
         assert_eq!(
             pick(&both(s, a), answers(found("s"), found("a"))),
-            (Some("s".into()), false)
+            (Some("s".into()), None)
         );
         assert_eq!(
             pick(&both(a, s), answers(found("s"), found("a"))),
-            (Some("a".into()), false)
+            (Some("a".into()), None)
         );
         // The archive must be asked first: the station's cover is shown meanwhile
         assert_eq!(
             pick(&both(a, s), answers(found("s"), Answer::Lookup)),
-            (Some("s".into()), true)
+            (Some("s".into()), Some(a))
         );
         // The station has a cover: no need to look anything up
         assert_eq!(
             pick(&both(s, a), answers(found("s"), Answer::Lookup)),
-            (Some("s".into()), false)
+            (Some("s".into()), None)
         );
         assert_eq!(
             pick(&both(s, a), answers(Answer::None, Answer::None)),
-            (None, false)
+            (None, None)
         );
 
         let disabled = vec![
@@ -606,7 +662,42 @@ mod tests {
         ];
         assert_eq!(
             pick(&disabled, answers(found("s"), Answer::None)),
-            (None, false)
+            (None, None)
+        );
+    }
+
+    #[test]
+    fn online_sources_are_looked_up_one_at_a_time() {
+        let all = [
+            SourceId::Deezer,
+            SourceId::CoverArtArchive,
+            SourceId::Station,
+        ]
+        .map(|id| CoverSource { id, enabled: true });
+        let ask = |deezer: fn() -> Answer| {
+            move |id| match id {
+                SourceId::Deezer => deezer(),
+                SourceId::CoverArtArchive => Answer::Lookup,
+                SourceId::Station => Answer::Found("s".into()),
+            }
+        };
+        // Both must be looked up: Deezer first, the station's cover meanwhile
+        assert_eq!(
+            pick(&all, ask(|| Answer::Lookup)),
+            (Some("s".into()), Some(SourceId::Deezer))
+        );
+        // Deezer has none: the archive's turn
+        assert_eq!(
+            pick(&all, ask(|| Answer::None)),
+            (Some("s".into()), Some(SourceId::CoverArtArchive))
+        );
+        assert_eq!(
+            pick(&all, ask(|| Answer::Found("d".into()))),
+            (Some("d".into()), None)
+        );
+        assert_ne!(
+            SourceId::Deezer.cache_key("air|sexy boy"),
+            SourceId::CoverArtArchive.cache_key("air|sexy boy")
         );
     }
 

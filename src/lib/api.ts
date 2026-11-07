@@ -37,7 +37,7 @@ export type Cover = {
   logo?: boolean;
 };
 
-export type CoverSourceId = 'station' | 'cover_art_archive';
+export type CoverSourceId = 'station' | 'deezer' | 'cover_art_archive';
 export type CoverSource = { id: CoverSourceId; enabled: boolean };
 
 type Health =

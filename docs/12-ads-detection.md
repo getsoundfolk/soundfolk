@@ -6,7 +6,7 @@ How Soundfolk could tell that an ad is on air, and what it would do with it. Not
 * **Show it.** While an ad plays, the player shows "Ad" instead of a track. If the length of the ad is known, it
   also shows a countdown.
 * **Keep it out of the listener's data.** An ad is not written to the history, is not counted in the stats, and
-  starts no cover lookup (MusicBrainz, Cover Art Archive) or any other online query about the track.
+  starts no cover lookup (Deezer, MusicBrainz, Cover Art Archive) or any other online query about the track.
 * **On every station.** Each station gets the best signal it offers, from the list in section 2. A station with
   no signal at all plays as today.
 
