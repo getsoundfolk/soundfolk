@@ -24,6 +24,9 @@
   import styles from './StationSheet.module.css';
 
   let dialog: HTMLDialogElement | undefined = $state();
+  /** Whether the last input was the mouse (or a touch), not the keyboard: closing the sheet gives
+   *  focus back to the button that opened it, and WebKitGTK then rings it as if tabbed to. */
+  let byPointer = false;
   let test = $state<RecipeTest | null>(null);
   let testing = $state(false);
   let sharing = $state(false);
@@ -256,6 +259,11 @@
   }
 </script>
 
+<svelte:window
+  onpointerdowncapture={() => (byPointer = true)}
+  onkeydowncapture={() => (byPointer = false)}
+/>
+
 <dialog
   class={styles.sheet}
   bind:this={dialog}
@@ -264,6 +272,8 @@
     // Seen in the sheet: not shown again in the window.
     player.recipeNotice = null;
     ui.closeStation();
+    // Opened and closed with the mouse: no focus ring left on the button it came back to.
+    if (byPointer && document.activeElement instanceof HTMLElement) document.activeElement.blur();
   }}
   onclick={(e) => e.target === dialog && ui.closeStation()}
 >
