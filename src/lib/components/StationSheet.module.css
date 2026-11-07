@@ -11,6 +11,11 @@
   scrollbar-gutter: stable; /* fixed width: no shift when the scrollbar comes and goes */
 }
 
+/* Focused itself when opened with the mouse: no ring around the whole sheet. */
+.sheet:focus {
+  outline: none;
+}
+
 .sheet::backdrop {
   background: var(--color-backdrop);
 }

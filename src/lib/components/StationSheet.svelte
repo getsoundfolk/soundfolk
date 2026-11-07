@@ -24,8 +24,9 @@
   import styles from './StationSheet.module.css';
 
   let dialog: HTMLDialogElement | undefined = $state();
-  /** Whether the last input was the mouse (or a touch), not the keyboard: closing the sheet gives
-   *  focus back to the button that opened it, and WebKitGTK then rings it as if tabbed to. */
+  /** Whether the last input was the mouse (or a touch), not the keyboard: opening the sheet focuses
+   *  its first button, closing it gives focus back to the button that opened it, and WebKitGTK
+   *  rings both as if tabbed to. */
   let byPointer = false;
   let test = $state<RecipeTest | null>(null);
   let testing = $state(false);
@@ -64,6 +65,9 @@
       error = null;
       nameError = null;
       dialog.showModal();
+      // Opening focuses its first button: ringed in WebKitGTK, even from a click. The sheet itself
+      // takes the focus instead (a blur only sends WebKitGTK to the next button).
+      if (byPointer) dialog.focus();
     } else if (!ui.stationOpen && dialog.open) {
       dialog.close();
     }
@@ -267,6 +271,7 @@
 <dialog
   class={styles.sheet}
   bind:this={dialog}
+  tabindex="-1"
   aria-labelledby="station-sheet-title"
   onclose={() => {
     // Seen in the sheet: not shown again in the window.
