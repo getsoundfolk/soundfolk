@@ -102,6 +102,12 @@
       detail:
         "The artist and title of each track on air (+ IP address) are looked up on Deezer's public search, and its album's cover is loaded from Deezer. Fast; best on well-known music. Once per track.",
     },
+    itunes: {
+      name: 'iTunes',
+      badge: 'Sends artist & title',
+      detail:
+        "The artist and title of each track on air (+ IP address) are looked up on Apple's iTunes Search, and its album's artwork is loaded from Apple. Fast; best on well-known music. Once per track.",
+    },
     cover_art_archive: {
       name: 'Cover Art Archive',
       badge: 'Sends artist & title',
@@ -112,6 +118,7 @@
   const DEFAULT_COVER_SOURCES: CoverSource[] = [
     { id: 'station', enabled: true },
     { id: 'deezer', enabled: false },
+    { id: 'itunes', enabled: false },
     { id: 'cover_art_archive', enabled: false },
   ];
   let coverSources = $state<CoverSource[]>(DEFAULT_COVER_SOURCES);

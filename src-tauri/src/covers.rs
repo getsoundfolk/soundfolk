@@ -5,6 +5,7 @@
 //!   AzuraCast). Nothing more leaves the device.
 //! * **Deezer**: the track is looked up on Deezer's public search, which gives its album's cover
 //!   in one request (see [`deezer`]). Off by default: the artist and title leave the device.
+//! * **iTunes**: the same from Apple's iTunes Search API (see [`itunes`]). Off by default too.
 //! * **Cover Art Archive**: the track is looked up on MusicBrainz, then the front cover of its album
 //!   on the Cover Art Archive. Off by default: the artist and title leave the device. Slow: its
 //!   images are served by the Internet Archive, often after several seconds.
@@ -33,8 +34,11 @@ use crate::musicbrainz::{LookupError, MusicBrainz};
 use crate::tracks;
 
 mod deezer;
+mod itunes;
 mod logos;
+mod search;
 use deezer::Deezer;
+use itunes::Itunes;
 use logos::{Logo, LogoCache};
 
 /// Setting: the cover sources in order, with their switch (JSON list of [`CoverSource`]).
@@ -49,6 +53,8 @@ const RETRY_FAILED: Duration = Duration::from_secs(300);
 pub enum SourceId {
     Station,
     Deezer,
+    #[serde(rename = "itunes")]
+    Itunes,
     CoverArtArchive,
 }
 
@@ -58,6 +64,7 @@ impl SourceId {
     fn cache_key(self, track_key: &str) -> String {
         match self {
             Self::Deezer => format!("deezer:{track_key}"),
+            Self::Itunes => format!("itunes:{track_key}"),
             Self::Station | Self::CoverArtArchive => track_key.to_owned(),
         }
     }
@@ -78,6 +85,10 @@ fn default_sources() -> Vec<CoverSource> {
         },
         CoverSource {
             id: SourceId::Deezer,
+            enabled: false,
+        },
+        CoverSource {
+            id: SourceId::Itunes,
             enabled: false,
         },
         CoverSource {
@@ -205,6 +216,7 @@ pub struct Covers {
     app: tauri::AppHandle,
     mb: Option<Arc<MusicBrainz>>,
     deezer: Option<Arc<Deezer>>,
+    itunes: Option<Arc<Itunes>>,
     media: Arc<SystemMedia>,
     logo_cache: LogoCache,
     /// `file://` address of the Soundfolk icon, for the media controls of a station without a logo.
@@ -245,6 +257,7 @@ impl Covers {
             app,
             mb,
             deezer: Deezer::new().map(Arc::new),
+            itunes: Itunes::new().map(Arc::new),
             media,
             logo_cache,
             app_icon,
@@ -456,6 +469,7 @@ impl Covers {
         match source {
             SourceId::Station => false,
             SourceId::Deezer => self.deezer.is_some(),
+            SourceId::Itunes => self.itunes.is_some(),
             SourceId::CoverArtArchive => self.mb.is_some(),
         }
     }
@@ -480,6 +494,10 @@ impl Covers {
             let result = match source {
                 SourceId::Deezer => match &this.deezer {
                     Some(deezer) => deezer.find_cover(&parsed).await,
+                    None => Ok(None),
+                },
+                SourceId::Itunes => match &this.itunes {
+                    Some(itunes) => itunes.find_cover(&parsed).await,
                     None => Ok(None),
                 },
                 SourceId::CoverArtArchive => match &this.mb {
@@ -581,6 +599,10 @@ mod tests {
                     id: SourceId::Deezer,
                     enabled: false
                 },
+                CoverSource {
+                    id: SourceId::Itunes,
+                    enabled: false
+                },
             ]
         );
         let twice = vec![
@@ -679,6 +701,7 @@ mod tests {
                 SourceId::Deezer => deezer(),
                 SourceId::CoverArtArchive => Answer::Lookup,
                 SourceId::Station => Answer::Found("s".into()),
+                SourceId::Itunes => unreachable!("not in the list"),
             }
         };
         // Both must be looked up: Deezer first, the station's cover meanwhile
