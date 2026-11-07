@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The shared recipe list: every recipe of `getsoundfolk/soundfolk-recipes`, compiled into one
 //! `recipes.json` by that repository's CI and published on GitHub Pages. See
-//! `docs/07-now-playing.md` and the repository's `ARCHITECTURE.md`.
+//! `docs/08-now-playing.md` and the repository's `ARCHITECTURE.md`.
 //!
 //! * At startup, the copy cached by the last download is used right away (offline included).
 //! * The list is downloaded again when that copy is a day old, with `If-None-Match`: an unchanged

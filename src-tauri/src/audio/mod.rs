@@ -95,7 +95,7 @@ pub struct NowPlaying {
     pub source: Option<TitleSource>,
 }
 
-/// Where the title comes from (see `docs/07-now-playing.md`).
+/// Where the title comes from (see `docs/08-now-playing.md`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TitleSource {
@@ -1570,7 +1570,7 @@ mod tests {
     }
 
     /// Plays real stations muted and prints the loudness *Constant volume* learns for each
-    /// (`docs/10-loudness.md` §6): `cargo test -- --ignored live_loudness --nocapture`. Other
+    /// (`docs/11-loudness.md` §6): `cargo test -- --ignored live_loudness --nocapture`. Other
     /// streams: `SOUNDFOLK_STREAMS="url url…"`, `SOUNDFOLK_SECONDS` each (default 20).
     #[test]
     #[ignore = "network and sound card"]

@@ -2,7 +2,7 @@
 
 Spec for finding stations the listener was not looking for: the **Discover** destination of
 [06-ui-principles.md](06-ui-principles.md) §1, beyond search and filters
-([08-search-filters.md](08-search-filters.md)).
+([09-search-filters.md](09-search-filters.md)).
 
 **Today:** nothing. The app has three tabs (History, Search, Favorites); Search sends typed text, and the filters and
 the "Surprise me" sort of 08 are specified but not built.
@@ -67,7 +67,7 @@ One screen, one level (06 §1), never empty (06 §3). From top to bottom:
 1. **Surprise me** — the main button, with the 08 chips next to it (Genre, Country, Language). The chips are
    shared with search: what is selected in one is selected in the other. They filter the rows too: a row stays when
    its collection or list matches. **Use**, the chip only curated lists have
-   ([14-curated-lists.md](14-curated-lists.md) §6.5), comes once there are about ten lists: with four rows all
+   ([15-curated-lists.md](15-curated-lists.md) §6.5), comes once there are about ten lists: with four rows all
    visible, it filters nothing.
 2. **Scan** — next to Surprise me (§4.2).
 3. **Collections** — horizontal rows of stations, one per collection (§5): personal ones first, then the curated
@@ -156,7 +156,7 @@ Rows are fetched as they scroll into view, not all at the opening of the screen.
 
 ### 5.2 Curated lists
 "French community radios" or "Ambient for focus" cannot be expressed as catalog filters: they need stations chosen
-by people. Specified in [14-curated-lists.md](14-curated-lists.md): lists live in `getsoundfolk/soundfolk-stations`,
+by people. Specified in [15-curated-lists.md](15-curated-lists.md): lists live in `getsoundfolk/soundfolk-stations`,
 are fetched once a day, and each one is a row here, filtered by the same chips (14 §7, option D). "See all" opens the
 list's screen, in the curator's order. The *No commercial ads* badge is a station attribute, not a list (14 §5); its
 row is a rule collection over that attribute.
@@ -234,7 +234,7 @@ The history already knows which artists each station plays (stats: "tracks heard
 
 **Later**
 - [ ] Elsewhere (§4.3).
-- [ ] Curated lists and the *No commercial ads* badge: see [14-curated-lists.md](14-curated-lists.md) §8.
+- [ ] Curated lists and the *No commercial ads* badge: see [15-curated-lists.md](15-curated-lists.md) §8.
 - [ ] Catalog gems and the shared station → artists index (§5.3, §6.2).
 
 ---

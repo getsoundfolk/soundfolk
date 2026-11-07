@@ -43,10 +43,10 @@ on.
 HLS streams can mark ad breaks in the playlist (`#EXT-X-CUE-OUT` / `#EXT-X-CUE-IN`, `#EXT-X-DATERANGE` with
 SCTE-35) or in ID3 tags inside segments. That is common practice for HLS ads, but none of the 4,053 `.m3u8`
 stations in Radio-Browser has been checked. It goes with ID3 timed metadata, which is already a TODO in
-[07-now-playing.md](07-now-playing.md).
+[08-now-playing.md](08-now-playing.md).
 
 ### 2.3 Platform APIs (to probe)
-* **Triton**: the now-playing endpoint is called with `eventType=track` (see 07-now-playing.md). Other event
+* **Triton**: the now-playing endpoint is called with `eventType=track` (see 08-now-playing.md). Other event
   types are possible, and ads may be one of them: to check.
 * **AzuraCast**: an ad is usually a playlist of its own. The playlist name in `/api/nowplaying` could be used, but
   only with a list of names, which is a heuristic (2.4).
@@ -118,7 +118,7 @@ station it matches shows the reason on its sheet: "Stream served by an ad platfo
 ### 3.3 Progress bar
 When an API gives the track's start and length (AzuraCast, RadioKing), an ad heard on connect explains why the
 listener is behind the API's clock. The bar is anchored on the moment the title is heard anyway (see the RadioKing
-measures in 07-now-playing.md), so the ad needs no special case beyond that.
+measures in 08-now-playing.md), so the ad needs no special case beyond that.
 
 ### 3.4 Station sheet
 "Track on air" says how ads are detected on this station: "Ads announced by the stream (AdsWizz)", "Ads recognized

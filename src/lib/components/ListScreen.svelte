@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
-<!-- A curated list's screen (docs/14-curated-lists.md §6.4): its stations in the curator's order,
+<!-- A curated list's screen (docs/15-curated-lists.md §6.4): its stations in the curator's order,
      ★, Surprise me and an M3U export. Opened from its Discover row, a favorite, the station sheet
      or "In N lists". -->
 <script lang="ts">

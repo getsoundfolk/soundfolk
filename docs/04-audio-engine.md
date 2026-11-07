@@ -37,7 +37,7 @@ Desktop uses a 100 % pure-Rust stack:
 * **`cpal`**: low-level output to the sound card. The device's default format is used; the decoder adapts to it, never
   the other way round.
 * **`ebur128`**: loudness of the stream (ITU-R BS.1770) for *Constant volume*, which applies one slowly moving gain
-  per station on the decoder thread ([10-loudness.md](10-loudness.md)).
+  per station on the decoder thread ([11-loudness.md](11-loudness.md)).
 * **`rtrb`**: lock-free ring buffer (2 s) between the decoder thread and the real-time audio callback, which only
   pops samples, applies the volume and converts to the device sample type.
 

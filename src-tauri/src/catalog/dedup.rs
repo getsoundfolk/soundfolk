@@ -19,7 +19,7 @@
 //! One entry of a group is kept, at the place of the group's first entry, so the list must already
 //! be in display order: the healthiest entry, then the highest bitrate (an unknown bitrate counts as
 //! the lowest), then the earliest in the list (the most clicked). Search results promise good
-//! quality by default (docs/08-search-filters.md), so a 128 kbit/s copy wins over a more clicked
+//! quality by default (docs/09-search-filters.md), so a 128 kbit/s copy wins over a more clicked
 //! 64 kbit/s one. A favorite always stays instead, at its own place: the user chose that copy, and
 //! their history is tied to its ID.
 

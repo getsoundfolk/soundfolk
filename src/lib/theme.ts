@@ -1,12 +1,25 @@
 // SPDX-License-Identifier: MPL-2.0
-// Light or dark theme (Settings › Appearance). "system" follows the desktop's preference through
-// `prefers-color-scheme`; the other two set `data-theme` on <html>, which app.css reads. Kept in
-// the webview's local storage: it only concerns this window, and it is applied before the first
+// Light or dark theme (Settings › Appearance). `data-theme` on <html> is always set to "light" or
+// "dark", which app.css reads; "system" resolves it from the desktop's `prefers-color-scheme` and
+// follows its changes. Resolving here keeps a single set of light values in app.css. Kept in the
+// webview's local storage: it only concerns this window, and it is applied before the first
 // render, with no round trip to the backend.
 
 export type Theme = 'system' | 'light' | 'dark';
 
 const KEY = 'soundfolk.theme';
+const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+let current: Theme = 'system';
+
+function resolve(theme: Theme): 'light' | 'dark' {
+  if (theme !== 'system') return theme;
+  return systemDark.matches ? 'dark' : 'light';
+}
+
+systemDark.addEventListener('change', () => {
+  if (current === 'system') applyTheme('system');
+});
 
 export function savedTheme(): Theme {
   try {
@@ -18,9 +31,8 @@ export function savedTheme(): Theme {
 }
 
 export function applyTheme(theme: Theme) {
-  const root = document.documentElement;
-  if (theme === 'system') delete root.dataset.theme;
-  else root.dataset.theme = theme;
+  current = theme;
+  document.documentElement.dataset.theme = resolve(theme);
 }
 
 export function setTheme(theme: Theme) {

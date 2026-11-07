@@ -10,13 +10,13 @@ time constants are tuned on 207 stations (§6.1), not yet checked by ear.
 
 ## 1. What listeners ask for
 
-Same caveat as [08-search-filters.md](08-search-filters.md) §1: a synthesis of feedback on radio players (TuneIn,
+Same caveat as [09-search-filters.md](09-search-filters.md) §1: a synthesis of feedback on radio players (TuneIn,
 Radio Garden, Radio-Browser apps, forums), not data.
 
 * **The complaint:** "every time I change station I have to fix the volume". One station blasts, the next is barely
   audible. Gaps of 6 to 10 dB and more are common: some stations are mastered and compressed hard (around −8 LUFS),
   others stream a raw, quiet feed (−20 LUFS and below).
-* **Who it hurts most:** people who switch often — Surprise me and Scan ([09-discovery.md](09-discovery.md)), media
+* **Who it hurts most:** people who switch often — Surprise me and Scan ([10-discovery.md](10-discovery.md)), media
   "next" on headphones or in the car, listening at night or in the background. Those who stay on 3–4 favorites get
   used to their levels; it matters less to them, but never hurts.
 * **The worst moment is the first second:** a station much louder than the previous one makes the listener jump.

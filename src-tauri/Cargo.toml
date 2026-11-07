@@ -73,7 +73,7 @@ rtrb = "0.4"
 reqwest = { version = "0.13", default-features = false, features = ["gzip"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros"] }
 rubato = "5.0.1"
-# Constant volume: ITU-R BS.1770 loudness of the stream, for a per-station gain (docs/10-loudness.md)
+# Constant volume: ITU-R BS.1770 loudness of the stream, for a per-station gain (docs/11-loudness.md)
 ebur128 = { version = "0.1.11", default-features = false }
 
 # Track titles: accent folding for comparison keys

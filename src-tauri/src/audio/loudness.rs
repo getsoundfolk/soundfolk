@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Constant volume (see `docs/10-loudness.md`): one slowly moving gain per station, so every
+//! Constant volume (see `docs/11-loudness.md`): one slowly moving gain per station, so every
 //! station plays near the same loudness.
 //!
 //! Runs on the decoder thread, after conversion to the output format and before the ring buffer:
@@ -53,7 +53,7 @@ const SHORT_TERM_WINDOW: Duration = Duration::from_secs(3);
 /// Peak taken into account for the headroom.
 const PEAK_WINDOW_BLOCKS: usize = 100;
 
-/// Time constants of the estimate. Louder / quieter tuned on 207 stations (`docs/10-loudness.md`
+/// Time constants of the estimate. Louder / quieter tuned on 207 stations (`docs/11-loudness.md`
 /// §6): 2 s / 20 s moved the gain twice as much once settled (4 dB a minute, a pumping range of
 /// 4 dB) for no gain in how close stations end to the target.
 const TAU_LEARNING: f64 = 1.0;

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Curated lists (docs/14-curated-lists.md): loaded once, again when a new file was downloaded, the
+// Curated lists (docs/15-curated-lists.md): loaded once, again when a new file was downloaded, the
 // lists the station in the player is in, and the lists marked as favorites.
 import { listen } from '@tauri-apps/api/event';
 import { api, type CuratedList, type ListRef, type Playable, type Station } from './api';

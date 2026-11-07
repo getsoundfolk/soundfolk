@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: MPL-2.0 */
 /* Colors: one neutral ramp per theme, one amber accent (the tuner's dial light), status colors
-   toned to sit inside the ramp. The theme follows the system unless Settings › Appearance sets
-   `data-theme` on <html> (src/lib/theme.ts). The light values are written twice, once for an
-   explicit choice and once for a light system theme, since plain CSS cannot share them. */
+   toned to sit inside the ramp. Dark is the default; src/lib/theme.ts sets `data-theme` on <html>
+   to "light" or "dark", resolving Settings › Appearance › System from the desktop's preference. */
 :root {
   /* Surfaces, darkest to lightest. */
   --color-bg: #121213;
@@ -130,60 +129,6 @@
   --color-shadow-knob: rgb(0 0 0 / 0.3);
   --color-backdrop: rgb(0 0 0 / 0.3);
   color-scheme: light;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) {
-    --color-bg: #f2f2f3;
-    --color-surface: #ffffff;
-    --color-surface-raised: #f7f7f8;
-    --color-surface-overlay: #ffffff;
-    --color-surface-hover: #f0f0f1;
-    --color-surface-high: #ebebed;
-    --color-surface-higher: #e3e3e6;
-    --color-surface-control: #d2d2d6;
-    --color-border: rgb(23 23 23 / 0.08);
-    --color-border-strong: rgb(23 23 23 / 0.12);
-    --color-border-control: rgb(23 23 23 / 0.16);
-    --color-border-bold: rgb(23 23 23 / 0.22);
-    --color-border-hover: rgb(23 23 23 / 0.28);
-    --color-text: #171717;
-    --color-text-soft: #3d3d3d;
-    --color-text-muted: #555558;
-    --color-text-subtle: #737376;
-    --color-disabled: #a3a3a6;
-    --color-accent: #f0a028;
-    --color-accent-hover: #f5ad3d;
-    --color-accent-text: #985700;
-    --color-on-accent: #1a1204;
-    --color-accent-tint: rgb(240 160 40 / 0.16);
-    --color-accent-ring: rgb(152 87 0 / 0.45);
-    --color-focus-contrast: #fff;
-    --color-knob: #ffffff;
-    --color-like: #d6334f;
-    --color-success: #16a34a;
-    --color-success-text: #15803d;
-    --color-success-bg: #effaf3;
-    --color-success-border: #bfe5cb;
-    --color-info: #3b5bdb;
-    --color-warning-bg: #fff8ea;
-    --color-warning-border: #f0d9a8;
-    --color-warning-border-strong: #e3c27e;
-    --color-error: #c62828;
-    --color-error-strong: #b91c1c;
-    --color-error-bg: #fdf2f2;
-    --color-error-border: #f2c4c4;
-    --color-danger: #d32f2f;
-    --color-on-danger: #fff;
-    --color-danger-text: #b42323;
-    --color-danger-bg: #fdf0f0;
-    --color-danger-border: #efbcbc;
-    --color-shadow: rgb(0 0 0 / 0.08);
-    --color-shadow-strong: rgb(0 0 0 / 0.14);
-    --color-shadow-knob: rgb(0 0 0 / 0.3);
-    --color-backdrop: rgb(0 0 0 / 0.3);
-    color-scheme: light;
-  }
 }
 
 *,

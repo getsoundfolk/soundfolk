@@ -10,7 +10,7 @@ onwards.
 * **Live metadata:** the artist and title currently on air, recorded in the listening history. They come from the
   stream (ICY, or Vorbis comments in Ogg streams) or, for streams that announce nothing, from the station's web page
   (recipes) or its streaming server's status page (Icecast, Shoutcast); the next track is shown when the page announces
-  it. Reading websites can be turned off in ⚙ (see [07-now-playing.md](07-now-playing.md)).
+  it. Reading websites can be turned off in ⚙ (see [08-now-playing.md](08-now-playing.md)).
 * **Resilient network buffer:** absorbs network micro-cuts; automatic reconnection if the stream drops.
 * **Fast start:** measured at roughly half a second to the first decoded sound on an Icecast stream (network-bound).
 * **Background playback:**

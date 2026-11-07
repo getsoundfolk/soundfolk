@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS favorites (
 
 ### `listening_history`
 Tracks played on air, recorded from the stream's metadata or from the station's web page (consecutive duplicates are
-skipped; see [07-now-playing.md](07-now-playing.md)).
+skipped; see [08-now-playing.md](08-now-playing.md)).
 `station_name` is copied at listening time, because catalog stations are not stored locally: without it, a catalog
 UUID could not be shown by name. Rows from before this column have it `NULL`; the app then falls back to the favorite
 or personal station of the same ID, if any.

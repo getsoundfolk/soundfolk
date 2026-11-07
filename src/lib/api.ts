@@ -165,7 +165,7 @@ export interface DonationLink {
   domain: string;
 }
 
-/** A curated list (`soundfolk-stations`, docs/14-curated-lists.md). */
+/** A curated list (`soundfolk-stations`, docs/15-curated-lists.md). */
 export interface CuratedList {
   id: string;
   /** In the language its curator picked for its listeners, shown as is. */

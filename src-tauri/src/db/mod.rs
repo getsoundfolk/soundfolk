@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS covers (
     looked_up_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- Loudness of each station heard, learned by Constant volume (docs/10-loudness.md): the
+-- Loudness of each station heard, learned by Constant volume (docs/11-loudness.md): the
 -- Radio-Browser UUID, else the stream URL. Cleared with the history.
 CREATE TABLE IF NOT EXISTS station_loudness (
     station_key   TEXT PRIMARY KEY,

@@ -86,7 +86,7 @@
     saveTimer = setTimeout(() => player.saveVolume(), 400);
   }
 
-  // The station's donation page (docs/12-donations.md §3), asked again when the station changes
+  // The station's donation page (docs/13-donations.md §3), asked again when the station changes
   // or a new list was downloaded. A late answer for a previous station is dropped.
   let donation = $state<DonationLink | null>(null);
   let listVersion = $state(0);

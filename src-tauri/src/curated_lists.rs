@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Curated lists of stations, from `getsoundfolk/soundfolk-stations`: every `lists/<id>.toml` of
 //! that repository, compiled into one `lists.json` by its CI and published on GitHub Pages. See
-//! `docs/14-curated-lists.md`.
+//! `docs/15-curated-lists.md`.
 //!
 //! * At startup, the copy cached by the last download is used right away (offline included).
 //! * The file is downloaded again when that copy is a day old (see `daily_list.rs`), like the

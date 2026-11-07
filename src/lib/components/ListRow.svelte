@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
-<!-- A curated list as a Discover row (docs/09-discovery.md §5.2): its header, its first stations to
+<!-- A curated list as a Discover row (docs/10-discovery.md §5.2): its header, its first stations to
      play in one click, Surprise me and "See all", which opens the list's screen. -->
 <script lang="ts">
   import type { CuratedList, Station } from '../api';

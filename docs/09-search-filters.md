@@ -87,7 +87,7 @@ Everything else a filter would do is a **default**, so that nobody has to set it
 * **Quality** (§3.2): of a station's copies, the highest bitrate is shown; an *HD* badge in the row.
 * **Working stations** (§3.3): first in the list; suspect ones stay, after them, with a warning.
 * **Order** (§3.4): relevance only. Popularity, trends and chance belong to discovery
-  ([09-discovery.md](09-discovery.md): Surprise me, Trending row), not to search.
+  ([10-discovery.md](10-discovery.md): Surprise me, Trending row), not to search.
 
 **Not offered as chips:**
 * **Codec**: the desktop engine plays every codec the catalog lists except HLS, and the listener does not choose a
@@ -95,7 +95,7 @@ Everything else a filter would do is a **default**, so that nobody has to set it
 * **HTTPS only**: the engine plays HTTP streams; nothing on desktop depends on it. The station sheet says when a
   stream is not encrypted.
 * **Region, map, near me**: 70 % of stations have no position, so a "near me" search (`geo_lat` / `geo_long` /
-  `geo_distance`) would miss most local stations. Later, in Discover ([09-discovery.md](09-discovery.md)), not in
+  `geo_distance`) would miss most local stations. Later, in Discover ([10-discovery.md](10-discovery.md)), not in
   search; the country filter answers "stations from my country" today.
 
 ### 3.1 Genres

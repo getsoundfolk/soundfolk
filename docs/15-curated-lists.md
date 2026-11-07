@@ -1,12 +1,12 @@
 # 📋 Curated lists
 
 Lists of stations chosen by people ("Late-night jazz", "French community radios", "Ambient for coding"), as opposed to
-the rule collections of [09-discovery.md](09-discovery.md) §5.1, which are live catalog queries. This is the
+the rule collections of [10-discovery.md](10-discovery.md) §5.1, which are live catalog queries. This is the
 spec of 09 §5.2, with the ad-free attribute it depends on. Not built: §1–3 challenge a first proposal, §4 records
 the decisions, §5–8 are the plan, §9 what is left to decide.
 
 **Today:** nothing built. Before this document, 09 §5.2 put hand-picked collections on `soundfolk.fm`, fetched
-daily, and left "who curates" open; it now points here. [12-donations.md](12-donations.md) built the first piece of
+daily, and left "who curates" open; it now points here. [13-donations.md](13-donations.md) built the first piece of
 shared station data (`getsoundfolk/soundfolk-stations`, donation links only) and its whole chain: one file per
 station, proof, bot, daily CI check, `v1/stations.json` fetched once a day with `If-None-Match`.
 
@@ -31,7 +31,7 @@ A brainstorm (pasted from a chat assistant, 2026-11-06) proposed:
 
 ## 2. What holds
 
-* **The need is real**, and it is the one 13-music-only §1 found: people ask for *stations* (SomaFM, Radio Paradise,
+* **The need is real**, and it is the one 14-music-only §1 found: people ask for *stations* (SomaFM, Radio Paradise,
   FIP, Folk Alley…), not for a feature. A list answers that directly.
 * **Lists are data, not code**, fetched daily, as 09 §5.2 already decided. A list shipped with a release goes stale.
 * **"In these lists" on the station being played** is the best idea of the proposal: it turns a single listen into

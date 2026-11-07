@@ -2,6 +2,7 @@
 
 How Soundfolk's interface is organised, for the current desktop client and the future mobile clients. The interface
 follows what a listener wants to do — **listen, find, find again** — not the shape of the catalog or the database.
+Colors, type, icons and spacing are in [07-visual-design.md](07-visual-design.md).
 
 These principles come from reviewing other open radio players. AMARadio (Android), for example, exposes its data model
 directly: unlabelled icons, tabs named "Local", "Filter" and "…", empty screens asking to configure a filter, bitrate,
@@ -14,7 +15,7 @@ these.
 * **Three labelled destinations**, no more:
   * **Listen:** resume the last station, then **Favorites** (catalog stations, personal stations and curated lists
     marked ♡, together) and **My stations** (the stations added by hand, where they are added and removed), always
-    in that place; later the listener's own lists ([14-curated-lists.md](14-curated-lists.md) §7);
+    in that place; later the listener's own lists ([15-curated-lists.md](15-curated-lists.md) §7);
   * **Discover:** search, filters and collections, published curated lists included, under one set of chips;
   * **History:** tracks heard, likes and stats.
 * Settings live in a menu, not in the main navigation.
@@ -35,7 +36,7 @@ these.
 ## 3. No empty screens
 * A screen never asks for work before showing something. "Discover" opens on **curated collections** (e.g.
   "Ad-free, listener-supported", "French community radios", "Jazz") and on stations from the listener's country or
-  language — not on an empty filter to configure. See [09-discovery.md](09-discovery.md).
+  language — not on an empty filter to configure. See [10-discovery.md](10-discovery.md).
 * Empty favorites or history show one sentence and a way forward ("Like a track with ♡ to find it here", a link to
   Discover), not "No results".
 
@@ -74,5 +75,5 @@ these.
 * A given list always uses the same layout. Grid vs. list is a single, global choice, if offered at all.
 
 ## 9. Respect while listening
-* Donation suggestions ([12-donations.md](12-donations.md) §4): shown when playback stops or at the next launch,
+* Donation suggestions ([13-donations.md](13-donations.md) §4): shown when playback stops or at the next launch,
   never during playback, never modal, at most once a month, and they can be turned off for good.

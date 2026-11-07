@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Stations' donation links, from `getsoundfolk/soundfolk-stations`: every entry of that repository,
 //! compiled into one `stations.json` by its CI and published on GitHub Pages. See
-//! `docs/12-donations.md`.
+//! `docs/13-donations.md`.
 //!
 //! * At startup, the copy cached by the last download is used right away (offline included).
 //! * The list is downloaded again when that copy is a day old (see `daily_list.rs`), whatever the

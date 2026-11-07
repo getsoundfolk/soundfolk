@@ -561,7 +561,7 @@
                   type="button"
                   aria-label={`Remove ${site.name}`}
                   title={site.template}
-                  onclick={() => trackServices.remove(site.id)}>×</button
+                  onclick={() => trackServices.remove(site.id)}><Icon name="x" size={14} /></button
                 >
               </span>
             {/each}

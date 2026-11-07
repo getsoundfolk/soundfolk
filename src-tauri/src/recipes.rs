@@ -2,7 +2,7 @@
 //! Now-playing recipes available to the app, highest priority first: the user's own
 //! (`<config dir>/recipes/*.toml`), the shared list downloaded from `getsoundfolk/soundfolk-recipes`
 //! (see [`crate::recipe_list`]), and those shipped with the app (`src-tauri/recipes/stations`).
-//! See `docs/07-now-playing.md`.
+//! See `docs/08-now-playing.md`.
 //!
 //! A recipe's **id** is its file name without `.toml` (`frequence7`). A recipe replaces the ones
 //! with the same id further down, whatever its `match` says; otherwise the order above decides.
@@ -406,7 +406,7 @@ pub fn template(t: &Template) -> String {
         r#"#:schema {SCHEMA_FILE}
 # Where the website of {name} shows the track on air, and how to read it.
 # Save the file: Soundfolk reloads it and reads the page again while the station plays.
-# Format: https://github.com/getsoundfolk/soundfolk/blob/main/docs/07-now-playing.md
+# Format: https://github.com/getsoundfolk/soundfolk/blob/main/docs/08-now-playing.md
 # Works? Share it with every listener: https://github.com/getsoundfolk/soundfolk-recipes
 schema = 1
 name = {name_toml}

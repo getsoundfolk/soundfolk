@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! *Constant volume* (`docs/10-loudness.md`): the setting, and the database as the engine's
+//! *Constant volume* (`docs/11-loudness.md`): the setting, and the database as the engine's
 //! memory of station levels. The measuring and the gain are in `audio::loudness`.
 
 use tauri::{AppHandle, Manager, State};

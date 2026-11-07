@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Title from the web, for streams that do not announce it (see `docs/07-now-playing.md`).
+//! Title from the web, for streams that do not announce it (see `docs/08-now-playing.md`).
 //!
 //! For each playback, in this order:
 //! 1. a **recipe** matching the station (local recipes first, then the shipped ones): its page

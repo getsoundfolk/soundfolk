@@ -3,7 +3,7 @@
 Should Soundfolk offer a "music only" filter (no talk, no news, no ads), and where? A study, not a spec: nothing
 here is built.
 
-**Today:** search has a Genre chip that can *select* `News` or `Talk` ([08-search-filters.md](08-search-filters.md)
+**Today:** search has a Genre chip that can *select* `News` or `Talk` ([09-search-filters.md](09-search-filters.md)
 §3.1), but nothing *excludes* them. The history can be filtered by text and by "Liked". The stats already compute,
 per station, the share of titles that could not be split into artist and title (`unrecognised_share` in
 [`db/stats.rs`](../src-tauri/src/db/stats.rs)).
@@ -51,7 +51,7 @@ large feature.
 | **Tracks only** | History | Good: rows without an artist are jingles, ads, show names | Very small | Do, independent of the rest |
 | ICY title cadence heuristic | Search | Cannot work: a station must be listened to before it can be measured | — | No |
 | Server worker sampling every stream | Server | Speech/music classification fails on rap, spoken word, talk-heavy shows | High: ~50,000 streams, infrastructure | No |
-| Speech detection in the engine | Player | Same, plus CPU and battery on every stream | High | No ([09-discovery.md](09-discovery.md) §7) |
+| Speech detection in the engine | Player | Same, plus CPU and battery on every stream | High | No ([10-discovery.md](10-discovery.md) §7) |
 | Shared, crowdsourced "music only" list | soundfolk-stations | Good once filled, empty at start | Moderation, and outside the repository's scope (donation links only) | No, for now |
 
 ### 2.1 Hide news / talk (search)
@@ -71,7 +71,7 @@ large feature.
 * Shown in the station sheet ("Mostly music · 92 %") and in the stats, once enough has been heard (same kind of
   floor as `MIN_TRACKS_FOR_QUALITY`).
 * Limit: it measures metadata, not audio. A station that announces `Artist - Title` during its host's talk counts
-  as music. Ads detected per [11-ads-detection.md](11-ads-detection.md) would come out of the music share.
+  as music. Ads detected per [12-ads-detection.md](12-ads-detection.md) would come out of the music share.
 * Does nothing for discovery: it only knows stations already heard.
 
 ### 2.3 Tracks only (history)
@@ -83,8 +83,8 @@ large feature.
 
 ## 3. Not done, and why
 * **Skip talk or ads automatically:** Soundfolk reports what is on air and changes nothing in it
-  ([11-ads-detection.md](11-ads-detection.md) §1). Speech detection in the engine was already set aside in
-  [09-discovery.md](09-discovery.md) §7.
+  ([12-ads-detection.md](12-ads-detection.md) §1). Speech detection in the engine was already set aside in
+  [10-discovery.md](10-discovery.md) §7.
 * **A curated "music 24/7" selection** (SomaFM, Radio Paradise, FIP…): this is what users actually ask for, but it
-  is editorial work to maintain. To reconsider with the Discover rows of [09-discovery.md](09-discovery.md).
+  is editorial work to maintain. To reconsider with the Discover rows of [10-discovery.md](10-discovery.md).
 * **Measuring the demand properly:** rerun `/last30days` once Reddit answers again or X access is configured.
