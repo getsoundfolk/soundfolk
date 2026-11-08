@@ -468,10 +468,8 @@ impl Covers {
                 picture.as_deref(),
             );
         }
-        if changed {
-            if let Err(e) = self.app.emit(COVER_EVENT, cover) {
-                tracing::warn!("failed to emit the cover: {e}");
-            }
+        if changed && let Err(e) = self.app.emit(COVER_EVENT, cover) {
+            tracing::warn!("failed to emit the cover: {e}");
         }
     }
 

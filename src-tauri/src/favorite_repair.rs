@@ -216,10 +216,8 @@ fn look_up(app: AppHandle, watched: Watched, error: String) {
         if take_if_looking_up(&app, watched.play) {
             engine.show_error(error);
             // The window offers to remove it, under the error.
-            if gone {
-                if let Err(e) = app.emit(GONE_EVENT, &watched.favorite.station_id) {
-                    tracing::warn!("failed to emit the vanished favorite: {e}");
-                }
+            if gone && let Err(e) = app.emit(GONE_EVENT, &watched.favorite.station_id) {
+                tracing::warn!("failed to emit the vanished favorite: {e}");
             }
         }
     });

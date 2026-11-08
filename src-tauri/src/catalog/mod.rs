@@ -141,12 +141,12 @@ impl SearchQuery {
         let clean_text =
             |v: &Option<String>| v.as_deref().map(catalog_text).filter(|s| !s.is_empty());
         let country_code = clean(&self.country_code).map(|c| c.to_ascii_uppercase());
-        if let Some(code) = &country_code {
-            if code.len() != 2 || !code.chars().all(|c| c.is_ascii_alphabetic()) {
-                return Err(CatalogError::BadRequest(format!(
-                    "Invalid country code: {code}"
-                )));
-            }
+        if let Some(code) = &country_code
+            && (code.len() != 2 || !code.chars().all(|c| c.is_ascii_alphabetic()))
+        {
+            return Err(CatalogError::BadRequest(format!(
+                "Invalid country code: {code}"
+            )));
         }
         Ok(Self {
             text: clean_text(&self.text),

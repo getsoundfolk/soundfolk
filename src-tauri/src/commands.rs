@@ -197,16 +197,16 @@ pub(crate) fn start_station(
     // Decided before playing: the first sound may come before `play` returns.
     let mut show_click_notice = false;
     let mut pending_click = None;
-    if let Some(id) = station_id.filter(|id| is_catalog_id(id)) {
-        if db.get_bool(SETTING_CLICK_COUNTING, true)? {
-            if db.get_bool(SETTING_CLICK_NOTICE_SEEN, false)? {
-                pending_click = Some((play, id));
-            } else {
-                // Nothing is sent until the user has seen the notice: this first
-                // click is therefore not counted.
-                db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
-                show_click_notice = true;
-            }
+    if let Some(id) = station_id.filter(|id| is_catalog_id(id))
+        && db.get_bool(SETTING_CLICK_COUNTING, true)?
+    {
+        if db.get_bool(SETTING_CLICK_NOTICE_SEEN, false)? {
+            pending_click = Some((play, id));
+        } else {
+            // Nothing is sent until the user has seen the notice: this first
+            // click is therefore not counted.
+            db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
+            show_click_notice = true;
         }
     }
     *audio

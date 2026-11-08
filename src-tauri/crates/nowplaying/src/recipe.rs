@@ -64,10 +64,10 @@ impl Match {
     /// Whether this station (Radio-Browser UUID) or stream URL is one of those listed. Also used
     /// by the app for the donation links of `soundfolk-stations`, whose `match` is the same.
     pub fn matches(&self, station_id: Option<&str>, stream: &str) -> bool {
-        if let Some(id) = station_id {
-            if self.stations.iter().any(|s| s.eq_ignore_ascii_case(id)) {
-                return true;
-            }
+        if let Some(id) = station_id
+            && self.stations.iter().any(|s| s.eq_ignore_ascii_case(id))
+        {
+            return true;
         }
         let Some(stream) = normalize_stream(stream) else {
             return false;

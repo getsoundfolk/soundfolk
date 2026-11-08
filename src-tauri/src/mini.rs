@@ -80,10 +80,10 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
         }) {
             tracing::debug!("mini player: web view size request kept: {e}");
         }
-        if let Some(position) = placement(app, &window, (width, height)) {
-            if let Err(e) = window.set_position(position) {
-                tracing::debug!("mini player: position not restored: {e}");
-            }
+        if let Some(position) = placement(app, &window, (width, height))
+            && let Err(e) = window.set_position(position)
+        {
+            tracing::debug!("mini player: position not restored: {e}");
         }
         window.show()?;
         window.set_focus()?;

@@ -296,11 +296,11 @@ impl Leveler {
     fn measure(&mut self, chunk: &[f32]) {
         let peak = chunk.iter().fold(0.0f32, |m, s| m.max(s.abs()));
         self.block_peak = self.block_peak.max(peak);
-        if let Some(meter) = &mut self.meter {
-            if let Err(e) = meter.add_frames_f32(chunk) {
-                tracing::warn!("loudness meter failed: {e:?}");
-                self.meter = None;
-            }
+        if let Some(meter) = &mut self.meter
+            && let Err(e) = meter.add_frames_f32(chunk)
+        {
+            tracing::warn!("loudness meter failed: {e:?}");
+            self.meter = None;
         }
     }
 

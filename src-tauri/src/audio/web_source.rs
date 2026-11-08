@@ -819,11 +819,11 @@ impl WebTitles {
                 continue;
             };
             // A matching URL is not proof: the document must have the adapter's shape.
-            if let Ok((page, _)) = fetch(client, &probe.url).await {
-                if adapter.read(stream.as_str(), &page).is_ok() {
-                    found = Some(adapter);
-                    break;
-                }
+            if let Ok((page, _)) = fetch(client, &probe.url).await
+                && adapter.read(stream.as_str(), &page).is_ok()
+            {
+                found = Some(adapter);
+                break;
             }
         }
         lock(&self.servers).insert(origin, found);

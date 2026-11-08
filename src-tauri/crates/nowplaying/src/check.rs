@@ -47,10 +47,10 @@ pub fn run_test(recipe: &Recipe, test: &Test, page: &str) -> Vec<String> {
     };
     let mut failures = Vec::new();
     let mut expect = |what: &str, expected: &Option<String>, actual: Option<String>| {
-        if let Some(expected) = expected {
-            if actual.as_deref() != Some(expected.as_str()) {
-                failures.push(format!("{what}: expected {expected:?}, got {actual:?}"));
-            }
+        if let Some(expected) = expected
+            && actual.as_deref() != Some(expected.as_str())
+        {
+            failures.push(format!("{what}: expected {expected:?}, got {actual:?}"));
         }
     };
     let current = &on_air.current;

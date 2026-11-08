@@ -256,13 +256,12 @@ fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindo
         .0
         .lock()
         .unwrap_or_else(|p| p.into_inner());
-    if let Some((position, size)) = geometry {
-        if let Err(e) = window
+    if let Some((position, size)) = geometry
+        && let Err(e) = window
             .set_size(size)
             .and_then(|()| window.set_position(position))
-        {
-            tracing::debug!("previous window geometry not restored: {e}");
-        }
+    {
+        tracing::debug!("previous window geometry not restored: {e}");
     }
     Ok(window)
 }
@@ -276,16 +275,16 @@ fn watch_share_links(app: &tauri::App) {
     use tauri_plugin_deep_link::DeepLinkExt;
     let handle = app.handle().clone();
     app.deep_link().on_open_url(move |event| {
-        if let Some(url) = event.urls().last() {
-            if share::opened(&handle, url.as_str()) {
-                show_main_window(&handle);
-            }
+        if let Some(url) = event.urls().last()
+            && share::opened(&handle, url.as_str())
+        {
+            show_main_window(&handle);
         }
     });
-    if let Ok(Some(urls)) = app.deep_link().get_current() {
-        if let Some(url) = urls.last() {
-            share::opened(app.handle(), url.as_str());
-        }
+    if let Ok(Some(urls)) = app.deep_link().get_current()
+        && let Some(url) = urls.last()
+    {
+        share::opened(app.handle(), url.as_str());
     }
     #[cfg(any(target_os = "linux", windows))]
     {
@@ -505,11 +504,11 @@ pub fn run() {
                 }
                 return;
             }
-            if let WindowEvent::CloseRequested { .. } = event {
-                if let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size()) {
-                    let geometry = window.app_handle().state::<WindowGeometry>();
-                    *geometry.0.lock().unwrap_or_else(|p| p.into_inner()) = Some((position, size));
-                }
+            if let WindowEvent::CloseRequested { .. } = event
+                && let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size())
+            {
+                let geometry = window.app_handle().state::<WindowGeometry>();
+                *geometry.0.lock().unwrap_or_else(|p| p.into_inner()) = Some((position, size));
             }
             // The tray menu offers to show the window or to hide it, whichever it would do. Being
             // minimized or restored comes as a resize (or a focus change), closing as `Destroyed`.
@@ -619,10 +618,9 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested {
                 code: None, api, ..
             } = &event
+                && tray::available()
             {
-                if tray::available() {
-                    api.prevent_exit();
-                }
+                api.prevent_exit();
             }
             if let tauri::RunEvent::Exit = event {
                 mini::save_position(app);

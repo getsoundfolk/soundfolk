@@ -123,10 +123,10 @@ impl std::fmt::Display for Interrupt {
 }
 
 fn run(mut job: Job) {
-    if job.public_only {
-        if let Err(message) = public_net::check(&job.url) {
-            return job.reporter.failed(message);
-        }
+    if job.public_only
+        && let Err(message) = public_net::check(&job.url)
+    {
+        return job.reporter.failed(message);
     }
     let client = match build_client(job.public_only) {
         Ok(client) => client,
@@ -327,18 +327,18 @@ pub fn probe(
         if packet.track_id != opened.track_id {
             continue;
         }
-        if let Ok(decoded) = opened.decoder.decode(&packet) {
-            if decoded.frames() > 0 {
-                let spec = decoded.spec();
-                // Closing the stream (drop) stops the download.
-                cancel.cancel();
-                return Ok(StreamInfo {
-                    station: opened.station,
-                    mime: opened.mime,
-                    sample_rate: spec.rate(),
-                    channels: spec.channels().count(),
-                });
-            }
+        if let Ok(decoded) = opened.decoder.decode(&packet)
+            && decoded.frames() > 0
+        {
+            let spec = decoded.spec();
+            // Closing the stream (drop) stops the download.
+            cancel.cancel();
+            return Ok(StreamInfo {
+                station: opened.station,
+                mime: opened.mime,
+                sample_rate: spec.rate(),
+                channels: spec.channels().count(),
+            });
         }
     }
     cancel.cancel();
