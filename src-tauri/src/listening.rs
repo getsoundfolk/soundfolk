@@ -53,7 +53,7 @@ impl Journal {
         let mut writer = Writer {
             app,
             covers,
-            last_logged: None,
+            heard: Heard::default(),
         };
         thread::Builder::new()
             .name("listening".into())
@@ -103,8 +103,7 @@ impl Journal {
 struct Writer {
     app: tauri::AppHandle,
     covers: Arc<Covers>,
-    /// The last title added to the history, while listening goes on.
-    last_logged: Option<Logged>,
+    heard: Heard,
 }
 
 impl Writer {
@@ -112,9 +111,7 @@ impl Writer {
         let app = self.app.clone();
         let db = app.state::<Database>();
         match job {
-            Job::State(state, on_air) => {
-                track_session(&db, &mut self.last_logged, on_air.as_ref(), &state)
-            }
+            Job::State(state, on_air) => self.heard.state(&db, on_air.as_ref(), &state),
             Job::Title(now_playing, on_air) => self.title(&db, *now_playing, on_air),
             Job::Heartbeat => {
                 if let Err(e) = db.touch_session() {
@@ -124,9 +121,10 @@ impl Writer {
         }
     }
 
-    /// Logs the title, then announces it: notification for a new track, covers, window.
+    /// Logs the title, then announces it: notification for a new track, covers, window. While
+    /// paused, the title is still shown (the stream goes on live) but neither logged nor notified.
     fn title(&mut self, db: &Database, now_playing: NowPlaying, on_air: Option<OnAir>) {
-        let new_track = journalize_title(db, &mut self.last_logged, on_air.as_ref(), &now_playing);
+        let new_track = self.heard.title(db, on_air.as_ref(), &now_playing);
         let name = on_air.as_ref().and_then(|s| s.name.clone());
         let label = on_air.and_then(|s| {
             db.station_name(&s.id).unwrap_or_else(|e| {
@@ -228,6 +226,49 @@ fn journalize_title(
     }
 }
 
+/// What the history knows of the listening going on.
+#[derive(Default)]
+struct Heard {
+    /// The last title added to the history, while listening goes on.
+    last_logged: Option<Logged>,
+    paused: bool,
+    /// The title on air while paused, with its station: the pause mutes a stream that goes on
+    /// live, so titles keep coming but are not heard. The one on air when playback resumes is.
+    held: Option<(NowPlaying, OnAir)>,
+}
+
+impl Heard {
+    fn state(&mut self, db: &Database, on_air: Option<&OnAir>, state: &PlayerState) {
+        track_session(db, &mut self.last_logged, on_air, state);
+        self.paused = match state {
+            PlayerState::Paused => true,
+            // A reconnection while paused comes back paused.
+            PlayerState::Reconnecting(_) => self.paused,
+            _ => false,
+        };
+        match state {
+            PlayerState::Paused | PlayerState::Reconnecting(_) => {}
+            PlayerState::Playing => {
+                if let Some((now_playing, station)) = self.held.take()
+                    && on_air.is_some_and(|s| s.id == station.id)
+                {
+                    journalize_title(db, &mut self.last_logged, Some(&station), &now_playing);
+                }
+            }
+            _ => self.held = None,
+        }
+    }
+
+    /// Logs the title unless paused. Returns whether it is a new track in the history.
+    fn title(&mut self, db: &Database, on_air: Option<&OnAir>, now_playing: &NowPlaying) -> bool {
+        if self.paused {
+            self.held = on_air.map(|s| (now_playing.clone(), s.clone()));
+            return false;
+        }
+        journalize_title(db, &mut self.last_logged, on_air, now_playing)
+    }
+}
+
 /// The last title added to the history.
 struct Logged {
     station_id: String,
@@ -246,18 +287,15 @@ fn history_time(started_at: &str) -> Option<String> {
 }
 
 /// Opens a listening session when a station starts playing and closes it when playback stops. A
-/// stop, a pause or an error also ends the run of titles `journalize_title` merges; a
-/// reconnection does not.
+/// stop or an error also ends the run of titles `journalize_title` merges; a pause or a
+/// reconnection does not, so a track paused and resumed is one entry.
 fn track_session(
     db: &Database,
     last_logged: &mut Option<Logged>,
     station: Option<&OnAir>,
     state: &PlayerState,
 ) {
-    if matches!(
-        state,
-        PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_)
-    ) {
+    if matches!(state, PlayerState::Idle | PlayerState::Error(_)) {
         *last_logged = None;
     }
     let result = match state {
@@ -367,6 +405,42 @@ mod tests {
             &title("A - One")
         ));
         assert_eq!(logged(&db), ["A - One", "A - One"]);
+    }
+
+    #[test]
+    fn titles_while_paused_wait_for_playback() {
+        let db = Database::open_in_memory().unwrap();
+        let fip = station("fip", "FIP");
+        let mut heard = Heard::default();
+        heard.state(&db, Some(&fip), &PlayerState::Playing);
+        assert!(heard.title(&db, Some(&fip), &title("A - One")));
+        heard.state(&db, Some(&fip), &PlayerState::Paused);
+        assert!(!heard.title(&db, Some(&fip), &title("B - Two")));
+        assert!(!heard.title(&db, Some(&fip), &title("C - Three")));
+        heard.state(&db, Some(&fip), &PlayerState::Reconnecting("x".into()));
+        heard.state(&db, Some(&fip), &PlayerState::Paused);
+        assert_eq!(logged(&db), ["A - One"]);
+        // Resumed: the track on air is heard, the ones that went by while paused were not.
+        heard.state(&db, Some(&fip), &PlayerState::Playing);
+        assert_eq!(logged(&db), ["A - One", "C - Three"]);
+        // Paused and resumed within a track: still one entry.
+        heard.state(&db, Some(&fip), &PlayerState::Paused);
+        heard.state(&db, Some(&fip), &PlayerState::Playing);
+        assert!(!heard.title(&db, Some(&fip), &title("C - Three")));
+        assert_eq!(logged(&db), ["A - One", "C - Three"]);
+    }
+
+    #[test]
+    fn a_title_held_in_pause_is_dropped_for_another_station() {
+        let db = Database::open_in_memory().unwrap();
+        let (fip, nova) = (station("fip", "FIP"), station("nova", "Nova"));
+        let mut heard = Heard::default();
+        heard.state(&db, Some(&fip), &PlayerState::Playing);
+        heard.state(&db, Some(&fip), &PlayerState::Paused);
+        heard.title(&db, Some(&fip), &title("B - Two"));
+        heard.state(&db, Some(&nova), &PlayerState::Connecting);
+        heard.state(&db, Some(&nova), &PlayerState::Playing);
+        assert!(logged(&db).is_empty());
     }
 
     #[test]
