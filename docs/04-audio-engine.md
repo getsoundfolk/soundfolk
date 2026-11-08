@@ -69,8 +69,9 @@ HTTP ─▶ stream-download ─▶ ICY filter ─▶ symphonia ─▶ convert �
     * *No Internet access — waiting…*: two independent signals agree — Soundfolk's own check fails (no HTTPS answer
       from the Radio-Browser API, already used for the catalog, so no new third party) **and** the operating system
       says there is no Internet (Windows: `GetNetworkConnectivityHint`; Linux: the desktop portal or
-      NetworkManager, which run their own checks). Either alone can be wrong (Radio-Browser down or blocked, a
-      network NetworkManager does not manage, a proxy that fools Windows);
+      NetworkManager, which run their own checks; macOS: Network.framework's path monitor, which only knows "no
+      usable path at all", so a network without Internet stays unnamed there). Either alone can be wrong
+      (Radio-Browser down or blocked, a network NetworkManager does not manage, a proxy that fools Windows);
     * *Sign in to the network (captive portal) — waiting…*: the system says so, or the network answered HTTP 511;
     * *The station is not broadcasting (reason) — retrying…*: proven — its address answered with an HTTP client
       error, or Internet works (Radio-Browser answers). Reasons in plain words: its server refuses connections, does

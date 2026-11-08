@@ -112,6 +112,11 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_LibraryLoader",
 ] }
 
+# Internet access as macOS sees it: the Network.framework path monitor takes a block (already
+# pulled in by Tauri)
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+
 # System media controls (MPRIS): pure Rust D-Bus (zbus), no libdbus needed
 [target.'cfg(target_os = "linux")'.dependencies]
 # Internet access as the desktop sees it (portal, NetworkManager); already pulled in by Tauri
