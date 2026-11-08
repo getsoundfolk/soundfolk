@@ -569,7 +569,8 @@ mod tests {
                 .id,
             "mine"
         );
-        assert_eq!((set.len(), set.local_count()), (2, 2));
+        // Shipped recipes, plus "mine"; the broken file counts as local too.
+        assert_eq!((set.len(), set.local_count()), (BUNDLED.len() + 1, 2));
         assert_eq!(set.errors()[0].id, "broken");
 
         // Same id as the shipped recipe: replaces it even when it matches another stream.
@@ -579,7 +580,7 @@ mod tests {
         recipes.reload_if_changed().unwrap();
         let set = recipes.current();
         assert_eq!(set.get("frequence7").unwrap().origin, Origin::Local);
-        assert_eq!(set.len(), 2);
+        assert_eq!(set.len(), BUNDLED.len() + 1);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -635,7 +636,7 @@ mod tests {
         let set = recipes.current();
         // Same id as the shipped recipe: the shared one replaces it, and only it is used.
         assert_eq!(set.get("frequence7").unwrap().origin, Origin::Shared);
-        assert_eq!(set.len(), 2);
+        assert_eq!(set.len(), BUNDLED.len() + 1);
         assert_eq!(
             set.find(None, "https://live.aurafm.org/Frequence7")
                 .unwrap()
