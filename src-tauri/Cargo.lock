@@ -4509,7 +4509,7 @@ dependencies = [
 
 [[package]]
 name = "soundfolk"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -4551,7 +4551,7 @@ dependencies = [
 
 [[package]]
 name = "soundfolk-nowplaying"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "ego-tree",
  "fastrand",
