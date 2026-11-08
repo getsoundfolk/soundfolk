@@ -257,10 +257,15 @@ jobs:
           mkdir -p out
           cp "$bundle"/dmg/*.dmg out/
           ls -l out
-          # Fails if the app does not hold both architectures or its signature does not verify.
-          binaries=("$bundle"/macos/*.app/Contents/MacOS/*)
+          # Fails if the app in the disk image does not hold both architectures or its signature
+          # does not verify. Checked inside the image: the bundler deletes the .app once it is in.
+          dmgs=(out/*.dmg)
+          hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "${dmgs[0]}"
+          apps=("$RUNNER_TEMP"/dmg/*.app)
+          binaries=("${apps[0]}"/Contents/MacOS/*)
           lipo "${binaries[0]}" -verify_arch arm64 x86_64
-          codesign --verify --deep --strict "$bundle"/macos/*.app
+          codesign --verify --deep --strict "${apps[0]}"
+          hdiutil detach "$RUNNER_TEMP/dmg"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
