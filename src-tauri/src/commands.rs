@@ -368,8 +368,11 @@ pub async fn get_click_counting(db: State<'_, Database>) -> AppResult<bool> {
 pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppResult<()> {
     with_db(&db, move |db| {
         // If the user sets counting themselves, the notice no longer needs to be shown.
-        db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
-        Ok(db.set_bool(SETTING_CLICK_COUNTING, enabled)?)
+        let counting = if enabled { "true" } else { "false" };
+        Ok(db.set_strs(&[
+            (SETTING_CLICK_NOTICE_SEEN, "true"),
+            (SETTING_CLICK_COUNTING, counting),
+        ])?)
     })
     .await
 }
@@ -810,8 +813,8 @@ pub async fn resolve_station(
     name: Option<String>,
 ) -> AppResult<ResolvedStation> {
     let id = station_id.clone();
-    let (personal, favorites) = with_db(&db, move |db| {
-        Ok((db.personal_station(&id)?, db.list_favorites()?))
+    let (personal, favorite) = with_db(&db, move |db| {
+        Ok((db.personal_station(&id)?, db.favorite(&id)?))
     })
     .await?;
     if let Some(p) = personal {
@@ -822,7 +825,7 @@ pub async fn resolve_station(
             genre: p.genre,
         });
     }
-    if let Some(f) = favorites.into_iter().find(|f| f.station_id == station_id) {
+    if let Some(f) = favorite {
         return Ok(ResolvedStation {
             id: f.station_id,
             name: f.name,

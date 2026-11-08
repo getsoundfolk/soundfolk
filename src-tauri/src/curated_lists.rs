@@ -198,7 +198,9 @@ pub async fn refresh_curated_lists(
     match daily_list::refresh(&client, &url, &dir, FILES, parse).await? {
         Some(fresh) => {
             lists.set(fresh);
-            let _ = app.emit(crate::LISTS_EVENT, ());
+            if let Err(e) = app.emit(crate::LISTS_EVENT, ()) {
+                tracing::warn!("failed to emit {}: {e}", crate::LISTS_EVENT);
+            }
             Ok(true)
         }
         None => Ok(false),

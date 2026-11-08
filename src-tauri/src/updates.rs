@@ -52,10 +52,29 @@ pub struct Release {
 fn parse(text: &str) -> Result<Release, String> {
     let release: Release = serde_json::from_str(text).map_err(|e| e.to_string())?;
     Version::parse(&release.version).map_err(|e| format!("version {}: {e}", release.version))?;
-    if !release.url.starts_with(RELEASE_PAGES) || release.url.contains(['?', '#', '@']) {
-        return Err(format!("not a release page: {}", release.url));
-    }
-    Ok(release)
+    let page = release_page(&release.url).ok_or(format!("not a release page: {}", release.url))?;
+    Ok(Release {
+        url: page,
+        ..release
+    })
+}
+
+/// The address as a page of this project's releases, read as a browser would (`..` resolved),
+/// or `None`: nothing but `https://github.com/getsoundfolk/soundfolk/releases/…`, without login,
+/// query or fragment.
+fn release_page(text: &str) -> Option<String> {
+    let base = url::Url::parse(RELEASE_PAGES).ok()?;
+    let url = url::Url::parse(text).ok()?;
+    let same_site = url.scheme() == base.scheme()
+        && url.host_str() == base.host_str()
+        && url.port_or_known_default() == base.port_or_known_default();
+    // `@` anywhere reads as a login to a person, wherever the parser puts it.
+    let plain = !text.contains('@')
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none();
+    (same_site && plain && url.path().starts_with(base.path())).then(|| url.into())
 }
 
 /// Whether this copy may check, from its version and how it was installed.
@@ -240,6 +259,10 @@ mod tests {
         assert!(parse(elsewhere).is_err());
         let lookalike = r#"{"version":"0.3.0","url":"https://github.com/getsoundfolk/soundfolk/releases/@evil.example"}"#;
         assert!(parse(lookalike).is_err());
+        let climbing = r#"{"version":"0.3.0","url":"https://github.com/getsoundfolk/soundfolk/releases/../../other/x"}"#;
+        assert!(parse(climbing).is_err());
+        let encoded = r#"{"version":"0.3.0","url":"https://github.com/getsoundfolk/soundfolk/releases/%2e%2e/%2e%2e/other"}"#;
+        assert!(parse(encoded).is_err());
         let version = r#"{"version":"next","url":"https://github.com/getsoundfolk/soundfolk/releases/tag/next"}"#;
         assert!(parse(version).is_err());
     }

@@ -222,8 +222,14 @@ pub fn run() {
             let events = app.handle().clone();
             let web_titles = Arc::new(WebTitles::new(
                 Arc::new(recipes::Recipes::new(local_recipes)),
+                // A setting that cannot be read takes its default, as Constant volume does: it
+                // is no reason not to start.
                 app.state::<Database>()
-                    .get_bool(commands::SETTING_WEB_TITLES, true)?,
+                    .get_bool(commands::SETTING_WEB_TITLES, true)
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("web titles setting not read: {e}");
+                        true
+                    }),
                 Box::new(move |event| {
                     let sent = match event {
                         WebEvent::Status(status) => events.emit(TITLE_STATUS_EVENT, status),

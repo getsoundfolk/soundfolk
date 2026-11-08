@@ -260,6 +260,26 @@ impl Database {
         rows.collect()
     }
 
+    /// One favorite, by its station id.
+    pub fn favorite(&self, station_id: &str) -> rusqlite::Result<Option<Favorite>> {
+        self.conn()
+            .query_row(
+                "SELECT station_id, name, stream_url, genre, added_at
+                 FROM favorites WHERE station_id = ?1",
+                params![station_id],
+                |row| {
+                    Ok(Favorite {
+                        station_id: row.get(0)?,
+                        name: row.get(1)?,
+                        stream_url: row.get(2)?,
+                        genre: row.get(3)?,
+                        added_at: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+    }
+
     /// Puts the favorites in the order of `station_ids` (the listener dragged them). A favorite
     /// missing from it keeps its position; an unknown ID is ignored.
     pub fn reorder_favorites(&self, station_ids: &[String]) -> rusqlite::Result<()> {
@@ -310,12 +330,21 @@ impl Database {
     }
 
     pub fn set_str(&self, key: &str, value: &str) -> rusqlite::Result<()> {
-        self.conn().execute(
-            "INSERT INTO settings (key, value) VALUES (?1, ?2)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![key, value],
-        )?;
-        Ok(())
+        self.set_strs(&[(key, value)])
+    }
+
+    /// Several settings that go together, written in one transaction.
+    pub fn set_strs(&self, settings: &[(&str, &str)]) -> rusqlite::Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        for (key, value) in settings {
+            tx.execute(
+                "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )?;
+        }
+        tx.commit()
     }
 
     // ── personal_stations ────────────────────────────────────────────────────
