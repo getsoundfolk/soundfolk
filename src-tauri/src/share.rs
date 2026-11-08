@@ -32,6 +32,8 @@ const MAX_FROM: usize = 40;
 const MAX_LIST_STATIONS: usize = 40;
 /// A published list's id: its file name in soundfolk-stations (15 §6.1).
 const MAX_LIST_ID: usize = 64;
+/// Longest text read as a link, in bytes, pasted or opened from outside.
+const MAX_LINK: usize = 16 * 1024;
 
 /// What a link carries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,7 +64,7 @@ pub struct PersonalEntry {
 pub struct SharedLink {
     #[serde(flatten)]
     pub item: Shared,
-    /// `artist — title`, what was on air when the link was made.
+    /// `artist - title`, what was on air when the link was made.
     pub track: Option<String>,
     /// The sender's name, as they typed it: never a verified identity.
     pub from: Option<String>,
@@ -88,6 +90,9 @@ pub enum LinkError {
 /// bare station UUID.
 pub fn parse(text: &str) -> Result<SharedLink, LinkError> {
     let text = text.trim();
+    if text.len() > MAX_LINK {
+        return Err(LinkError::Invalid("the link is too long"));
+    }
     if is_uuid(text) {
         return Ok(SharedLink {
             item: Shared::Station {
@@ -278,6 +283,10 @@ fn personal_entry(name: Option<&str>, url: Option<&str>) -> Result<PersonalEntry
             "the station's address is not a web address",
         ));
     }
+    // `https://radio.fr@other.example/` goes to `other.example`: a login would show a fake domain.
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(LinkError::Invalid("the station's address carries a login"));
+    }
     Ok(PersonalEntry {
         name,
         url: parsed.to_string(),
@@ -345,6 +354,23 @@ pub fn link(item: &Shared, track: Option<&str>, from: Option<&str>) -> String {
     }
 }
 
+/// Checks a link made by [`link`] the way the receiver will read it: the item comes from the
+/// window, so it gets the checks of a received one (ids, limits, addresses), and a station id
+/// that [`pack_uuids`] cannot write is caught instead of sent as another station.
+fn reads_back(url: &str, item: &Shared) -> Result<(), LinkError> {
+    let back = parse(url)?.item;
+    if let (Shared::PersonalList { stations, .. }, Shared::PersonalList { stations: read, .. }) =
+        (item, &back)
+        && !stations
+            .iter()
+            .map(|id| id.to_ascii_lowercase())
+            .eq(read.iter().cloned())
+    {
+        return Err(LinkError::Invalid("a station's id is not valid"));
+    }
+    Ok(())
+}
+
 /// The link with the app's scheme in place of its origin (§2.3), for the page's button.
 #[cfg(test)]
 fn scheme_link(https: &str) -> String {
@@ -366,7 +392,7 @@ pub struct OpenedLink(std::sync::Mutex<Option<String>>);
 /// the command line is read. Returns whether it was kept.
 pub fn opened(app: &tauri::AppHandle, url: &str) -> bool {
     use tauri::{Emitter, Manager};
-    if !url.starts_with(&format!("{SCHEME}://")) || url.len() > 16 * 1024 {
+    if !url.starts_with(&format!("{SCHEME}://")) || url.len() > MAX_LINK {
         return false;
     }
     *app.state::<OpenedLink>()
@@ -444,6 +470,10 @@ pub async fn make_share_link(
         _ => 0,
     };
     let url = link(&item, track.as_deref(), from.as_deref());
+    reads_back(&url, &item).map_err(|e| match e {
+        LinkError::Invalid(why) => format!("This cannot be shared: {why}."),
+        other => other.to_string(),
+    })?;
     let (qr, qr_modules) = match qr(&url) {
         Some((svg, modules)) => (Some(svg), modules),
         None => (None, 0),
@@ -778,5 +808,62 @@ mod tests {
         let read = parse(&link(&station(FIP), Some(&track), Some(from))).unwrap();
         assert_eq!(read.track.unwrap().chars().count(), MAX_TRACK);
         assert_eq!(read.from.unwrap().chars().count(), MAX_FROM);
+    }
+
+    #[test]
+    fn an_address_with_a_login_is_refused() {
+        for url in [
+            "https://radio.fr@other.example/live",
+            "https://user:secret@radio.fr/live",
+        ] {
+            let written = link(
+                &Shared::PersonalStation {
+                    name: "Radio".into(),
+                    url: url.into(),
+                },
+                None,
+                None,
+            );
+            assert!(
+                matches!(parse(&written), Err(LinkError::Invalid(_))),
+                "{url}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_text_too_long_is_not_read() {
+        let long = format!(
+            "https://getsoundfolk.github.io/s/#id={FIP}&t={}",
+            "y".repeat(MAX_LINK)
+        );
+        assert_eq!(
+            parse(&long),
+            Err(LinkError::Invalid("the link is too long"))
+        );
+    }
+
+    #[test]
+    fn what_the_window_asks_to_share_is_checked() {
+        let list = |stations: Vec<String>| Shared::PersonalList {
+            title: "Mine".into(),
+            stations,
+            personal: Vec::new(),
+        };
+        let fine = list(vec![FIP.to_uppercase(), OTHER.into()]);
+        assert_eq!(reads_back(&link(&fine, None, None), &fine), Ok(()));
+        // 36 characters, not hex: written as another station.
+        let not_hex = list(vec!["zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz".into()]);
+        assert!(reads_back(&link(&not_hex, None, None), &not_hex).is_err());
+        let short = list(vec!["abc".into()]);
+        assert!(reads_back(&link(&short, None, None), &short).is_err());
+        let many = list(
+            (0..=MAX_LIST_STATIONS)
+                .map(|i| format!("{i:08x}-0000-0000-0000-000000000000"))
+                .collect(),
+        );
+        assert!(reads_back(&link(&many, None, None), &many).is_err());
+        let bad_id = station("not-a-uuid");
+        assert!(reads_back(&link(&bad_id, None, None), &bad_id).is_err());
     }
 }

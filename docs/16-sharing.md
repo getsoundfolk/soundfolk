@@ -57,9 +57,10 @@ Any link may also carry `f=<name>`, who sent it (§4.2).
     URL-encoded (about 100 characters per station). The list's order across `s` and `p` is lost: catalog stations
     come first. Keeping it would need a position per station, which is not worth the length.
 * **Limits**, as for published lists (15 §6.1): title 40 characters, 1 to 40 stations in all (`s` and `p`), no UUID
-  twice. A personal station's name: 80 characters; its stream URL: `http` or `https` only, 2,000 characters.
-  `t`: 200 characters. `f`: 40 characters. Counted after cleaning (§6.1). A link breaking a limit is refused whole,
-  never cut.
+  twice. A personal station's name: 80 characters; its stream URL: `http` or `https` only, no login
+  (`https://radio.fr@other.example/` goes to `other.example`), 2,000 characters. `t`: 200 characters. `f`: 40
+  characters. Counted after cleaning (§6.1). The whole link: 16 KiB. A link breaking a limit is refused whole, never
+  cut. The app checks a link it writes the same way before showing it, so it never hands out one it would refuse.
 
 ### 2.3 The app's scheme
 Desktop apps cannot claim `https` links (§3), so the app also registers `soundfolk://`. A `soundfolk://` link is the
