@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
-use stream_download::http::reqwest::{Client, Url};
+use stream_download::http::reqwest::{self, Client, Url};
 use tokio::sync::OnceCell;
 
 use super::dedup::dedup;
@@ -134,8 +134,8 @@ fn mirrors_from(addrs: impl IntoIterator<Item = SocketAddr>) -> Result<Mirrors, 
     })
 }
 
-/// `count` mirrors to try, the one that last responded first.
-fn candidates<'a>(list: &'a [Mirror], preferred: Option<&str>, count: usize) -> Vec<&'a Mirror> {
+/// The mirrors in the order to try them, the one that last responded first.
+fn candidates<'a>(list: &'a [Mirror], preferred: Option<&str>) -> Vec<&'a Mirror> {
     let mut ordered: Vec<&Mirror> = list.iter().collect();
     if let Some(i) = ordered
         .iter()
@@ -144,8 +144,41 @@ fn candidates<'a>(list: &'a [Mirror], preferred: Option<&str>, count: usize) -> 
         let first = ordered.remove(i);
         ordered.insert(0, first);
     }
-    ordered.truncate(count);
     ordered
+}
+
+/// Whether this machine has no route to the address at all, such as an IPv6 mirror without IPv6:
+/// the request never left, no server was bothered, and trying that mirror again is pointless.
+fn unroutable(error: &(dyn std::error::Error + 'static)) -> bool {
+    use std::io::ErrorKind::{AddrNotAvailable, HostUnreachable, NetworkUnreachable};
+    let mut cause = Some(error);
+    while let Some(e) = cause {
+        if e.downcast_ref::<std::io::Error>().is_some_and(|io| {
+            matches!(
+                io.kind(),
+                NetworkUnreachable | HostUnreachable | AddrNotAvailable
+            )
+        }) {
+            return true;
+        }
+        cause = e.source();
+    }
+    false
+}
+
+/// A request failure as the listener reads it: what went wrong and its root cause, without the
+/// URL (a curated list's runs to hundreds of characters of UUIDs).
+fn network_error(error: reqwest::Error) -> CatalogError {
+    let error = error.without_url();
+    let mut root: &(dyn std::error::Error + 'static) = &error;
+    while let Some(next) = root.source() {
+        root = next;
+    }
+    CatalogError::Network(if std::ptr::addr_eq(root, &error) {
+        error.to_string()
+    } else {
+        format!("{error}: {root}")
+    })
 }
 
 impl RadioBrowser {
@@ -225,7 +258,19 @@ impl RadioBrowser {
             .unwrap_or_else(|p| p.into_inner())
             .clone();
         let mut last_error = CatalogError::Network("no server available".into());
-        for mirror in candidates(&list, preferred.as_deref(), attempts) {
+        let order = candidates(&list, preferred.as_deref());
+        // A mirror out of reach from here is left out without using up an attempt; with few
+        // mirrors, the ones left are tried again (a busy mirror drops some connections).
+        let mut out_of_reach = vec![false; order.len()];
+        let mut tried = 0;
+        let mut next = 0;
+        while tried < attempts && out_of_reach.contains(&false) {
+            let index = next % order.len();
+            next += 1;
+            if out_of_reach[index] {
+                continue;
+            }
+            let mirror = order[index];
             let mut url = mirror
                 .base
                 .join(path)
@@ -246,10 +291,17 @@ impl RadioBrowser {
                             Some(mirror.key.clone());
                         return Ok(bytes.to_vec());
                     }
-                    Err(e) => last_error = CatalogError::Network(e.to_string()),
+                    Err(e) => last_error = network_error(e),
                 },
-                Err(e) => last_error = CatalogError::Network(e.to_string()),
+                Err(e) if unroutable(&e) => {
+                    tracing::debug!(server = %mirror.key, "Radio-Browser mirror out of reach: {e}");
+                    out_of_reach[index] = true;
+                    last_error = network_error(e);
+                    continue;
+                }
+                Err(e) => last_error = network_error(e),
             }
+            tried += 1;
             tracing::warn!(server = %mirror.key, "Radio-Browser mirror failed: {last_error}");
         }
         // Every mirror tried failed: the list may be out of date.
@@ -558,16 +610,61 @@ mod tests {
             addr("10.0.0.3:443"),
         ])
         .unwrap();
-        let keys = |preferred: Option<&str>, count| -> Vec<String> {
-            candidates(&found.list, preferred, count)
+        let keys = |preferred: Option<&str>| -> Vec<String> {
+            candidates(&found.list, preferred)
                 .iter()
                 .map(|m| m.key.clone())
                 .collect()
         };
-        assert_eq!(keys(Some("10.0.0.2"), 3)[0], "10.0.0.2");
-        assert_eq!(keys(Some("10.0.0.2"), 1), ["10.0.0.2"]); // a click goes to that one only
-        assert_eq!(keys(Some("10.9.9.9"), 3).len(), 3); // gone from the list: any order
-        assert_eq!(keys(None, 2).len(), 2);
+        assert_eq!(keys(Some("10.0.0.2"))[0], "10.0.0.2");
+        assert_eq!(keys(Some("10.9.9.9")).len(), 3); // gone from the list: any order
+        assert_eq!(keys(None).len(), 3);
+    }
+
+    #[derive(Debug)]
+    struct Wrapped(std::io::Error);
+    impl std::fmt::Display for Wrapped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("client error (Connect)")
+        }
+    }
+    impl std::error::Error for Wrapped {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    #[test]
+    fn a_mirror_without_a_route_is_told_apart_from_one_that_failed() {
+        use std::io::{Error, ErrorKind};
+        // An IPv6 mirror on a machine without IPv6: never reached.
+        assert!(unroutable(&Wrapped(Error::from(
+            ErrorKind::NetworkUnreachable
+        ))));
+        // A busy mirror that dropped the connection: worth another try.
+        assert!(!unroutable(&Wrapped(Error::from(
+            ErrorKind::ConnectionReset
+        ))));
+    }
+
+    /// An address this machine cannot reach does not use up the attempts (IPv6 documentation
+    /// prefix: unroutable everywhere, refused at once on a machine without IPv6).
+    #[tokio::test]
+    #[ignore = "network"]
+    async fn live_failure_reads_without_the_url() {
+        let client = client(Some(addr("[2001:db8::1]:443"))).unwrap();
+        let e = client
+            .get(format!(
+                "https://{ALL_MIRRORS}/json/stations/byuuid?uuids=x"
+            ))
+            .send()
+            .await
+            .unwrap_err();
+        let CatalogError::Network(text) = network_error(e) else {
+            panic!("not a network error");
+        };
+        assert!(!text.contains("uuids"), "{text}");
+        assert!(text.contains(": "), "root cause missing: {text}");
     }
 
     /// Against the real API: the mirrors come from DNS, and they answer under the common name.
