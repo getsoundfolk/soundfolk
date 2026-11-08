@@ -231,7 +231,7 @@ mod imp {
     /// Tauri gives RGBA; StatusNotifierItem wants ARGB32 in network byte order.
     fn pixmap(image: &tauri::image::Image<'_>) -> Vec<Icon> {
         let mut data = image.rgba().to_vec();
-        for pixel in data.chunks_exact_mut(4) {
+        for pixel in data.as_chunks_mut::<4>().0 {
             pixel.rotate_right(1);
         }
         vec![Icon {
