@@ -15,7 +15,7 @@ members = ["crates/nowplaying"]
 version = "0.2.1"
 edition = "2024"
 license = "MPL-2.0"
-rust-version = "1.85"
+rust-version = "1.95"
 
 # Lints of every crate in the workspace (each one opts in with `[lints] workspace = true`).
 # The CI runs clippy with `-D warnings`: a "warn" here fails it.

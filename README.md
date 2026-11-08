@@ -33,7 +33,7 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
   librsvg2-dev libasound2-dev build-essential pkg-config
 ```
 
-Plus Rust (stable ≥ 1.85) and Node ≥ 20. `libasound2-dev` is required by `cpal` (ALSA; under
+Plus Rust (stable ≥ 1.95) and Node ≥ 20. `libasound2-dev` is required by `cpal` (ALSA; under
 PipeWire/PulseAudio, the `pipewire-alsa` / `pulseaudio-alsa` compatibility layer is enough).
 
 ### Run
