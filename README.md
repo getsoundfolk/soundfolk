@@ -43,8 +43,7 @@ code-signed yet, so SmartScreen warns before running it: click **More info**, th
 
 Open `Soundfolk_*_universal.dmg` and drag **Soundfolk** into **Applications**. It runs on **macOS 10.13 or
 later**. The app is not notarized by Apple yet, so macOS refuses to open it the first time: go to
-**System Settings › Privacy & Security** and click **Open Anyway** under the message about Soundfolk. The system
-media controls (Now Playing) are not wired up on macOS yet.
+**System Settings › Privacy & Security** and click **Open Anyway** under the message about Soundfolk.
 
 ### Checking a package
 

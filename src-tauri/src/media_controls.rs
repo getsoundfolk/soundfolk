@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
-//! System media controls (MPRIS on Linux): the desktop shows the station and the title on air,
-//! and its play / pause / stop buttons and the keyboard media keys drive the player. Next and
+//! System media controls (MPRIS on Linux, Now Playing on macOS): the desktop shows the station
+//! and the title on air, and its play / pause / stop buttons and the keyboard media keys drive the
+//! player. Next and
 //! previous switch between favorite stations.
 //!
 //! In a radio app the station comes first (next / previous change it), so the desktop's first
 //! line, the MPRIS title, is the station and its second line, the MPRIS artist, is the track.
 //! The station is also the album, for desktops that show it, and its logo the picture.
 //!
-//! Linux only for now: Windows needs the window's HWND and macOS the main thread's run loop.
-//! Elsewhere [`SystemMedia`] does nothing. The tray menu drives the player through [`control`] too,
+//! Linux and macOS only for now: Windows needs the window's HWND. Elsewhere [`SystemMedia`] does
+//! nothing. On macOS, MediaPlayer is driven from the main thread (see `native::SystemMedia::apply`). The tray menu drives the player through [`control`] too,
 //! so that it can never behave differently from the media keys.
 //!
 //! Next and previous skip a favorite that is proven not to broadcast before its first sound (the
@@ -174,13 +175,13 @@ pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerStat
     shown
 }
 
-#[cfg(target_os = "linux")]
-pub use linux::SystemMedia;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub use native::SystemMedia;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub struct SystemMedia;
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 impl SystemMedia {
     pub fn new(_app: tauri::AppHandle) -> Self {
         Self
@@ -199,8 +200,8 @@ impl SystemMedia {
 }
 
 /// What the desktop displays: the station as the title, the track on air as the artist.
-// Only the Linux backend shows it; the tests run everywhere.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+// Only the Linux and macOS backends show it; the tests run everywhere.
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 #[derive(Debug, PartialEq)]
 struct Display {
     title: Option<String>,
@@ -212,7 +213,7 @@ struct Display {
 /// name the user gave it, shown instead. A title that is only the station name (sent by some radios
 /// between tracks) is not a track. The track is rebuilt as `Artist - Title`, without the station
 /// signature some radios append (found with the station's own name).
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 fn display(now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>) -> Display {
     let station = station
         .or(now_playing.station.as_deref())
@@ -240,9 +241,9 @@ fn display(now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>)
     }
 }
 
-#[cfg(target_os = "linux")]
-mod linux {
-    use std::sync::{Mutex, MutexGuard};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod native {
+    use std::sync::{Arc, Mutex};
 
     use souvlaki::{
         MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig,
@@ -252,40 +253,68 @@ mod linux {
 
     pub struct SystemMedia {
         /// `None` when the controls could not be created: the player works without them.
-        controls: Option<Mutex<MediaControls>>,
+        controls: Option<Arc<Mutex<MediaControls>>>,
+        /// To reach the main thread.
+        #[cfg(target_os = "macos")]
+        app: tauri::AppHandle,
     }
 
     impl SystemMedia {
+        /// On macOS, called from the main thread (Tauri's `setup`): MediaPlayer's remote commands
+        /// are registered there, and their handlers run there.
         pub fn new(app: tauri::AppHandle) -> Self {
             let config = PlatformConfig {
                 display_name: "Soundfolk",
                 dbus_name: "soundfolk",
                 hwnd: None,
             };
+            let handler_app = app.clone();
             let controls = MediaControls::new(config).and_then(|mut controls| {
-                // Called on the D-Bus thread: the engine may block for a while, so it is
-                // driven from a worker thread instead.
+                // Called on the D-Bus thread (Linux) or the main thread (macOS): the engine may
+                // block for a while, so it is driven from a worker thread instead.
                 controls.attach(move |event| {
-                    let app = app.clone();
+                    let app = handler_app.clone();
                     tauri::async_runtime::spawn_blocking(move || handle(&app, event));
                 })?;
                 Ok(controls)
             });
-            match controls {
-                Ok(controls) => Self {
-                    controls: Some(Mutex::new(controls)),
-                },
+            let controls = match controls {
+                Ok(controls) => Some(Arc::new(Mutex::new(controls))),
                 Err(e) => {
                     tracing::warn!("system media controls unavailable: {e:?}");
-                    Self { controls: None }
+                    None
                 }
+            };
+            Self {
+                controls,
+                #[cfg(target_os = "macos")]
+                app,
             }
         }
 
-        fn controls(&self) -> Option<MutexGuard<'_, MediaControls>> {
-            self.controls
-                .as_ref()
-                .map(|c| c.lock().unwrap_or_else(|p| p.into_inner()))
+        /// Runs `update` on the controls. On macOS it runs on the main thread, in the order of the
+        /// calls: MediaPlayer expects it, and the main thread's run loop drains the Objective-C
+        /// objects souvlaki leaves to the autorelease pool (a worker thread has none: they would
+        /// leak with every title).
+        fn apply<F>(&self, what: &'static str, update: F)
+        where
+            F: FnOnce(&mut MediaControls) -> Result<(), souvlaki::Error> + Send + 'static,
+        {
+            let Some(controls) = self.controls.clone() else {
+                return;
+            };
+            let run = move || {
+                let mut controls = controls.lock().unwrap_or_else(|p| p.into_inner());
+                if let Err(e) = update(&mut controls) {
+                    tracing::debug!("media controls: {what} not updated: {e:?}");
+                }
+            };
+            #[cfg(target_os = "macos")]
+            if let Err(e) = self.app.run_on_main_thread(run) {
+                tracing::debug!("media controls: {what} not updated: {e}");
+            }
+            #[cfg(not(target_os = "macos"))]
+            run();
         }
 
         pub fn show_state(&self, state: &PlayerState) {
@@ -296,9 +325,7 @@ mod linux {
                 PlayerState::Paused => MediaPlayback::Paused { progress: None },
                 PlayerState::Idle | PlayerState::Error(_) => MediaPlayback::Stopped,
             };
-            if let Some(Err(e)) = self.controls().map(|mut c| c.set_playback(playback)) {
-                tracing::debug!("media controls: playback not updated: {e:?}");
-            }
+            self.apply("playback", move |c| c.set_playback(playback));
         }
 
         /// `cover`: address of the picture (the station's logo, or the app icon), from `covers.rs`.
@@ -310,20 +337,20 @@ mod linux {
             cover: Option<&str>,
         ) {
             let shown = display(now_playing, station, label);
-            let metadata = MediaMetadata {
-                title: shown.title.as_deref(),
-                artist: shown.artist.as_deref(),
-                album: shown.album.as_deref(),
-                cover_url: cover,
-                ..Default::default()
-            };
-            if let Some(Err(e)) = self.controls().map(|mut c| c.set_metadata(metadata)) {
-                tracing::debug!("media controls: metadata not updated: {e:?}");
-            }
+            let cover = cover.map(str::to_owned);
+            self.apply("metadata", move |c| {
+                c.set_metadata(MediaMetadata {
+                    title: shown.title.as_deref(),
+                    artist: shown.artist.as_deref(),
+                    album: shown.album.as_deref(),
+                    cover_url: cover.as_deref(),
+                    ..Default::default()
+                })
+            });
         }
     }
 
-    /// A live stream cannot seek: those events are ignored.
+    /// A live stream cannot seek: those events are ignored. macOS sends no Raise, Quit or Stop.
     fn handle(app: &tauri::AppHandle, event: MediaControlEvent) {
         let command = match event {
             MediaControlEvent::Raise => return crate::show_main_window(app),
@@ -341,8 +368,9 @@ mod linux {
 }
 
 /// What the desktop's media controls and the tray menu ask the player to do.
-// The tray only sends Toggle, Next and Previous: elsewhere than Linux nothing else is built.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+// The tray only sends Toggle, Next and Previous: elsewhere than Linux and macOS nothing else is
+// built.
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
 #[derive(Debug, Clone, Copy)]
 pub enum Command {
     Play,
@@ -355,7 +383,7 @@ pub enum Command {
 }
 
 /// Runs `command`. The engine may block for a while: call it from a worker thread, not from the
-/// thread that delivers D-Bus or menu events.
+/// thread that delivers D-Bus, Now Playing or menu events.
 pub fn control(app: &tauri::AppHandle, command: Command) {
     let result = match command {
         Command::Next => switch_favorite(app, true),
