@@ -3,6 +3,7 @@
 // dragging; the new order is handed over on release.
 
 import { tick } from 'svelte';
+import { moved } from './order';
 
 export class Reorder {
   /** The order (ids) while a row is being dragged. */
@@ -99,10 +100,4 @@ export class Reorder {
   private announce(ids: string[], id: string) {
     this.announcement = `${this.name(id)}, position ${ids.indexOf(id) + 1} of ${ids.length}`;
   }
-}
-
-function moved<T>(list: T[], from: number, to: number): T[] {
-  const next = [...list];
-  next.splice(to, 0, ...next.splice(from, 1));
-  return next;
 }

@@ -16,6 +16,7 @@
 
 <script lang="ts">
   import { tick } from 'svelte';
+  import { moved } from '../order';
   import { flip } from 'svelte/animate';
   import Icon from './Icon.svelte';
   import styles from './OrderedSources.module.css';
@@ -51,12 +52,6 @@
       return () => map.delete(id);
     };
   }
-
-  const moved = (list: SourceItem[], from: number, to: number) => {
-    const next = [...list];
-    next.splice(to, 0, ...next.splice(from, 1));
-    return next;
-  };
 
   function announce(list: SourceItem[], id: string) {
     const index = list.findIndex((i) => i.id === id);

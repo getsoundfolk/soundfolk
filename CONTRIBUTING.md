@@ -80,6 +80,7 @@ cd ..
 npm run format
 npm run lint
 npm run check
+npm test
 ```
 
 New source files start with `SPDX-License-Identifier: MPL-2.0` (as a comment);
