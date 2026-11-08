@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS likes (
 When each station was actually playing, for listening time and like rates (a title in the history only says it was
 announced). A session opens when playback starts, continues across a reconnection to the same station, and closes on
 stop, error, station change or app exit. `last_seen_at` is updated every minute: a session cut by a crash is closed at
-the next startup with `ended_at = last_seen_at`.
+the next startup with `ended_at = last_seen_at`. Clearing the history deletes the sessions too.
 ```sql
 CREATE TABLE IF NOT EXISTS listening_sessions (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

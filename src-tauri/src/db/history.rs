@@ -289,13 +289,15 @@ impl Database {
         )
     }
 
-    /// Deletes the whole listening history (likes are kept), along with the station levels learned
-    /// for Constant volume, which say which stations were heard too. Both go in one transaction.
-    /// Returns the number of history rows removed.
+    /// Deletes the whole listening history (likes are kept), along with what also says which
+    /// stations were heard and when: the listening sessions behind the listening-time stats, and
+    /// the station levels learned for Constant volume. All in one transaction. Returns the number
+    /// of history rows removed.
     pub fn clear_history(&self) -> rusqlite::Result<usize> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         tx.execute("DELETE FROM station_loudness", [])?;
+        tx.execute("DELETE FROM listening_sessions", [])?;
         let removed = tx.execute("DELETE FROM listening_history", [])?;
         tx.commit()?;
         Ok(removed)
@@ -538,7 +540,13 @@ mod tests {
         assert_eq!(history[0].station_name.as_deref(), Some("Radio A"));
         assert_eq!(db.recent_history(1, None).unwrap().len(), 1);
         assert_eq!(db.history_summary().unwrap().count, 2);
+        db.start_session("a", Some("Radio A")).unwrap();
         assert_eq!(db.clear_history().unwrap(), 2);
+        let sessions: i64 = db
+            .conn()
+            .query_row("SELECT COUNT(*) FROM listening_sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sessions, 0, "listening time goes with the history");
         assert_eq!(
             db.history_summary().unwrap(),
             HistorySummary {

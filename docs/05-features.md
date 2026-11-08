@@ -60,7 +60,8 @@ onwards.
   removing a station signature such as `- Classic Vinyl on walmradio.com`. From each track: find it on YouTube, YouTube
   Music, Spotify, Deezer, Apple Music, Bandcamp or Discogs (a plain search link with the cleaned artist and title,
   opened in the browser), copy `Artist - Title` (also by double-click), copy a ready-to-share line, play the station
-  again or add it to favorites. The history can be cleared at any time; likes are kept.
+  again or add it to favorites. The history can be cleared at any time, after a confirmation that lists what goes:
+  the tracks, the listening time behind the stats and the levels learned by Constant volume; likes are kept.
 * **Liked tracks:** ♡ on each history row and next to the title on air. A track is liked once, whatever station plays it
   again later, and remembers the station it was liked on. The "Liked" view lists them.
 * **Listening sessions:** when each station was actually playing, so listening time is known (a title in the history

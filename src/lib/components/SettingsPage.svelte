@@ -762,8 +762,10 @@
           </span>
           {#if confirmingClear && summary?.count}
             <span class={styles.warning} role="alert">
-              Delete {tracks(summary.count)} for good? The stats on tracks heard, stations and artists
-              start over. This cannot be undone: export first if you may want them back.
+              This deletes for good: {tracks(summary.count)}, the listening time of every station
+              (all the stats start over), and the volume Constant volume learned for each station.
+              Liked tracks are kept. This cannot be undone: export first if you may want the tracks
+              back.
             </span>
             <span class={styles.formActions}>
               <button
