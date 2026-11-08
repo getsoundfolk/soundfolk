@@ -16,6 +16,7 @@ mod musicbrainz;
 mod notifications;
 mod recipe_list;
 mod recipes;
+mod share;
 mod track_services;
 mod tracks;
 mod tray;
@@ -266,6 +267,38 @@ fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindo
     Ok(window)
 }
 
+/// `soundfolk://` links (docs/16-sharing.md §3.1): the one Soundfolk was started with, and the
+/// ones opened while it runs (a second launch hands them over through single-instance). The
+/// scheme is registered again at every launch on Linux and Windows, which covers the AppImage and
+/// development builds; the `.deb` declares it too.
+#[cfg(desktop)]
+fn watch_share_links(app: &tauri::App) {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    let handle = app.handle().clone();
+    app.deep_link().on_open_url(move |event| {
+        if let Some(url) = event.urls().last() {
+            if share::opened(&handle, url.as_str()) {
+                show_main_window(&handle);
+            }
+        }
+    });
+    if let Ok(Some(urls)) = app.deep_link().get_current() {
+        if let Some(url) = urls.last() {
+            share::opened(app.handle(), url.as_str());
+        }
+    }
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        // Runs `update-desktop-database` and `xdg-mime` on Linux: not on the startup path.
+        let handle = app.handle().clone();
+        std::thread::spawn(move || {
+            if let Err(e) = handle.deep_link().register_all() {
+                tracing::warn!("soundfolk:// links not registered: {e}");
+            }
+        });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -283,6 +316,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             show_main_window(app)
         }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_ARG]),
@@ -296,6 +330,9 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             app.manage(Database::open(data_dir.join("soundfolk.db"))?);
             app.manage(WindowGeometry::default());
+            app.manage(share::OpenedLink::default());
+            #[cfg(desktop)]
+            watch_share_links(app);
 
             // The last station is in the player from launch: Play (window, tray, media keys) starts it.
             let on_air = Arc::new(Mutex::new(commands::saved_station(
@@ -562,6 +599,13 @@ pub fn run() {
             curated_lists::get_favorite_lists,
             curated_lists::set_favorite_list,
             curated_lists::export_my_list,
+            curated_lists::refresh_curated_lists,
+            share::read_share_link,
+            share::make_share_link,
+            share::get_share_name,
+            share::set_share_name,
+            share::take_opened_link,
+            share::catalog_station_for_stream,
             mini::open_mini_player,
             mini::close_mini_player,
             mini::set_mini_compact,

@@ -16,6 +16,7 @@
   import { Reorder } from '../reorder.svelte';
   import { pickRandom, playableOf, warningOf } from '../stations';
   import { stationNames } from '../stationNames.svelte';
+  import { share } from '../share.svelte';
   import { ui } from '../ui.svelte';
   import AddStationForm from './AddStationForm.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
@@ -133,6 +134,20 @@
     }
   };
   onMount(loadPersonal);
+  // Added from a share link (shared sheet): My stations reads them again.
+  $effect(() => {
+    if (ui.personalChanged) loadPersonal();
+  });
+
+  /** A share link pasted into the search opens what it carries instead of searching (16 §3.1). */
+  async function pasteLink(e: ClipboardEvent) {
+    const pasted = e.clipboardData?.getData('text/plain') ?? '';
+    if (!share.mayBeLink(pasted)) return;
+    e.preventDefault();
+    if (await share.openText(pasted)) return;
+    // Another web address: searched like any text.
+    text = pasted.trim();
+  }
 
   async function removePersonal(station: PersonalStation) {
     errors.clear('stations');
@@ -405,6 +420,7 @@
           placeholder="Search stations and lists"
           aria-label="Search stations and lists"
           bind:value={text}
+          onpaste={pasteLink}
           spellcheck="false"
           autocomplete="off"
         />

@@ -88,7 +88,8 @@ A brainstorm (pasted from a chat assistant, 2026-11-06) proposed:
   Refusing an M3U export would not keep anyone and the lists are open data anyway (ODbL). Export is cheap and earns
   trust; import of an M3U is "add station by URL" (05 §2) in a loop.
 * **Short codes and share links** need something to resolve them: a `soundfolk://` URL scheme registered by the app,
-  or a page on `soundfolk.fm`. Neither exists. A file (JSON) is the only share that works today.
+  or a page on `soundfolk.fm`. Neither exists yet. Share links without a server, the list carried in the link and a
+  static page on GitHub Pages, are described in [16-sharing.md](16-sharing.md); short codes stay out (they need a server).
 * **"Listen on Soundfolk" button, station notes, community roulette**: separate features, each with its own
   moderation. Not part of this one. The roulette is Surprise me (09 §4.1) restricted to the lists' stations: a
   one-line addition once lists exist.

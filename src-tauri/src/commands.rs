@@ -173,8 +173,15 @@ pub(crate) fn start_station(
         .map(|n| n.trim().to_owned())
         .filter(|n| !n.is_empty());
     // Lets a recipe recognise the station by its Radio-Browser UUID.
+    let catalog_id = station_id.clone().filter(|id| is_catalog_id(id));
+    // Catalog stations and stations received in a link stay off the local network (16 §6.2).
+    let public_only = catalog_id.is_some()
+        || station_id
+            .as_deref()
+            .is_some_and(|id| db.personal_station_from_link(id).unwrap_or(false));
     let station = StationRef {
-        id: station_id.clone().filter(|id| is_catalog_id(id)),
+        id: catalog_id,
+        public_only,
     };
     let on_air = OnAir {
         id,
@@ -427,6 +434,7 @@ pub async fn test_recipe(
     .await?;
     let station = StationRef {
         id: station_id.filter(|id| is_catalog_id(id)),
+        ..Default::default()
     };
     Ok(web.0.test(&station, &url).await)
 }
@@ -460,6 +468,7 @@ fn edit_recipe_file(
     let dir = recipes_folder(&recipes)?;
     let station = StationRef {
         id: station_id.filter(|id| is_catalog_id(id)),
+        ..Default::default()
     };
     let set = recipes.current();
     let existing = set.find(station.id.as_deref(), &url).cloned();
@@ -537,6 +546,7 @@ pub async fn share_recipe(
         titles.reload_recipes();
         let station = StationRef {
             id: station_id.filter(|id| is_catalog_id(id)),
+            ..Default::default()
         };
         let entry = titles
             .recipes()
@@ -843,13 +853,16 @@ pub async fn resolve_station(
 // ── Personal stations (private, never sent) ──────────────────────────────────
 
 /// Adds a station from a URL (direct stream, `.m3u` or `.pls`). The stream is **tested**
-/// (connection, detection, first decoded packet) before being saved.
+/// (connection, detection, first decoded packet) before being saved. A station received in a
+/// share link (`from_link`) may only reach public addresses, then and later (16 §6.2).
 #[tauri::command]
 pub async fn add_personal_station(
     db: State<'_, Database>,
     url: String,
     name: String,
+    from_link: Option<bool>,
 ) -> AppResult<PersonalStation> {
+    let from_link = from_link.unwrap_or(false);
     let name = name.trim().to_owned();
     if name.is_empty() {
         return Err("A station needs a name.".to_owned().into());
@@ -862,15 +875,19 @@ pub async fn add_personal_station(
         return Err(format!("Unsupported protocol: {}", url.scheme()).into());
     }
 
-    let stream = audio::resolve_stream_url(url).await?;
+    let stream = audio::resolve_stream_url(url, from_link).await?;
     let handle = tokio::runtime::Handle::current();
     let probed = stream.clone();
-    tokio::task::spawn_blocking(move || audio::probe_stream(&probed, &handle))
+    tokio::task::spawn_blocking(move || audio::probe_stream(&probed, &handle, from_link))
         .await
         .map_err(|e| format!("Stream test interrupted: {e}"))??;
 
     with_db(&db, move |db| {
-        Ok(db.add_personal_station(&name, stream.as_str(), None)?)
+        Ok(if from_link {
+            db.add_personal_station_from_link(&name, stream.as_str())?
+        } else {
+            db.add_personal_station(&name, stream.as_str(), None)?
+        })
     })
     .await
 }

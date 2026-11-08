@@ -8,6 +8,7 @@
   import { lists } from '../lists.svelte';
   import { onAir, wheelVolume } from '../onAir.svelte';
   import { player } from '../player.svelte';
+  import { share } from '../share.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
   import Waves from './Waves.svelte';
@@ -98,6 +99,20 @@
   >
 {/snippet}
 
+<!-- Shares the station with the track on air (docs/16-sharing.md §4.1). -->
+{#snippet shareButton()}
+  <button
+    class={styles.gear}
+    type="button"
+    aria-label={title ? `Share ${station} with the track on air` : `Share ${station}`}
+    title="Share"
+    disabled={share.busy}
+    onclick={() =>
+      player.current && share.offerStation(player.current, player.nowPlaying.title ?? null)}
+    ><Icon name="share" size={16} /></button
+  >
+{/snippet}
+
 {#snippet info()}
   <button
     class={styles.gear}
@@ -135,7 +150,7 @@
       <div class={styles.info}>
         <div class={styles.line}>
           <p class={styles.station} title={station}>{station}</p>
-          {#if player.current}{@render info()}{/if}
+          {#if player.current}{@render shareButton()}{@render info()}{/if}
         </div>
         {#if title}
           <div class={styles.line}>

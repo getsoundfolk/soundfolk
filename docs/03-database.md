@@ -120,7 +120,8 @@ CREATE TABLE IF NOT EXISTS settings (
 ```
 
 ### `personal_stations`
-Stations added by hand. Strictly local, never sent anywhere.
+Stations added by hand. Local, never sent anywhere, except when the listener shares one ([16-sharing.md](16-sharing.md)
+§6.6).
 ```sql
 CREATE TABLE IF NOT EXISTS personal_stations (
     station_id TEXT PRIMARY KEY DEFAULT ('user:' || lower(hex(randomblob(8)))),

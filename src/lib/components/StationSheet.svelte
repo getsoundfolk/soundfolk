@@ -16,6 +16,7 @@
   } from '../api';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
+  import { share } from '../share.svelte';
   import { stationNames } from '../stationNames.svelte';
   import { playableOf } from '../stations';
   import { displayTitle } from '../trackLinks';
@@ -233,7 +234,7 @@
     }
   }
 
-  async function share() {
+  async function shareRecipe() {
     const station = player.current;
     if (!station) return;
     sharing = true;
@@ -276,6 +277,8 @@
   onclose={() => {
     // Seen in the sheet: not shown again in the window.
     player.recipeNotice = null;
+    // The sender and track of a link belong to the visit it opened.
+    share.note = null;
     ui.closeStation();
     // Opened and closed with the mouse: no focus ring left on the button it came back to.
     if (byPointer && document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -285,9 +288,9 @@
   {#if station}
     <header class={styles.header}>
       <h2 class={styles.title} id="station-sheet-title">{given ?? station.name}</h2>
-      {#if catalog}
-        {@const favorite = player.isFavorite(catalog.id)}
-        <div class={styles.headerActions}>
+      <div class={styles.headerActions}>
+        {#if catalog}
+          {@const favorite = player.isFavorite(catalog.id)}
           {#if !playing}
             <button
               class={styles.primary}
@@ -306,12 +309,40 @@
             onclick={() => player.toggleFavorite(playableOf(catalog))}
             ><Icon name="star" filled={favorite} /></button
           >
-        </div>
-      {/if}
+        {/if}
+        <!-- The track on air goes with the station playing: it is what makes a link clicked
+             (docs/16-sharing.md §4.1). -->
+        <button
+          class={styles.close}
+          type="button"
+          aria-label={`Share ${given ?? station.name}`}
+          title="Share"
+          disabled={share.busy}
+          onclick={() =>
+            share.offerStation(
+              catalog ? playableOf(catalog) : station,
+              playing ? (player.nowPlaying.title ?? null) : null,
+            )}><Icon name="share" /></button
+        >
+      </div>
       <button class={styles.close} type="button" aria-label="Close" onclick={ui.closeStation}
         ><Icon name="x" /></button
       >
     </header>
+
+    {#if share.note && share.note.stationId === station.id && (share.note.from || share.note.track)}
+      {@const note = share.note}
+      <!-- From a link: who sent it (as they typed it, not verified) and what was on air then. -->
+      <div class={styles.section}>
+        {#if note.from}<p class={styles.text}>From {note.from}</p>{/if}
+        {#if note.track}
+          <p class={styles.text}>
+            {note.from ? `${note.from} was listening to` : 'On air when the link was made:'}
+            {note.track}
+          </p>
+        {/if}
+      </div>
+    {/if}
 
     <dl class={styles.details}>
       <div>
@@ -492,7 +523,7 @@
               disabled={sharing}
               aria-busy={sharing}
               title={sharing ? 'Reading the page…' : undefined}
-              onclick={share}>Share this recipe</button
+              onclick={shareRecipe}>Share this recipe</button
             >
           {/if}
           {#if status?.state === 'none' && !recipe}

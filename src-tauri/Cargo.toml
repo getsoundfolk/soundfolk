@@ -80,6 +80,8 @@ ebur128 = { version = "0.1.11", default-features = false }
 
 # Track titles: accent folding for comparison keys
 unicode-normalization = "0.1"
+# The QR code of a share link, as SVG (docs/16-sharing.md §4.1)
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 # Titles of streams without metadata: recipes, server status pages, scheduling (no I/O)
 soundfolk-nowplaying = { path = "crates/nowplaying" }
@@ -90,7 +92,9 @@ encoding_rs = "0.8"
 
 # One running copy only: launching Soundfolk again brings the existing window forward
 [target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
-tauri-plugin-single-instance = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# `soundfolk://` share links, from the page's "Open in Soundfolk" (docs/16-sharing.md §3.1)
+tauri-plugin-deep-link = "2"
 # Launch at login (Settings), hidden in the notification area
 tauri-plugin-autostart = "2"
 # Track notifications (Settings): on Linux through D-Bus with the zbus already there, no image support

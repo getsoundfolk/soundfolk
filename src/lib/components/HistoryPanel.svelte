@@ -7,6 +7,7 @@
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
+  import { share } from '../share.svelte';
   import { displayTitle, shareText } from '../trackLinks';
   import { trackServices } from '../trackServices.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
@@ -373,6 +374,16 @@
                       )}
                   >
                     Copy to share
+                  </button>
+                  <button
+                    class={styles.item}
+                    type="button"
+                    role="menuitem"
+                    tabindex="-1"
+                    onclick={() =>
+                      act(async () => share.offerStation(await resolve(row), displayTitle(row)))}
+                  >
+                    Share link…
                   </button>
                   <hr class={styles.separator} />
                   <button

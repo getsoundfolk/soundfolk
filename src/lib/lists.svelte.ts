@@ -44,6 +44,9 @@ class ListsStore {
     return off;
   }
 
+  /** Reads the lists again (after a download asked by a link). */
+  reload = () => this.load();
+
   private async load() {
     try {
       const lists = await api.getCuratedLists();

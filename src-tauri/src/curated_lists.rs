@@ -171,6 +171,40 @@ pub fn start(
     });
 }
 
+/// Downloads the lists now, when a link names a list this copy does not have: it may have been
+/// published since the last daily check (docs/16-sharing.md §3.3). At most once a minute, since
+/// links can come in bursts. Returns whether new lists arrived.
+#[tauri::command]
+pub async fn refresh_curated_lists(
+    app: tauri::AppHandle,
+    lists: tauri::State<'_, Arc<CuratedLists>>,
+) -> AppResult<bool> {
+    use tauri::{Emitter, Manager};
+    static LAST: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if last.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(60)) {
+            return Ok(false);
+        }
+        *last = Some(std::time::Instant::now());
+    }
+    let dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| e.to_string())?
+        .join("stations");
+    let url = std::env::var("SOUNDFOLK_LISTS_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
+    let client = daily_list::client()?;
+    match daily_list::refresh(&client, &url, &dir, FILES, parse).await? {
+        Some(fresh) => {
+            lists.set(fresh);
+            let _ = app.emit(crate::LISTS_EVENT, ());
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 /// Every list, in the published order (the app sorts them by title).
 #[tauri::command]
 pub async fn get_curated_lists(

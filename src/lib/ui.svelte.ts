@@ -41,6 +41,8 @@ class UiStore {
     this.searchRequest++;
   };
   searchRequest = $state(0);
+  /** Bumped when a personal station was added elsewhere than in My stations (a share link). */
+  personalChanged = $state(0);
 }
 
 export const ui = new UiStore();

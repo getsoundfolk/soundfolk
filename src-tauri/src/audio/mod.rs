@@ -24,6 +24,7 @@ mod loudness;
 mod network;
 mod output;
 mod playlist;
+mod public_net;
 mod web_source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -152,10 +153,13 @@ impl From<&soundfolk_nowplaying::Track> for TrackInfo {
 }
 
 /// The station being played, to find a web source for its title.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct StationRef {
     /// Radio-Browser UUID, when the station comes from the catalog.
     pub id: Option<String>,
+    /// Its stream may only reach public addresses: a catalog station, or one received in a link
+    /// (`public_net`, docs/16-sharing.md §6.2).
+    pub public_only: bool,
 }
 
 pub type StateListener = Arc<dyn Fn(PlayerState) + Send + Sync>;
@@ -877,6 +881,7 @@ fn start_session(
         stream: Arc::new(StreamMeta::default()),
     };
 
+    let public_only = station.public_only;
     // Streams that do not announce their title: look for it on the web.
     web.spawn(
         url.clone(),
@@ -888,6 +893,7 @@ fn start_session(
 
     decoder::spawn(decoder::Job {
         url,
+        public_only,
         format: output.format,
         producer,
         level,
@@ -957,11 +963,11 @@ mod tests {
             levels: Levels::default(),
         };
         assert!(engine
-            .play("ftp://example.org/live", StationRef { id: None })
+            .play("ftp://example.org/live", StationRef::default())
             .is_err());
 
         let pending = engine
-            .play(" https://example.org/live ", StationRef { id: None })
+            .play(" https://example.org/live ", StationRef::default())
             .unwrap();
         let Ok(Command::Play { url, reply, .. }) = received.try_recv() else {
             panic!("no play command sent");
@@ -1203,10 +1209,7 @@ mod tests {
         );
         engine.set_volume(0.0).unwrap();
         engine
-            .play(
-                "https://live.aurafm.org/Frequence7",
-                StationRef { id: None },
-            )
+            .play("https://live.aurafm.org/Frequence7", StationRef::default())
             .unwrap()
             .wait()
             .unwrap();
@@ -1276,10 +1279,7 @@ mod tests {
         );
         engine.set_volume(0.0).unwrap();
         engine
-            .play(
-                "https://live.aurafm.org/Frequence7",
-                StationRef { id: None },
-            )
+            .play("https://live.aurafm.org/Frequence7", StationRef::default())
             .unwrap()
             .wait()
             .unwrap();
@@ -1369,7 +1369,7 @@ mod tests {
         engine
             .play(
                 "http://stream.metacast.eu/radio1rock.ogg",
-                StationRef { id: None },
+                StationRef::default(),
             )
             .unwrap()
             .wait()
@@ -1449,7 +1449,7 @@ mod tests {
         );
         engine.set_volume(0.0).unwrap();
         engine
-            .play(&url, StationRef { id: None })
+            .play(&url, StationRef::default())
             .unwrap()
             .wait()
             .unwrap();
@@ -1516,7 +1516,7 @@ mod tests {
         );
         engine.set_volume(0.0).unwrap();
         engine
-            .play(&url, StationRef { id: None })
+            .play(&url, StationRef::default())
             .unwrap()
             .wait()
             .unwrap();
@@ -1544,11 +1544,11 @@ mod tests {
     #[ignore = "network"]
     async fn live_resolves_a_pls_then_probes_the_stream() {
         let pls: Url = "https://somafm.com/groovesalad.pls".parse().unwrap();
-        let stream = resolve_stream_url(pls).await.unwrap();
+        let stream = resolve_stream_url(pls, false).await.unwrap();
         assert_ne!(stream.path(), "/groovesalad.pls");
 
         let handle = tokio::runtime::Handle::current();
-        let info = tokio::task::spawn_blocking(move || probe_stream(&stream, &handle))
+        let info = tokio::task::spawn_blocking(move || probe_stream(&stream, &handle, false))
             .await
             .unwrap()
             .unwrap();
@@ -1562,7 +1562,7 @@ mod tests {
         for url in ["https://example.com/", "http://127.0.0.1:9/"] {
             let url: Url = url.parse().unwrap();
             let h = handle.clone();
-            let result = tokio::task::spawn_blocking(move || probe_stream(&url, &h))
+            let result = tokio::task::spawn_blocking(move || probe_stream(&url, &h, false))
                 .await
                 .unwrap();
             assert!(result.is_err(), "{result:?}");
@@ -1609,7 +1609,7 @@ mod tests {
         engine.set_volume(0.0).unwrap();
         for url in streams.split_whitespace() {
             engine
-                .play(url, StationRef { id: None })
+                .play(url, StationRef::default())
                 .unwrap()
                 .wait()
                 .unwrap();

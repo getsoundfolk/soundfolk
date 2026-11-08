@@ -358,6 +358,18 @@ impl CatalogSource for RadioBrowser {
         })
     }
 
+    fn by_stream<'a>(&'a self, url: &'a str) -> CatalogFuture<'a, Option<Station>> {
+        Box::pin(async move {
+            let body = self
+                .get("json/stations/byurl", &[("url", url.to_owned())])
+                .await?;
+            let (mut stations, _) = parse_stations(&body)?;
+            stations.retain(Station::is_supported);
+            rank(&mut stations);
+            Ok(stations.into_iter().next())
+        })
+    }
+
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()> {
         Box::pin(async move {
             // The ID ends up in the URL path: only a UUID is accepted.

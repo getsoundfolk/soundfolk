@@ -35,6 +35,10 @@ pub trait CatalogSource: Send + Sync {
 
     /// Reports that a user started playing the station (popularity rankings).
     fn count_click<'a>(&'a self, station_id: &'a str) -> CatalogFuture<'a, ()>;
+
+    /// The playable catalog station with this stream address, if any (a station shared or
+    /// received as a personal one may be in the catalog, docs/16-sharing.md §2.2).
+    fn by_stream<'a>(&'a self, url: &'a str) -> CatalogFuture<'a, Option<Station>>;
 }
 
 #[derive(Debug, thiserror::Error)]

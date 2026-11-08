@@ -15,8 +15,17 @@ const MAX_PLAYLIST_BYTES: usize = 64 * 1024;
 const MAX_DEPTH: usize = 3;
 const TIMEOUT: Duration = Duration::from_secs(10);
 
-pub async fn resolve_stream_url(url: Url) -> Result<Url, String> {
-    let client = Client::builder()
+///
+/// `public_only`: every address followed must be public (`public_net`): the first, the
+/// redirects and the playlists' entries.
+pub async fn resolve_stream_url(url: Url, public_only: bool) -> Result<Url, String> {
+    let builder = Client::builder();
+    let builder = if public_only {
+        super::public_net::restrict(builder)
+    } else {
+        builder
+    };
+    let client = builder
         .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
         .connect_timeout(TIMEOUT)
         .timeout(TIMEOUT)
@@ -25,6 +34,9 @@ pub async fn resolve_stream_url(url: Url) -> Result<Url, String> {
 
     let mut current = url;
     for _ in 0..MAX_DEPTH {
+        if public_only {
+            super::public_net::check(&current)?;
+        }
         let mut response = client
             .get(current.clone())
             .send()

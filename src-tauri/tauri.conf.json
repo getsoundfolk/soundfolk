@@ -21,7 +21,8 @@
         "create": false,
         "width": 480,
         "height": 720,
-        "resizable": true
+        "resizable": true,
+        "dragDropEnabled": false
       }
     ],
     "security": {
@@ -48,6 +49,13 @@
         "frame-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["soundfolk"]
       }
     }
   },

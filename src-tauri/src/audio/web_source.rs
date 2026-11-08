@@ -1106,7 +1106,7 @@ mod tests {
         let (web, notices) = web(Some(dir.clone()));
         *lock(&web.current) = Some(Session {
             id: 1,
-            station: StationRef { id: None },
+            station: StationRef::default(),
             stream: "https://live.aurafm.org/Frequence7".parse().unwrap(),
         });
 
@@ -1156,7 +1156,7 @@ mod tests {
         let (web, _) = web(Some(dir.clone()));
         let session = Session {
             id: 1,
-            station: StationRef { id: None },
+            station: StationRef::default(),
             stream: "http://example.org/live".parse().unwrap(),
         };
         let error = web.local_error(&session).unwrap();

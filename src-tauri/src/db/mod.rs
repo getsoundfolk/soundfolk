@@ -320,18 +320,40 @@ impl Database {
 
     // ── personal_stations ────────────────────────────────────────────────────
 
-    /// Adds a personal station. If the URL already exists, returns the existing station.
+    /// Adds a personal station. If the URL already exists, returns the existing station, which
+    /// keeps its origin.
     pub fn add_personal_station(
         &self,
         name: &str,
         stream_url: &str,
         genre: Option<&str>,
     ) -> rusqlite::Result<PersonalStation> {
+        self.insert_personal_station(name, stream_url, genre, None)
+    }
+
+    /// Adds a personal station received in a share link: its stream stays off the local network.
+    pub fn add_personal_station_from_link(
+        &self,
+        name: &str,
+        stream_url: &str,
+    ) -> rusqlite::Result<PersonalStation> {
+        self.insert_personal_station(name, stream_url, None, Some("link"))
+    }
+
+    fn insert_personal_station(
+        &self,
+        name: &str,
+        stream_url: &str,
+        genre: Option<&str>,
+        origin: Option<&str>,
+    ) -> rusqlite::Result<PersonalStation> {
         let conn = self.conn();
         conn.execute(
-            "INSERT INTO personal_stations (name, stream_url, genre) VALUES (?1, ?2, ?3)
-             ON CONFLICT(stream_url) DO NOTHING",
-            params![name, stream_url, genre],
+            // Typing an address by hand is the listener's choice: it lifts the rule of a station
+            // first received in a link (docs/16-sharing.md §6.2).
+            "INSERT INTO personal_stations (name, stream_url, genre, origin) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(stream_url) DO UPDATE SET origin = CASE WHEN ?4 IS NULL THEN NULL ELSE origin END",
+            params![name, stream_url, genre, origin],
         )?;
         conn.query_row(
             "SELECT station_id, name, stream_url, genre FROM personal_stations WHERE stream_url = ?1",
@@ -358,6 +380,20 @@ impl Database {
                 personal_from_row,
             )
             .optional()
+    }
+
+    /// Whether the personal station was received in a share link.
+    pub fn personal_station_from_link(&self, station_id: &str) -> rusqlite::Result<bool> {
+        Ok(self
+            .conn()
+            .query_row(
+                "SELECT origin = 'link' FROM personal_stations WHERE station_id = ?1",
+                params![station_id],
+                |r| r.get::<_, Option<bool>>(0),
+            )
+            .optional()?
+            .flatten()
+            .unwrap_or(false))
     }
 
     pub fn remove_personal_station(&self, station_id: &str) -> rusqlite::Result<bool> {
@@ -423,6 +459,7 @@ const MIGRATIONS: &[Migration] = &[
     drop_station_reports,
     station_names,
     favorite_positions,
+    personal_station_origin,
 ];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
@@ -523,6 +560,12 @@ fn favorite_positions(conn: &Connection) -> rusqlite::Result<()> {
                 OR (COALESCE(f.added_at, '') = COALESCE(favorites.added_at, '')
                     AND f.rowid > favorites.rowid));",
     )
+}
+
+/// Version 7: where a personal station came from. 'link' for one received in a share link, whose
+/// stream stays off the local network (docs/16-sharing.md §6.2); NULL for one typed by hand.
+fn personal_station_origin(conn: &Connection) -> rusqlite::Result<()> {
+    add_column(conn, "personal_stations", "origin TEXT")
 }
 
 /// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).

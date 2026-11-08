@@ -24,7 +24,8 @@
     | 'shrink'
     | 'previous'
     | 'next'
-    | 'history';
+    | 'history'
+    | 'share';
 </script>
 
 <script lang="ts">
@@ -130,6 +131,12 @@
     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
     <path d="M3 3v5h5" />
     <path d="M12 7v5l4 2" />
+  {:else if name === 'share'}
+    <circle cx="18" cy="5" r="3" />
+    <circle cx="6" cy="12" r="3" />
+    <circle cx="18" cy="19" r="3" />
+    <path d="m8.59 13.51 6.83 3.98" />
+    <path d="m15.41 6.51-6.82 3.98" />
   {/if}
 </svg>
 

@@ -45,6 +45,7 @@ use super::icy::{IcyReader, TitleCallback};
 use super::loudness::StationLevel;
 use super::network::NetState;
 use super::output::OutputFormat;
+use super::public_net;
 use super::{Cancel, Reporter};
 
 /// Bytes to receive before starting to read. Just enough to detect the format: Icecast
@@ -77,6 +78,8 @@ const SIGN_IN: &str = "Sign in to the network (captive portal) — waiting…";
 
 pub struct Job {
     pub url: Url,
+    /// The stream may only reach public addresses (`public_net`).
+    pub public_only: bool,
     pub format: OutputFormat,
     pub producer: Producer<f32>,
     /// *Constant volume*: measures the station and applies its gain. Kept across reconnections
@@ -120,7 +123,12 @@ impl std::fmt::Display for Interrupt {
 }
 
 fn run(mut job: Job) {
-    let client = match build_client() {
+    if job.public_only {
+        if let Err(message) = public_net::check(&job.url) {
+            return job.reporter.failed(message);
+        }
+    }
+    let client = match build_client(job.public_only) {
         Ok(client) => client,
         Err(message) => return job.reporter.failed(message),
     };
@@ -278,11 +286,20 @@ pub struct StreamInfo {
 
 /// Checks that a stream connects, is detected **and decodes** (first audio packet), without playing
 /// anything. Blocking: call from a dedicated thread (`spawn_blocking`), never from an async task.
-pub fn probe(url: &Url, runtime: &tokio::runtime::Handle) -> Result<StreamInfo, String> {
+///
+/// `public_only`: the stream may only reach public addresses (`public_net`).
+pub fn probe(
+    url: &Url,
+    runtime: &tokio::runtime::Handle,
+    public_only: bool,
+) -> Result<StreamInfo, String> {
     // Packets skipped before giving up (truncated stream start, ID3 headers...).
     const MAX_PACKETS: usize = 64;
 
-    let client = build_client()?;
+    if public_only {
+        public_net::check(url)?;
+    }
+    let client = build_client(public_only)?;
     let cancel = Cancel::default();
     let mut opened = match open_stream(
         &client,
@@ -430,12 +447,18 @@ impl Watchdog {
     }
 }
 
-fn build_client() -> Result<Client, String> {
+fn build_client(public_only: bool) -> Result<Client, String> {
     // Request ICY metadata; a server that does not support it simply ignores the header.
     let mut headers = HeaderMap::new();
     headers.insert("Icy-MetaData", HeaderValue::from_static("1"));
 
-    Client::builder()
+    let builder = Client::builder();
+    let builder = if public_only {
+        public_net::restrict(builder)
+    } else {
+        builder
+    };
+    builder
         .default_headers(headers)
         .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
         // The stream is read as raw bytes (ICY blocks, range requests): never compressed.

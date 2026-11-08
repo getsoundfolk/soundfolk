@@ -81,6 +81,8 @@ listening stats must be crossed with the sessions.
   on streams: a per-station gain learned while listening and stored in the DB, or a slow AGC on EBU R128 loudness in
   the engine.
 - [x] Track notifications while in the background (setting in ⚙, off by default).
+- [ ] Share a station or a list with a friend: a link carrying it in its fragment, a static page on
+  `getsoundfolk.github.io`, `soundfolk://` on desktop, paste into the search (`docs/16-sharing.md` §9).
 
 **Smaller**
 - [ ] Make the tray optional; check GNOME without the AppIndicator extension (closing may hide the window with no

@@ -7,6 +7,7 @@
   import { api, errorMessage, type CuratedList, type Station } from '../api';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
+  import { share } from '../share.svelte';
   import { pickRandom, playableOf, shortMeta, warningOf } from '../stations';
   import { stationNames } from '../stationNames.svelte';
   import { ui } from '../ui.svelte';
@@ -125,6 +126,12 @@
       type="button"
       disabled={stations.length === 0 || exporting}
       onclick={exportM3u}>Export M3U</button
+    >
+    <button
+      class={styles.button}
+      type="button"
+      disabled={share.busy}
+      onclick={() => share.offerList(list.id, list.title)}>Share</button
     >
   </div>
   {#if notice}<p class={styles.notice} role="status">{notice}</p>{/if}

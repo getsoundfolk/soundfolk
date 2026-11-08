@@ -238,8 +238,9 @@ export const api = {
   /** Saves the favorites' order (station ids, top first). */
   reorderFavorites: (stationIds: string[]) => invoke<void>('reorder_favorites', { stationIds }),
 
-  addPersonalStation: (url: string, name: string) =>
-    invoke<PersonalStation>('add_personal_station', { url, name }),
+  /** `fromLink`: received in a share link, the stream stays off the local network (16 §6.2). */
+  addPersonalStation: (url: string, name: string, fromLink = false) =>
+    invoke<PersonalStation>('add_personal_station', { url, name, fromLink }),
   listPersonalStations: () => invoke<PersonalStation[]>('list_personal_stations'),
   removePersonalStation: (stationId: string) =>
     invoke<boolean>('remove_personal_station', { stationId }),
@@ -310,6 +311,20 @@ export const api = {
   setCustomTrackServices: (services: CustomService[]) =>
     invoke<void>('set_custom_track_services', { services }),
 
+  /** Reads a pasted, dropped or opened text: null when it is not a Soundfolk link. */
+  readShareLink: (text: string) => invoke<SharedLink | null>('read_share_link', { text }),
+  /** The link for `item`, with the track on air and the sender's name, and its QR code. */
+  makeShareLink: (item: Shared, track: string | null) =>
+    invoke<ShareOut>('make_share_link', { item, track }),
+  getShareName: () => invoke<string>('get_share_name'),
+  setShareName: (name: string) => invoke<string>('set_share_name', { name }),
+  /** The `soundfolk://` link opened from outside since the last call. */
+  takeOpenedLink: () => invoke<string | null>('take_opened_link'),
+  catalogStationForStream: (url: string) =>
+    invoke<Station | null>('catalog_station_for_stream', { url }),
+  /** Downloads the curated lists now (at most once a minute); true when new ones arrived. */
+  refreshCuratedLists: () => invoke<boolean>('refresh_curated_lists'),
+
   /** Hands over from the main window to the mini player (the main window closes). */
   openMiniPlayer: () => invoke<void>('open_mini_player'),
   /** Back to the main window; the mini player closes. */
@@ -319,6 +334,36 @@ export const api = {
   /** Next or previous favorite, as the media keys do it. */
   switchFavorite: (forward: boolean) => invoke<void>('switch_favorite', { forward }),
 };
+
+/** What a share link carries (docs/16-sharing.md §2.2). */
+export type Shared =
+  | { kind: 'station'; id: string }
+  | { kind: 'personal_station'; name: string; url: string }
+  | { kind: 'list'; id: string }
+  | {
+      kind: 'personal_list';
+      title: string;
+      stations: string[];
+      personal: { name: string; url: string }[];
+    };
+
+/** A share link read: what it carries, the track on air then, and who sent it (unverified). */
+export type SharedLink = Shared & { track: string | null; from: string | null };
+
+/** A link ready to share. */
+export interface ShareOut {
+  url: string;
+  /** What the link carries: a personal station found in the catalog became the catalog's. */
+  item: Shared;
+  /** Stream addresses of stations added by hand in the link. */
+  addresses: number;
+  /** Stations added by hand looked up in the catalog by their stream. */
+  looked_up: number;
+  /** SVG `data:` address, black on white. */
+  qr: string | null;
+  /** Modules on a side, quiet zone included. */
+  qr_modules: number;
+}
 
 /** A site the user added to a track's menu: `{query}` in `template` stands for the track. */
 export interface CustomService {

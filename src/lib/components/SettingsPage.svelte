@@ -29,6 +29,8 @@
   let autostart = $state(false);
   let trackNotifications = $state(false);
   let constantVolume = $state(true);
+  /** The sender's name in share links (docs/16-sharing.md §4.2). */
+  let shareName = $state('');
   let version = $state<string | null>(null);
   let back: HTMLButtonElement | undefined = $state();
   let theme = $state<Theme>(savedTheme());
@@ -147,6 +149,10 @@
     errors.clear('settings');
     trackServices.load('settings');
     loadSummary();
+    api
+      .getShareName()
+      .then((name) => (shareName = name))
+      .catch((e) => errors.report('settings', e));
     api
       .getCoverSources()
       .then((s) => (coverSources = s))
@@ -508,6 +514,28 @@
           onchange={(e) => changeIdentify(e.currentTarget.checked)}
         />
       </label>
+
+      <div class={styles.option}>
+        <label class={styles.field}>
+          <span class={styles.name}>Your name in shared links</span>
+          <input
+            type="text"
+            maxlength="40"
+            placeholder="Empty: links don't say who sent them"
+            autocomplete="off"
+            value={shareName}
+            onchange={(e) =>
+              api
+                .setShareName(e.currentTarget.value)
+                .then((kept) => (shareName = kept))
+                .catch((err) => errors.report('settings', err))}
+          />
+          <span class={styles.detail}>
+            Every link you share then says it comes from you. Whoever opens it sees the name as you
+            typed it.
+          </span>
+        </label>
+      </div>
     </section>
 
     <section class={styles.group} aria-labelledby="settings-covers">
