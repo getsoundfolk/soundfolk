@@ -18,7 +18,8 @@
 pub(crate) enum Connectivity {
     /// No Internet access (local network only, or limited).
     NoInternet,
-    /// A captive portal: the network wants the user to sign in.
+    /// A captive portal: the network wants the user to sign in. Only Linux tells it apart.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Portal,
     Full,
 }

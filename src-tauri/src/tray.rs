@@ -50,6 +50,7 @@ pub fn set_available(available: bool) {
 
 /// No icon to come back from: after a launch hidden in the notification area, the window opens
 /// after all, or the app would play on with no way back to it.
+#[cfg(target_os = "linux")]
 pub fn set_unavailable(app: &AppHandle) {
     set_available(false);
     if app.get_webview_window(crate::MAIN_WINDOW).is_none() {
@@ -365,26 +366,26 @@ mod imp {
     }
 
     pub fn set_playing(app: &AppHandle, playing: bool) {
-        if let Some(labels) = app.try_state::<Labels>() {
-            if let Err(e) = labels.play_pause.set_text(play_pause_label(playing)) {
-                tracing::debug!("tray: Play / Pause label not updated: {e}");
-            }
+        if let Some(labels) = app.try_state::<Labels>()
+            && let Err(e) = labels.play_pause.set_text(play_pause_label(playing))
+        {
+            tracing::debug!("tray: Play / Pause label not updated: {e}");
         }
     }
 
     pub fn set_muted(app: &AppHandle, muted: bool) {
-        if let Some(labels) = app.try_state::<Labels>() {
-            if let Err(e) = labels.mute.set_text(mute_label(muted)) {
-                tracing::debug!("tray: Mute / Unmute label not updated: {e}");
-            }
+        if let Some(labels) = app.try_state::<Labels>()
+            && let Err(e) = labels.mute.set_text(mute_label(muted))
+        {
+            tracing::debug!("tray: Mute / Unmute label not updated: {e}");
         }
     }
 
     pub fn set_window_shown(app: &AppHandle, shown: bool) {
-        if let Some(labels) = app.try_state::<Labels>() {
-            if let Err(e) = labels.toggle.set_text(toggle_label(shown)) {
-                tracing::debug!("tray: Show / Hide label not updated: {e}");
-            }
+        if let Some(labels) = app.try_state::<Labels>()
+            && let Err(e) = labels.toggle.set_text(toggle_label(shown))
+        {
+            tracing::debug!("tray: Show / Hide label not updated: {e}");
         }
     }
 }
