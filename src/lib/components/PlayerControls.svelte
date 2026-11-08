@@ -152,6 +152,11 @@
           <p class={styles.station} title={station}>{station}</p>
           {#if player.current}{@render shareButton()}{@render info()}{/if}
         </div>
+        <!-- Under the station, inside the block: connecting never changes its height. -->
+        <p class={styles.status} data-status={status} data-quiet={quiet} role="status">
+          <span class={styles.dot} aria-hidden="true"></span>
+          {message}
+        </p>
         {#if title}
           <div class={styles.line}>
             <p class={styles.title} {title}>{title}</p>
@@ -173,11 +178,6 @@
           </div>
         {/if}
         {#if artist}<p class={styles.artist} title={artist}>{artist}</p>{/if}
-        {#if upNext}
-          <p class={styles.next} title={upNext.text}>
-            Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
-          </p>
-        {/if}
         {#if (donation || lists.forCurrent.length) && player.current}
           <p class={styles.links}>
             {#if donation}
@@ -195,6 +195,11 @@
                 {lists.forCurrent.length === 1 ? 'list' : 'lists'}
               </button>
             {/if}
+          </p>
+        {/if}
+        {#if upNext}
+          <p class={styles.next} title={upNext.text}>
+            Up next{#if upNext.time}&nbsp;at {upNext.time}{/if}: {upNext.text}
           </p>
         {/if}
       </div>
@@ -275,11 +280,6 @@
       </div>
     </div>
   </div>
-
-  <p class={styles.status} data-status={status} data-quiet={quiet} role="status">
-    <span class={styles.dot} aria-hidden="true"></span>
-    {message}
-  </p>
 
   {#each player.skipped as { name, reason } (name)}
     <p class={styles.skipped}>Skipped {name}: {reason}</p>

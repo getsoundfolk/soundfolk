@@ -9,11 +9,15 @@
   background: var(--color-surface);
 }
 
+/* One height whatever is on air: station, a one-line title, artist, the donation link and up
+   next fit beside the cover; a line that does not fit is hidden whole (.info), up next first,
+   rather than growing the block. */
 .top {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  height: 9.25rem;
 }
 
 /* The art tile: always the same size, whatever it holds. */
@@ -55,11 +59,22 @@
   min-width: 0;
 }
 
+/* Lines in order of importance. Wrapping in columns sends those that do not fit to a second
+   column, out of sight, so no line is ever cut in half. */
 .info {
+  flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-flow: column wrap;
+  align-content: flex-start;
   gap: 0.125rem;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.info > * {
+  flex: none;
+  width: 100%;
 }
 
 .station,
