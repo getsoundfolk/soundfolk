@@ -19,11 +19,12 @@ class HistoryStore {
       : null,
   );
 
-  async refreshLatest() {
+  /** Reads the last track logged. A failure is shown in `area`. */
+  async refreshLatest(area: ErrorArea = 'history') {
     try {
       this.latest = (await api.getListeningHistory(1))[0] ?? null;
     } catch (e) {
-      errors.report('history', e);
+      errors.report(area, e);
     }
   }
 

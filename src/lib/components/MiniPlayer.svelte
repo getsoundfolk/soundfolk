@@ -27,10 +27,11 @@
     return () => void ready.then((off) => off());
   });
 
-  // The backend logs a title before announcing it: the ♥ then finds it in the history.
+  // The backend logs a title before announcing it: the ♥ then finds it in the history. This
+  // window shows only the player's errors.
   $effect(() => {
     void player.nowPlaying.title;
-    history.refreshLatest();
+    history.refreshLatest('player');
   });
 
   // Zoom never applies to this window: CSS pixels are the logical size set by the backend.
@@ -74,7 +75,7 @@
         // The same track twice in a row (heard again after a stop) is one line here.
         if (current) recent = entries.filter((e, i) => e.track_key !== entries[i - 1]?.track_key);
       })
-      .catch((e) => errors.report('history', e));
+      .catch((e) => errors.report('player', e));
     return () => {
       current = false;
     };

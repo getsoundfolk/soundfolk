@@ -7,7 +7,8 @@ import { errorMessage } from './api';
 export type ErrorArea = 'player' | 'stations' | 'history' | 'settings';
 
 class ErrorStore {
-  /** The player's own commands: play, pause, volume, favorites, the listen-counting notice. */
+  /** The player's own commands: play, pause, volume, favorites (stations and lists), the
+   *  listen-counting notice; and everything in the mini player, which shows only this one. */
   player = $state<string | null>(null);
   /** The station lists: personal stations. */
   stations = $state<string | null>(null);

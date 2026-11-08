@@ -44,12 +44,15 @@
         })
         .catch(() => {});
     } else if (shown?.kind === 'personal_list') {
-      Promise.all(shown.link.stations.map((id) => api.getStation(id).catch(() => null)))
+      // `null`: gone from the catalog. A failed read is not that: it is shown as an error.
+      Promise.all(shown.link.stations.map((id) => api.getStation(id)))
         .then((found) => {
           if (share.received === shown)
             listStations = found.filter((s): s is Station => s !== null);
         })
-        .catch((e) => (listError = errorMessage(e)));
+        .catch((e) => {
+          if (share.received === shown) listError = errorMessage(e);
+        });
     }
   });
 
@@ -184,7 +187,7 @@
           stations one by one.
         </p>
         {#if listError}<p class={styles.warning} role="alert">{listError}</p>{/if}
-        {#if listStations === null && received.link.stations.length}
+        {#if listStations === null && received.link.stations.length && !listError}
           <p class={styles.hint}>Reading the stations from the catalog…</p>
         {:else if listStations}
           <div class={styles.actions}>

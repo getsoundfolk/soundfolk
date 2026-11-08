@@ -14,6 +14,7 @@
     type Station,
     type TitleStatus,
   } from '../api';
+  import { errors } from '../errors.svelte';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { share } from '../share.svelte';
@@ -21,6 +22,7 @@
   import { playableOf } from '../stations';
   import { displayTitle } from '../trackLinks';
   import { ui } from '../ui.svelte';
+  import ErrorBanner from './ErrorBanner.svelte';
   import Icon from './Icon.svelte';
   import styles from './StationSheet.module.css';
 
@@ -329,6 +331,9 @@
         ><Icon name="x" /></button
       >
     </header>
+
+    <!-- Play and ★ report in the player, which the modal sheet covers. -->
+    {#if errors.player}<div class={styles.section}><ErrorBanner area="player" /></div>{/if}
 
     {#if share.note && share.note.stationId === station.id && (share.note.from || share.note.track)}
       {@const note = share.note}

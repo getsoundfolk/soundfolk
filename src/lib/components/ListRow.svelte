@@ -4,6 +4,7 @@
      stations to play in one click. -->
 <script lang="ts">
   import type { CuratedList, Station } from '../api';
+  import { errors } from '../errors.svelte';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { playableOf } from '../stations';
@@ -70,7 +71,7 @@
         : `Add ${list.title} to favorites`}
       title={favorite ? 'Remove from favorites' : 'Add to favorites'}
       data-on={favorite}
-      onclick={() => lists.toggleFavorite(list.id).catch(() => {})}
+      onclick={() => lists.toggleFavorite(list.id).catch((e) => errors.report('player', e))}
       ><Icon name="star" filled={favorite} /></button
     >
   </header>

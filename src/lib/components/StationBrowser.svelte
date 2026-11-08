@@ -334,7 +334,8 @@
                   aria-pressed="true"
                   aria-label={`Remove ${l.title} from favorites`}
                   title="Remove from favorites"
-                  onclick={() => lists.toggleFavorite(l.id).catch(() => {})}
+                  onclick={() =>
+                    lists.toggleFavorite(l.id).catch((e) => errors.report('player', e))}
                   ><Icon name="star" filled /></button
                 >
               </li>
