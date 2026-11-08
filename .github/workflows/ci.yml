@@ -106,23 +106,37 @@ jobs:
         with:
           persist-credentials: false
 
+      # Release archives through fetch-release-asset.sh, checksums pinned: it falls back to the
+      # API when github.com's download address fails with a 504 (typos' own action does not).
+      - name: Install typos
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPOS_VERSION: 1.52.0
+          TYPOS_SHA256: 6155d4114f9a0f5b8f6d4fda96266c9d5f6add71df80da7f684ee5e72eb14588
+        run: |
+          archive="typos-v${TYPOS_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+          .github/scripts/fetch-release-asset.sh crate-ci/typos "v${TYPOS_VERSION}" "$archive" \
+            "$TYPOS_SHA256" "$RUNNER_TEMP/$archive"
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" ./typos
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
       - name: Spelling
-        uses: crate-ci/typos@4c8b7f51ca60df14e3c5ca82770dfbbe6c3dae85 # v1.52.0
+        run: typos
 
       - name: SPDX lines
         run: .github/scripts/check-spdx.sh
 
       # install-action has no actionlint manifest, and actionlint is no crate
-      # for its cargo-binstall fallback: the release archive, checksum pinned.
+      # for its cargo-binstall fallback: the release archive, as for typos.
       - name: Install actionlint
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
           archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL -o "$RUNNER_TEMP/$archive" \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
-          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          .github/scripts/fetch-release-asset.sh rhysd/actionlint "v${ACTIONLINT_VERSION}" "$archive" \
+            "$ACTIONLINT_SHA256" "$RUNNER_TEMP/$archive"
           tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
