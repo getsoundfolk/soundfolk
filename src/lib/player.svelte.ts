@@ -19,6 +19,8 @@ import { playableOf } from './stations';
 /** How long a surprise station has to be heard before the next one is tried. Working streams
  *  were measured at 0.6 to 1 s to the first sound (SomaFM near 1 s): twice the slowest. */
 const SURPRISE_WAIT_MS = 2000;
+/** `run` leaves the player's error in place. */
+const KEEP_ERROR = true;
 /** Catalog draws one Surprise me may make before it gives up. */
 const SURPRISE_DRAWS = 3;
 
@@ -193,16 +195,16 @@ class PlayerStore {
     await this.run(async () => {
       await api.setVolume(this.volume);
       if (this.muted) await api.setMuted(false);
-    });
+    }, KEEP_ERROR);
   }
 
   async toggleMute() {
-    await this.run(() => api.setMuted(!this.muted));
+    await this.run(() => api.setMuted(!this.muted), KEEP_ERROR);
   }
 
   /** Remembers the current volume for the next launch (once the slider is released). */
   async saveVolume() {
-    await this.run(() => api.saveVolume(this.volume));
+    await this.run(() => api.saveVolume(this.volume), KEEP_ERROR);
   }
 
   async toggleFavorite(station: Playable) {
@@ -245,8 +247,11 @@ class PlayerStore {
     });
   }
 
-  private async run(action: () => Promise<unknown>) {
-    errors.clear('player');
+  /** Runs a player command, its failure shown in the player. A new command clears the last
+   *  error, except sound adjustments (`KEEP_ERROR`): a volume step fixes nothing, and the
+   *  slider and the wheel would erase a message before it is read. */
+  private async run(action: () => Promise<unknown>, keepError = false) {
+    if (!keepError) errors.clear('player');
     try {
       await action();
     } catch (e) {
