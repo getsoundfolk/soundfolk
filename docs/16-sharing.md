@@ -304,7 +304,7 @@ A friend convinced by a link has to install Soundfolk without hunting for a `.de
 2. **AUR** (Arch and derivatives).
 3. An APT repository for Debian and Ubuntu, so that the `.deb` updates itself.
 
-Windows (winget) and macOS (Homebrew) once those builds exist. The page's Get Soundfolk (§5.3) follows this list.
+Windows (winget) and macOS (Homebrew), now that those builds exist. The page's Get Soundfolk (§5.3) follows this list.
 
 ### 7.4 Measuring
 Not measured. No tracking parameter in links, no counter on the page, no analytics: Soundfolk's promise is that

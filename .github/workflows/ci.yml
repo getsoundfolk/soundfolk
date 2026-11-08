@@ -2,7 +2,7 @@
 #
 # The checks of CONTRIBUTING.md, on every pull request and every push to main:
 #   - Rust: formatting (cargo fmt), lints (clippy, warnings fail), tests, unused dependencies;
-#     lints and tests again on Windows;
+#     lints and tests again on Windows and macOS;
 #   - front end: formatting (Prettier), lints (ESLint), types (svelte-check), build;
 #   - repository: spelling (typos), SPDX lines, workflows (actionlint, zizmor).
 # Dependencies (advisories, licenses, duplicates) are checked by deps.yml, the DCO by dco.yml.
@@ -81,6 +81,35 @@ jobs:
     defaults:
       run:
         shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: src-tauri
+
+      - name: Placeholder front end
+        run: mkdir -p dist
+
+      - name: Clippy
+        working-directory: src-tauri
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Tests
+        working-directory: src-tauri
+        run: cargo test --workspace --all-features --locked
+
+  # macOS: the platform code (cfg(target_os = "macos")) compiles, passes Clippy and its tests.
+  rust-macos:
+    name: Rust (macOS)
+    # The runner the macOS disk image is built on (release.yml).
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

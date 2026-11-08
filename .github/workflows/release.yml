@@ -2,7 +2,8 @@
 #
 # Builds the packages of the desktop app:
 #   - Linux: a Debian package (.deb) and an AppImage;
-#   - Windows: an NSIS installer (x64, installs per user, no administrator rights needed).
+#   - Windows: an NSIS installer (x64, installs per user, no administrator rights needed);
+#   - macOS: a disk image (.dmg) holding a universal app (Apple Silicon and Intel).
 # They are published together, by a last job that runs only once every build has succeeded:
 #   - every night from main, to the rolling "nightly" pre-release
 #     (skipped when main hasn't moved since the last nightly);
@@ -10,6 +11,8 @@
 # Each package gets a signed build provenance attestation
 # (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
 # The Windows installer is not code-signed yet: SmartScreen warns before running it.
+# The macOS app is signed ad hoc only, not notarized: Gatekeeper blocks it on first launch
+# (System Settings > Privacy & Security > Open Anyway).
 name: Release
 
 on:
@@ -215,9 +218,62 @@ jobs:
           path: out/*-setup.exe
           if-no-files-found: error
 
+  macos:
+    name: Build the macOS disk image
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    # Apple Silicon runner; the x86_64 half of the universal app is cross-compiled.
+    runs-on: macos-15
+    permissions:
+      contents: read
+      id-token: write # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.version.outputs.sha }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false # see the Linux job
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Build
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          npm ci
+          # One universal app (lipo of both architectures), signed ad hoc (bundle.macOS in
+          # tauri.conf.json): without a signature Apple Silicon reports a downloaded app as damaged.
+          # The disk image script skips its Finder window layout on CI (the CI variable).
+          npm run tauri -- build --target universal-apple-darwin --bundles dmg \
+            --config "{\"version\": \"$VERSION\"}"
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          mkdir -p out
+          cp "$bundle"/dmg/*.dmg out/
+          ls -l out
+          # Fails if the app does not hold both architectures or its signature does not verify.
+          lipo -verify_arch "$bundle"/macos/*.app/Contents/MacOS/* arm64 x86_64
+          codesign --verify --deep --strict "$bundle"/macos/*.app
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: out/*.dmg
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soundfolk-macos-${{ needs.version.outputs.version }}
+          path: out/*.dmg
+          if-no-files-found: error
+
   publish:
     name: Publish
-    needs: [version, linux, windows]
+    needs: [version, linux, windows, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release and upload the packages

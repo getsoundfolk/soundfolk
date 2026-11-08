@@ -7,10 +7,11 @@ Specs in [`docs/`](docs/).
 
 ## Install
 
-Linux and Windows packages are built automatically (see
+Linux, Windows and macOS packages are built automatically (see
 [`.github/workflows/release.yml`](.github/workflows/release.yml)): each tagged version is attached to its
 [release](https://github.com/getsoundfolk/soundfolk/releases), and a build of `main` is published every night
-as the **nightly** pre-release. Both are 64-bit x86 only (amd64 / x64).
+as the **nightly** pre-release. The Linux and Windows packages are 64-bit x86 only (amd64 / x64); the macOS
+app is universal (Apple Silicon and Intel).
 
 ### Debian/Ubuntu (`.deb`)
 
@@ -37,6 +38,13 @@ later**. It needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04); without
 Run `Soundfolk_*_x64-setup.exe`. It installs for the current user, without administrator rights, on
 **Windows 10 or later**; it downloads Microsoft WebView2 if Windows lacks it. The installer is not
 code-signed yet, so SmartScreen warns before running it: click **More info**, then **Run anyway**.
+
+### macOS (disk image)
+
+Open `Soundfolk_*_universal.dmg` and drag **Soundfolk** into **Applications**. It runs on **macOS 10.13 or
+later**. The app is not notarized by Apple yet, so macOS refuses to open it the first time: go to
+**System Settings › Privacy & Security** and click **Open Anyway** under the message about Soundfolk. The system
+media controls (Now Playing) are not wired up on macOS yet.
 
 ### Checking a package
 
