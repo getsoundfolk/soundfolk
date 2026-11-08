@@ -11,6 +11,8 @@ use std::time::{Duration, SystemTime};
 use base64::Engine;
 use stream_download::http::reqwest::{Client, Url};
 
+use crate::audio::public_net;
+
 /// Bigger than this, a favicon is not a logo worth keeping.
 const MAX_BYTES: usize = 1024 * 1024;
 /// A kept logo older than this is fetched again (and still shown meanwhile).
@@ -95,9 +97,12 @@ pub struct LogoCache {
 
 impl LogoCache {
     pub fn new(dir: Option<PathBuf>) -> Self {
-        let client = Client::builder()
+        // Favicons come from Radio-Browser and covers from station pages: both stay on the public
+        // Internet, as catalog streams do (docs/16-sharing.md §6.2).
+        let builder = Client::builder()
             .user_agent(USER_AGENT)
-            .timeout(REQUEST_TIMEOUT)
+            .timeout(REQUEST_TIMEOUT);
+        let client = public_net::restrict(builder)
             .build()
             .inspect_err(|e| tracing::warn!("no HTTP client for station logos: {e}"))
             .ok();
@@ -139,6 +144,10 @@ impl LogoCache {
         max: usize,
     ) -> Result<(Vec<u8>, &'static str, &'static str), String> {
         let client = self.client.as_ref().ok_or("no HTTP client")?;
+        // The client checks names once resolved, and redirects; an IP in the address is never
+        // resolved, so it is checked here.
+        let url = Url::parse(url).map_err(|e| e.to_string())?;
+        public_net::check(&url)?;
         let mut response = client
             .get(url)
             .send()
@@ -212,6 +221,22 @@ mod tests {
         assert_eq!(format_of(b"<!DOCTYPE html><html>404</html>"), None);
         assert_eq!(format_of(b"<?xml version=\"1.0\"?><error/>"), None);
         assert_eq!(format_of(b""), None);
+    }
+
+    #[tokio::test]
+    async fn images_on_the_local_network_are_not_fetched() {
+        let cache = LogoCache::new(None);
+        for url in [
+            "http://127.0.0.1/logo.png",
+            "http://192.168.1.1/favicon.ico",
+            "http://router/logo.png",
+        ] {
+            assert_eq!(
+                cache.download(url, MAX_BYTES).await.unwrap_err(),
+                public_net::LOCAL_NETWORK,
+                "{url}"
+            );
+        }
     }
 
     #[test]

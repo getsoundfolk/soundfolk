@@ -176,9 +176,13 @@ pub(crate) fn start_station(
     let catalog_id = station_id.clone().filter(|id| is_catalog_id(id));
     // Catalog stations and stations received in a link stay off the local network (16 §6.2).
     let public_only = catalog_id.is_some()
-        || station_id
-            .as_deref()
-            .is_some_and(|id| db.personal_station_from_link(id).unwrap_or(false));
+        || station_id.as_deref().is_some_and(|id| {
+            // Unknown origin: the station keeps the rule rather than lose it on a read error.
+            db.personal_station_from_link(id).unwrap_or_else(|e| {
+                tracing::warn!("station origin not read, kept off the local network: {e}");
+                true
+            })
+        });
     let station = StationRef {
         id: catalog_id,
         public_only,

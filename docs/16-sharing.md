@@ -240,6 +240,8 @@ router or a local service.
   check applies to each redirect and to each URL inside a `.m3u` or `.pls`.
 * **Catalog stations too**, link or not: Radio-Browser's URLs are written by anyone, and a link makes such a station
   easy to aim at someone.
+* **Station logos and track covers too**, fetched by the app: favicons come from Radio-Browser and covers from
+  station pages. A failure to read whether a station came from a link counts as "from a link".
 * **A station added from a link keeps the rule** (`personal_stations.origin = 'link'`). The listener lifts it by
   typing the same address in "Add a station by URL" (05 §2): a local radio typed by hand stays possible.
 * **Through a proxy** (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`), the proxy resolves the names and is often on the

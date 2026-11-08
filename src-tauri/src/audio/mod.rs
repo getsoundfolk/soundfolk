@@ -24,7 +24,7 @@ mod loudness;
 mod network;
 mod output;
 mod playlist;
-mod public_net;
+pub(crate) mod public_net;
 mod web_source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
