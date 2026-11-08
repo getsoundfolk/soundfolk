@@ -5,20 +5,42 @@
 Tauri v2 + Svelte 5 + Rust audio engine (`stream-download` → `symphonia` → `cpal`) + SQLite (`rusqlite`).
 Specs in [`docs/`](docs/).
 
-## Install (Debian/Ubuntu)
+## Install
 
-A `.deb` package is built automatically (see [`.github/workflows/deb.yml`](.github/workflows/deb.yml)):
-each tagged version is attached to its [release](https://github.com/getsoundfolk/soundfolk/releases), and a
-build of `main` is published every night as the **nightly** pre-release.
+Linux and Windows packages are built automatically (see
+[`.github/workflows/release.yml`](.github/workflows/release.yml)): each tagged version is attached to its
+[release](https://github.com/getsoundfolk/soundfolk/releases), and a build of `main` is published every night
+as the **nightly** pre-release. Both are 64-bit x86 only (amd64 / x64).
+
+### Debian/Ubuntu (`.deb`)
 
 ```bash
 sudo apt install ./Soundfolk_*_amd64.deb
 ```
 
-The package is built on Ubuntu 22.04, so it installs on **Ubuntu 22.04 or later** and **Debian 12 or later**
-(amd64). Older releases lack the required glibc and WebKitGTK 4.1 versions.
+The package is built on Ubuntu 22.04, so it installs on **Ubuntu 22.04 or later** and **Debian 12 or later**.
+Older releases lack the required glibc and WebKitGTK 4.1 versions.
 
-To check that a `.deb` was built by this repository's CI:
+### Other distributions (AppImage)
+
+```bash
+chmod +x Soundfolk_*_amd64.AppImage
+./Soundfolk_*_amd64.AppImage
+```
+
+The AppImage carries its own libraries except glibc, so it runs on any distribution with **glibc 2.35 or
+later**. It needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04); without it, run it with
+`--appimage-extract-and-run`. `soundfolk://` links open it once it has been launched one time.
+
+### Windows (installer)
+
+Run `Soundfolk_*_x64-setup.exe`. It installs for the current user, without administrator rights, on
+**Windows 10 or later**; it downloads Microsoft WebView2 if Windows lacks it. The installer is not
+code-signed yet, so SmartScreen warns before running it: click **More info**, then **Run anyway**.
+
+### Checking a package
+
+To check that a package was built by this repository's CI:
 
 ```bash
 gh attestation verify Soundfolk_*_amd64.deb -R getsoundfolk/soundfolk

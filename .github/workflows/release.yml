@@ -1,0 +1,259 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Builds the packages of the desktop app:
+#   - Linux: a Debian package (.deb) and an AppImage;
+#   - Windows: an NSIS installer (x64, installs per user, no administrator rights needed).
+# They are published together, by a last job that runs only once every build has succeeded:
+#   - every night from main, to the rolling "nightly" pre-release
+#     (skipped when main hasn't moved since the last nightly);
+#   - on every `v*` tag, to the GitHub Release of that tag.
+# Each package gets a signed build provenance attestation
+# (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
+# The Windows installer is not code-signed yet: SmartScreen warns before running it.
+name: Release
+
+on:
+  schedule:
+    - cron: "17 3 * * *" # every night, 03:17 UTC
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # manual run: builds a nightly even if main hasn't moved
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Decide the version
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.version.outputs.skip }}
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+      sha: ${{ steps.version.outputs.sha }}
+    steps:
+      # Pinned to commit SHAs rather than mutable tags.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.ref_type == 'tag' && github.ref || 'main' }}
+
+      - name: Decide the version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The commit every build checks out, so that all packages come from the same one
+          # even if main moves while the workflow runs.
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          # The app's only version, in `[workspace.package]` of the Cargo manifest.
+          base=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' src-tauri/Cargo.toml)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ "$GITHUB_REF_NAME" != "v$base" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match version $base in src-tauri/Cargo.toml"
+              exit 1
+            fi
+            echo "version=$base" >> "$GITHUB_OUTPUT"
+            echo "release=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          else
+            last=$(gh api "repos/$GITHUB_REPOSITORY/commits/nightly" --jq .sha 2>/dev/null || true)
+            if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$last" = "$sha" ]; then
+              echo "main hasn't moved since the last nightly ($sha): nothing to build"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            # `+` sorts after the release in both semver and dpkg: 0.1.0 < 0.1.0+nightly.… < 0.2.0
+            # (the Windows installer, whose version must be numeric, reads it as 0.1.0.0).
+            echo "version=$base+nightly.$(date -u +%Y%m%d).$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+            echo "release=nightly" >> "$GITHUB_OUTPUT"
+          fi
+
+  linux:
+    name: Build .deb and AppImage
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    # The oldest supported runner: the .deb links against its glibc and WebKitGTK,
+    # so building here keeps it installable on Ubuntu 22.04+ and Debian 12+.
+    # The AppImage carries its libraries but not glibc: built here, it runs on any
+    # distribution with glibc 2.35 or later.
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write # sign the provenance attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.version.outputs.sha }}
+
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libasound2-dev libssl-dev patchelf
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          # No npm or Rust cache in a release build: a cache can be written by other runs
+          # (cache poisoning), and what ships must come from the lockfiles alone.
+          package-manager-cache: false
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      # The AppImage bundler downloads its tools from github.com/<repo>/releases/download/, with
+      # no checksum and no fallback (that address gave 502, 503 and 504 for hours on 2026-11-08),
+      # and appimagetool then downloads the AppImage runtime from a moving "continuous" release.
+      # All fetched here instead, checksums pinned, into the folder where the bundler looks before
+      # downloading (~/.cache/tauri); the runtime is passed through LDAI_RUNTIME_FILE. The GTK and
+      # GStreamer plugins are scripts built into the bundler. linuxdeploy's file name carries the
+      # version the bundler asks for (07333c6 for @tauri-apps/cli 2.12): if a CLI update changes
+      # it, the bundler downloads that version itself again, and this step needs updating.
+      # linuxdeploy-plugin-appimage and the runtime are pinned to dated releases.
+      - name: Fetch the AppImage tools
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          tools="$HOME/.cache/tauri"
+          mkdir -p "$tools"
+          fetch=.github/scripts/fetch-release-asset.sh
+          "$fetch" tauri-apps/binary-releases apprun-old AppRun-x86_64 \
+            f30140a43a0a59e46db21bdefdf749b9e9f2c6946e92afabbacf98b8ae73fb4f "$tools/AppRun-x86_64"
+          "$fetch" tauri-apps/binary-releases linuxdeploy-07333c6 linuxdeploy-x86_64.AppImage \
+            36a2d7e274d12e1050d0e9ecfe11d339ed54720b2bec464c286d53f8b07f5c62 \
+            "$tools/linuxdeploy-07333c6-x86_64.AppImage"
+          "$fetch" linuxdeploy/linuxdeploy-plugin-appimage 1-alpha-20250213-1 \
+            linuxdeploy-plugin-appimage-x86_64.AppImage \
+            992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3 \
+            "$tools/linuxdeploy-plugin-appimage.AppImage"
+          "$fetch" AppImage/type2-runtime 20251108 runtime-x86_64 \
+            2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d "$tools/runtime-x86_64"
+          chmod +x "$tools"/*
+          echo "LDAI_RUNTIME_FILE=$tools/runtime-x86_64" >> "$GITHUB_ENV"
+
+      - name: Build
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          npm ci
+          npm run tauri -- build --bundles deb,appimage --config "{\"version\": \"$VERSION\"}"
+          mkdir -p out
+          cp src-tauri/target/release/bundle/deb/*.deb src-tauri/target/release/bundle/appimage/*.AppImage out/
+          ls -l out
+          dpkg-deb --info out/*.deb
+          # Fails if the AppImage is not a valid one (ELF runtime + squashfs).
+          chmod +x out/*.AppImage
+          (cd out && ./*.AppImage --appimage-extract > /dev/null && test -x squashfs-root/AppRun && rm -rf squashfs-root)
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            out/*.deb
+            out/*.AppImage
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soundfolk-linux-${{ needs.version.outputs.version }}
+          path: |
+            out/*.deb
+            out/*.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Build the Windows installer
+    needs: version
+    if: needs.version.outputs.skip != 'true'
+    # x64 only: Windows 11 has no 32-bit edition, and Windows on ARM runs x64 programs.
+    runs-on: windows-2025
+    permissions:
+      contents: read
+      id-token: write # sign the provenance attestation
+      attestations: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.version.outputs.sha }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false # see the Linux job
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - name: Build
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          npm ci
+          # NSIS comes with the bundler. WebView2 ships with Windows 10 and 11; where it is
+          # missing, the installer downloads it (Tauri's default `downloadBootstrapper`).
+          npm run tauri -- build --bundles nsis --config "{\"version\": \"$VERSION\"}"
+          mkdir -p out
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe out/
+          ls -l out
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: out/*-setup.exe
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: soundfolk-windows-${{ needs.version.outputs.version }}
+          path: out/*-setup.exe
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [version, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release and upload the packages
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: soundfolk-*-${{ needs.version.outputs.version }}
+          path: out
+          merge-multiple: true
+
+      - name: List the packages
+        run: ls -l out
+
+      - name: Publish the tagged release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.version.outputs.release }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" out/* --clobber
+          else
+            gh release create "$TAG" out/* --verify-tag --generate-notes --title "Soundfolk $TAG"
+          fi
+
+      - name: Publish the nightly pre-release
+        if: github.ref_type != 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          # One rolling pre-release: drop the previous one and its tag, recreate at this commit.
+          gh release delete nightly --cleanup-tag --yes 2> /dev/null || true
+          gh release create nightly out/* \
+            --prerelease --target "$SHA" \
+            --title "Nightly $VERSION" \
+            --notes "Automatic build of main at ${SHA:0:7}. Not a stable release."
