@@ -340,7 +340,7 @@ fn azuracast_is(item: &Value, heard: &str) -> bool {
             .unwrap_or_default()
     };
     let (artist, title) = (text("artist"), text("title"));
-    let joined = format!("{artist} - {title}");
+    let joined = crate::artist_title(Some(&artist), &title);
     text("text") == heard
         || (!title.is_empty() && (joined == heard || (artist.is_empty() && title == heard)))
 }

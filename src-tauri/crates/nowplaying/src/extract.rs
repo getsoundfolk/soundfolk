@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Reading a page as a recipe says.
 
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
+
 use regex_lite::Regex;
 use scraper::{ElementRef, Html, Selector};
 use serde_json::Value;
@@ -17,10 +20,7 @@ pub fn read(recipe: &Recipe, page: &str) -> Result<Snapshot, ExtractError> {
     let mut snapshot = extract(&recipe.extract, page)?;
     let ignored = |t: &RawTrack| {
         t.title.as_deref().is_some_and(|title| {
-            let shown = match &t.artist {
-                Some(artist) => format!("{artist} - {title}"),
-                None => title.to_owned(),
-            };
+            let shown = crate::artist_title(t.artist.as_deref(), title);
             recipe.ignores(&shown) || recipe.ignores(title)
         })
     };
@@ -48,30 +48,56 @@ fn gap(from: Option<Start>, to: Option<Start>) -> Option<SignedDuration> {
     gap.is_positive().then_some(gap)
 }
 
-/// Reads the page as `extract` says.
+/// Reads the page as `extract` says. Selectors and patterns are compiled on the first read and
+/// kept: a recipe is read on every poll.
 pub fn extract(extract: &Extract, page: &str) -> Result<Snapshot, ExtractError> {
-    match compile(extract)? {
-        Compiled::Html(fields) => Ok(read_html(&fields, page)),
-        Compiled::Json(fields) => read_json(fields, page),
-        Compiled::Text(re) => Ok(read_text(&re, page)),
+    match extract {
+        Extract::Html(fields) => Ok(read_html(cached_html(fields)?.as_ref(), page)),
+        Extract::Json(fields) => read_json(fields, page),
+        Extract::Text(p) => Ok(read_text(cached_pattern(&p.pattern)?.as_ref(), page)),
     }
 }
 
-/// Selectors and patterns, checked once.
-pub(crate) enum Compiled<'a> {
-    Html(HtmlFields),
-    Json(&'a Fields),
-    Text(Regex),
+/// A recipe's HTML fields, compiled once per run (keyed by what they say). An invalid one is
+/// compiled again on each read, as it errors at once; recipes are few.
+fn cached_html(fields: &Fields) -> Result<Arc<HtmlFields>, ExtractError> {
+    static CACHE: LazyLock<Mutex<HashMap<String, Arc<HtmlFields>>>> = LazyLock::new(Mutex::default);
+    let key = format!("{fields:?}");
+    if let Some(found) = CACHE.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
+        return Ok(found.clone());
+    }
+    let compiled = Arc::new(HtmlFields::new(fields)?);
+    CACHE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(key, compiled.clone());
+    Ok(compiled)
 }
 
-pub(crate) fn compile(extract: &Extract) -> Result<Compiled<'_>, ExtractError> {
-    Ok(match extract {
-        Extract::Html(fields) => Compiled::Html(HtmlFields::new(fields)?),
-        Extract::Json(fields) => Compiled::Json(fields),
-        Extract::Text(p) => Compiled::Text(
-            Regex::new(&p.pattern).map_err(|e| ExtractError::Recipe(format!("pattern: {e}")))?,
-        ),
-    })
+/// A recipe's text pattern, compiled once per run.
+fn cached_pattern(pattern: &str) -> Result<Arc<Regex>, ExtractError> {
+    static CACHE: LazyLock<Mutex<HashMap<String, Arc<Regex>>>> = LazyLock::new(Mutex::default);
+    if let Some(found) = CACHE.lock().unwrap_or_else(|p| p.into_inner()).get(pattern) {
+        return Ok(found.clone());
+    }
+    let compiled =
+        Arc::new(Regex::new(pattern).map_err(|e| ExtractError::Recipe(format!("pattern: {e}")))?);
+    CACHE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .insert(pattern.to_owned(), compiled.clone());
+    Ok(compiled)
+}
+
+/// Whether the selectors and the pattern compile (for `Recipe::problems`).
+pub(crate) fn check(extract: &Extract) -> Result<(), ExtractError> {
+    match extract {
+        Extract::Html(fields) => HtmlFields::new(fields).map(drop),
+        Extract::Json(_) => Ok(()),
+        Extract::Text(p) => Regex::new(&p.pattern)
+            .map(drop)
+            .map_err(|e| ExtractError::Recipe(format!("pattern: {e}"))),
+    }
 }
 
 // ── HTML ────────────────────────────────────────────────────────────────────

@@ -17,6 +17,7 @@
   import { onAir, wheelVolume } from '../onAir.svelte';
   import { player } from '../player.svelte';
   import { stationNames } from '../stationNames.svelte';
+  import { displayTitle } from '../trackLinks';
   import Icon from './Icon.svelte';
   import Waves from './Waves.svelte';
   import styles from './MiniPlayer.module.css';
@@ -321,7 +322,7 @@
           {/each}
         {:else}
           {#each recent as entry (entry.id)}
-            {@const text = entry.artist ? `${entry.artist} – ${entry.title}` : entry.title}
+            {@const text = displayTitle(entry)}
             <p class={styles.entry} title={text}>
               <span class={styles.entryTitle}>{entry.title}</span>
               {#if entry.artist}<span class={styles.entryArtist}>{entry.artist}</span>{/if}

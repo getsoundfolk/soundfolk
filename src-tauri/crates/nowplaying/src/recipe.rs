@@ -280,7 +280,7 @@ impl Recipe {
                 }
             }
         }
-        if let Err(e) = crate::extract::compile(&self.extract) {
+        if let Err(e) = crate::extract::check(&self.extract) {
             problems.push(e.to_string());
         }
         for pattern in &self.ignore {
