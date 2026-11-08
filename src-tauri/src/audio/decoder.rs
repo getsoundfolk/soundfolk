@@ -46,7 +46,7 @@ use super::loudness::StationLevel;
 use super::network::NetState;
 use super::output::OutputFormat;
 use super::public_net;
-use super::{Cancel, Reporter};
+use super::{Cancel, Reporter, ScopedHook};
 
 /// Bytes to receive before starting to read. Just enough to detect the format: Icecast
 /// servers send ~30 KB in a burst on connect, then only at playback pace,
@@ -300,7 +300,7 @@ pub fn probe(
         public_net::check(url)?;
     }
     let client = build_client(public_only)?;
-    let cancel = Cancel::default();
+    let cancel = Arc::new(Cancel::default());
     let mut opened = match open_stream(
         &client,
         url,
@@ -359,6 +359,8 @@ struct OpenedStream {
     inband: bool,
     /// Drops the connection if it stalls after a network change (stopped with the stream).
     _watchdog: Option<Watchdog>,
+    /// Stop cancels this connection's download, unblocking a read waiting for data.
+    _cancel_hook: ScopedHook,
 }
 
 /// Why the watchdog dropped the connection, read once the decoder sees the stream end.
@@ -474,7 +476,7 @@ fn open_stream(
     client: &Client,
     url: &Url,
     runtime: &tokio::runtime::Handle,
-    cancel: &Cancel,
+    cancel: &Arc<Cancel>,
     on_title: TitleCallback,
     started: std::time::Instant,
     guard: Option<NetGuard>,
@@ -546,7 +548,8 @@ fn open_stream(
     // Cancelling = stopping the download, which unblocks a read waiting for data.
     let token = reader.cancellation_token();
     let stop = token.clone();
-    cancel.on_cancel(move || token.cancel());
+    // Kept with the stream, dropped with it: a reconnection registers its own.
+    let cancel_hook = cancel.on_cancel_scoped(move || token.cancel());
     if cancel.is_cancelled() {
         return Err(End::Cancelled);
     }
@@ -617,6 +620,7 @@ fn open_stream(
         server,
         inband,
         _watchdog: watchdog,
+        _cancel_hook: cancel_hook,
     })
 }
 
@@ -654,6 +658,7 @@ fn decode(job: &mut Job, client: &Client, played: &mut bool, fired: &Fired) -> E
         server,
         inband,
         _watchdog,
+        _cancel_hook,
     } = match open_stream(
         client,
         &job.url,

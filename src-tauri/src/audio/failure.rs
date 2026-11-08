@@ -22,6 +22,7 @@ use tokio::sync::watch;
 
 use super::connectivity::Connectivity;
 use super::Cancel;
+use std::sync::Arc;
 
 /// Servers asked whether Internet works: the Radio-Browser API, which Soundfolk already uses for
 /// its catalog (no new third party learns anything). Any HTTPS answer counts, even an error: it
@@ -73,10 +74,10 @@ pub(crate) enum Verdict {
 pub(crate) fn diagnose(
     failure: &Failure,
     runtime: &tokio::runtime::Handle,
-    cancel: &Cancel,
+    cancel: &Arc<Cancel>,
 ) -> Verdict {
     let (stop, stopped) = watch::channel(false);
-    cancel.on_cancel(move || {
+    let _hook = cancel.on_cancel_scoped(move || {
         let _ = stop.send(true);
     });
     decide(
@@ -310,7 +311,7 @@ mod tests {
     #[test]
     fn a_stopped_playback_is_not_diagnosed() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let cancel = Cancel::default();
+        let cancel = Arc::new(Cancel::default());
         cancel.cancel();
         let start = std::time::Instant::now();
         assert_eq!(

@@ -27,7 +27,7 @@ mod playlist;
 pub(crate) mod public_net;
 mod web_source;
 
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::thread;
@@ -249,7 +249,9 @@ impl Status {
 #[derive(Default)]
 pub(crate) struct Cancel {
     flag: AtomicBool,
-    hooks: Mutex<Vec<Box<dyn FnOnce() + Send>>>,
+    /// Each with its id, so that a [`ScopedHook`] can take its own back.
+    hooks: Mutex<Vec<(u64, CancelHook)>>,
+    next_hook: AtomicU64,
     /// The flag again, for the tasks that wait for it ([`Cancel::cancelled`]).
     done: tokio::sync::watch::Sender<bool>,
 }
@@ -271,20 +273,55 @@ impl Cancel {
         self.flag.store(true, Ordering::SeqCst);
         self.done.send_replace(true);
         let hooks = std::mem::take(&mut *self.hooks.lock().unwrap_or_else(|p| p.into_inner()));
-        for hook in hooks {
+        for (_, hook) in hooks {
             hook();
         }
     }
 
-    /// Adds an action to run on cancellation (immediately if already cancelled).
-    /// Earlier hooks are kept: each one runs.
-    pub(crate) fn on_cancel(&self, hook: impl FnOnce() + Send + 'static) {
+    /// Adds an action to run on cancellation (immediately if already cancelled), for one attempt
+    /// within the session (a connection, a diagnosis): the hook is dropped with the returned
+    /// guard, so a session that reconnects for hours does not keep one per attempt. Other hooks
+    /// are kept: each one runs.
+    pub(crate) fn on_cancel_scoped(
+        self: &Arc<Self>,
+        hook: impl FnOnce() + Send + 'static,
+    ) -> ScopedHook {
+        ScopedHook {
+            id: self.add(Box::new(hook)),
+            cancel: self.clone(),
+        }
+    }
+
+    /// Keeps the hook, or runs it at once if already cancelled (`None`).
+    fn add(&self, hook: CancelHook) -> Option<u64> {
         let mut hooks = self.hooks.lock().unwrap_or_else(|p| p.into_inner());
         if self.is_cancelled() {
             drop(hooks);
             hook();
-        } else {
-            hooks.push(Box::new(hook));
+            return None;
+        }
+        let id = self.next_hook.fetch_add(1, Ordering::Relaxed);
+        hooks.push((id, hook));
+        Some(id)
+    }
+}
+
+type CancelHook = Box<dyn FnOnce() + Send>;
+
+/// A hook of [`Cancel::on_cancel_scoped`], removed when this is dropped (if it has not run).
+pub(crate) struct ScopedHook {
+    cancel: Arc<Cancel>,
+    id: Option<u64>,
+}
+
+impl Drop for ScopedHook {
+    fn drop(&mut self) {
+        if let Some(id) = self.id {
+            self.cancel
+                .hooks
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .retain(|(hook, _)| *hook != id);
         }
     }
 }
@@ -730,7 +767,13 @@ fn engine_loop(
     let mut playback: Option<Playback> = None;
 
     loop {
-        let command = match rx.recv_timeout(OUTPUT_CHECK) {
+        // Nothing playing: nothing to watch either, so wait for the next command.
+        let next = if playback.is_some() {
+            rx.recv_timeout(OUTPUT_CHECK)
+        } else {
+            rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
+        };
+        let command = match next {
             Ok(command) => command,
             Err(RecvTimeoutError::Timeout) => {
                 reopen_lost_output(
@@ -979,11 +1022,11 @@ mod tests {
 
     #[test]
     fn cancel_runs_hook_once_even_if_registered_late() {
-        let cancel = Cancel::default();
+        let cancel = Arc::new(Cancel::default());
         let hits = Arc::new(AtomicU32::new(0));
 
         let h = hits.clone();
-        cancel.on_cancel(move || {
+        let _first = cancel.on_cancel_scoped(move || {
             h.fetch_add(1, Ordering::SeqCst);
         });
         cancel.cancel();
@@ -991,7 +1034,7 @@ mod tests {
         assert_eq!(hits.load(Ordering::SeqCst), 1);
 
         let h = hits.clone();
-        cancel.on_cancel(move || {
+        let _late = cancel.on_cancel_scoped(move || {
             h.fetch_add(1, Ordering::SeqCst);
         });
         assert_eq!(hits.load(Ordering::SeqCst), 2);
@@ -999,16 +1042,42 @@ mod tests {
 
     #[test]
     fn cancel_runs_every_registered_hook() {
-        let cancel = Cancel::default();
+        let cancel = Arc::new(Cancel::default());
         let hits = Arc::new(AtomicU32::new(0));
-        for _ in 0..3 {
+        let hooks: Vec<_> = (0..3)
+            .map(|_| {
+                let h = hits.clone();
+                cancel.on_cancel_scoped(move || {
+                    h.fetch_add(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        cancel.cancel();
+        assert_eq!(hits.load(Ordering::SeqCst), 3);
+        drop(hooks);
+    }
+
+    #[test]
+    fn an_attempt_takes_its_hook_back_when_it_ends() {
+        let cancel = Arc::new(Cancel::default());
+        let hits = Arc::new(AtomicU32::new(0));
+        for _ in 0..100 {
             let h = hits.clone();
-            cancel.on_cancel(move || {
+            let _attempt = cancel.on_cancel_scoped(move || {
                 h.fetch_add(1, Ordering::SeqCst);
             });
         }
+        assert!(cancel.hooks.lock().unwrap().is_empty(), "no hook piles up");
+        let h = hits.clone();
+        let _current = cancel.on_cancel_scoped(move || {
+            h.fetch_add(1, Ordering::SeqCst);
+        });
         cancel.cancel();
-        assert_eq!(hits.load(Ordering::SeqCst), 3);
+        assert_eq!(
+            hits.load(Ordering::SeqCst),
+            1,
+            "only the attempt still going runs"
+        );
     }
 
     #[test]

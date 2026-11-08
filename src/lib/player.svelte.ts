@@ -62,6 +62,7 @@ class PlayerStore {
       listen<PlayerState>('player:state', (e) => {
         this.state = e.payload;
         if (e.payload.status !== 'error') this.goneFavorite = null;
+        for (const watch of [...this.stateWatchers]) watch();
       }),
       listen<string>('favorite:gone', (e) => (this.goneFavorite = e.payload)),
       listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
@@ -151,21 +152,27 @@ class PlayerStore {
     }
   }
 
+  /** Called on each state the backend sends (`heard` waits on them). */
+  private stateWatchers = new Set<() => void>();
+
   /** Waits until the station just started is heard (true), fails or stays silent (false). */
   private heard(): Promise<boolean> {
     return new Promise((resolve) => {
-      const start = Date.now();
-      const timer = setInterval(() => {
+      const settle = (heard: boolean) => {
+        clearTimeout(timer);
+        this.stateWatchers.delete(check);
+        resolve(heard);
+      };
+      const check = () => {
         const status = this.state.status;
-        const done = status === 'playing' || status === 'paused';
+        if (status === 'playing' || status === 'paused') settle(true);
         // Reconnecting right after a start means the stream failed and the engine retries:
         // for a surprise, the next station is quicker.
-        const failed = status === 'error' || status === 'reconnecting';
-        if (done || failed || Date.now() - start > SURPRISE_WAIT_MS) {
-          clearInterval(timer);
-          resolve(done);
-        }
-      }, 200);
+        else if (status === 'error' || status === 'reconnecting') settle(false);
+      };
+      const timer = setTimeout(() => settle(false), SURPRISE_WAIT_MS);
+      this.stateWatchers.add(check);
+      check();
     });
   }
 
