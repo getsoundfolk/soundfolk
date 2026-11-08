@@ -59,6 +59,8 @@ Soundfolk strictly decouples the user interface, the performance-critical logic 
   notice at the first play and a setting to turn it off. Nothing is sent before the notice has been shown.
 * Personal stations never leave the device.
 * Catalog searches are sent to the Radio-Browser API.
+* The update check (desktop, `updates.rs`) downloads `latest.json` from the latest GitHub Release once a day while
+  its setting is on; nightlies and packaged copies never check (05 §4).
 
 ## 5. Files on disk
 The app identifier is `io.github.getsoundfolk.soundfolk` (Flathub-style, after the `getsoundfolk` GitHub organisation;

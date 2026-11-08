@@ -18,6 +18,12 @@ export type TrackInfo = {
 /** Where the title comes from: the stream itself, the station's web page, or the server's status. */
 type TitleSource = 'icy' | 'stream_tags' | 'recipe' | 'server';
 
+/** A newer version of the app (desktop only): its number and its release page. */
+export type Release = { version: string; url: string };
+
+/** Whether this copy checks for new versions (not a nightly or a packaged one), and if it is on. */
+export type UpdateCheck = { supported: boolean; enabled: boolean };
+
 export type NowPlaying = {
   station: string | null;
   /** `Artist - Title` as shown. */
@@ -272,6 +278,12 @@ export const api = {
   getTrackIdentification: () => invoke<boolean>('get_track_identification'),
   setTrackIdentification: (enabled: boolean) =>
     invoke<void>('set_track_identification', { enabled }),
+
+  /** New versions (desktop only: these commands do not exist on mobile). */
+  getUpdateCheck: () => invoke<UpdateCheck>('get_update_check'),
+  setUpdateCheck: (enabled: boolean) => invoke<void>('set_update_check', { enabled }),
+  getUpdate: () => invoke<Release | null>('get_update'),
+  skipUpdate: (version: string) => invoke<void>('skip_update', { version }),
 
   getClickCounting: () => invoke<boolean>('get_click_counting'),
   setClickCounting: (enabled: boolean) => invoke<void>('set_click_counting', { enabled }),

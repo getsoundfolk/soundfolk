@@ -4524,6 +4524,7 @@ dependencies = [
  "rtrb",
  "rubato",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "soundfolk-nowplaying",

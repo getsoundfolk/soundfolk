@@ -18,6 +18,7 @@
   import { savedTheme, setTheme, type Theme } from '../theme';
   import { trackServices } from '../trackServices.svelte';
   import { ui } from '../ui.svelte';
+  import { updates } from '../updates.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import OrderedSources, { type SourceItem } from './OrderedSources.svelte';
   import Icon from './Icon.svelte';
@@ -32,6 +33,11 @@
   /** The sender's name in share links (docs/16-sharing.md §4.2). */
   let shareName = $state('');
   let version = $state<string | null>(null);
+  /** New versions: hidden where the app does not check (mobile, nightly, packaged copies). */
+  let updateCheck = $state<{ supported: boolean; enabled: boolean }>({
+    supported: false,
+    enabled: false,
+  });
   let back: HTMLButtonElement | undefined = $state();
   let theme = $state<Theme>(savedTheme());
   const THEMES: { id: Theme; label: string }[] = [
@@ -158,6 +164,10 @@
       .then((s) => (coverSources = s))
       .catch((e) => errors.report('settings', e));
     api
+      .getUpdateCheck()
+      .then((check) => (updateCheck = check))
+      .catch(() => {});
+    api
       .getAutostart()
       .then((enabled) => (autostart = enabled))
       .catch((e) => errors.report('settings', e));
@@ -182,6 +192,25 @@
       if (!enabled) player.clickNotice = false;
     } catch (e) {
       clickCounting = !enabled;
+      errors.report('settings', e);
+    }
+  }
+
+  async function changeUpdateCheck(enabled: boolean) {
+    updateCheck.enabled = enabled;
+    try {
+      await api.setUpdateCheck(enabled);
+      await updates.load();
+    } catch (e) {
+      updateCheck.enabled = !enabled;
+      errors.report('settings', e);
+    }
+  }
+
+  async function skipUpdate() {
+    try {
+      await updates.skip();
+    } catch (e) {
       errors.report('settings', e);
     }
   }
@@ -453,6 +482,25 @@
           onchange={(e) => changeClickCounting(e.currentTarget.checked)}
         />
       </label>
+
+      {#if updateCheck.supported}
+        <label class={styles.option}>
+          <span class={styles.text}>
+            <span class={styles.name}>Tell me when a new version is out</span>
+            <span class={styles.detail}>
+              Once a day, Soundfolk asks GitHub for the number of the latest version (GitHub sees
+              your IP address). Nothing is installed: you update the way you installed it.
+            </span>
+          </span>
+          <input
+            class={styles.toggle}
+            type="checkbox"
+            role="switch"
+            checked={updateCheck.enabled}
+            onchange={(e) => changeUpdateCheck(e.currentTarget.checked)}
+          />
+        </label>
+      {/if}
 
       <label class={styles.option}>
         <span class={styles.text}>
@@ -755,6 +803,21 @@
           <dt>Version</dt>
           <dd>{version ?? '—'}</dd>
         </div>
+        {#if updates.available}
+          <div class={styles.update}>
+            <dt>New version</dt>
+            <dd>
+              {updates.available.version}
+              <button
+                class={styles.link}
+                type="button"
+                onclick={() => updates.open().catch((e) => errors.report('settings', e))}
+                >What's new</button
+              >
+              <button class={styles.link} type="button" onclick={skipUpdate}>Skip</button>
+            </dd>
+          </div>
+        {/if}
         <div>
           <dt>License</dt>
           <dd>MPL-2.0</dd>

@@ -48,6 +48,21 @@
   background: var(--color-surface-higher);
 }
 
+/* A new version is out (Settings › About): a dot on the gear, nothing more. */
+.tool {
+  position: relative;
+}
+
+.dot {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: 50%;
+  background: var(--color-accent-text);
+}
+
 .tool:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;

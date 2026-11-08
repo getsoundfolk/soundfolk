@@ -18,12 +18,14 @@
   import { shortcutKeydown } from './lib/shortcuts';
   import { stationNames } from './lib/stationNames.svelte';
   import { ui } from './lib/ui.svelte';
+  import { updates } from './lib/updates.svelte';
 
   onMount(() => {
     const ready = player.init();
     const listsReady = lists.init();
     stationNames.init();
     const shareReady = share.init();
+    const updatesReady = updates.init();
     // Back from the editor: a recipe saved meanwhile is picked up now (the folder is not polled).
     const focus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (focused) api.reloadRecipes().catch(() => {});
@@ -32,6 +34,7 @@
       ready.then((off) => off());
       listsReady.then((off) => off());
       shareReady.then((off) => off());
+      updatesReady.then((off) => off());
       focus.then((off) => off());
     };
   });

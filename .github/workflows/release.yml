@@ -231,6 +231,19 @@ jobs:
       - name: List the packages
         run: ls -l out
 
+      - name: Describe the release for the app's update check
+        if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.release }}
+        run: |
+          # Read by src-tauri/src/updates.rs at releases/latest/download/latest.json, which
+          # GitHub serves from the latest release that is not a pre-release.
+          jq -n --arg version "$VERSION" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
+            '{version: $version, url: $url}' > out/latest.json
+          cat out/latest.json
+
       - name: Publish the tagged release
         if: github.ref_type == 'tag'
         env:

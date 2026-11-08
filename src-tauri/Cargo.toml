@@ -99,6 +99,8 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-autostart = "2"
 # Track notifications (Settings): on Linux through D-Bus with the zbus already there, no image support
 notify-rust = { version = "4.18", default-features = false, features = ["z"] }
+# The update check compares the latest release with this one (already pulled in by Tauri)
+semver = "1"
 
 # Wake from sleep, for the stream to reconnect at once (already pulled in by Tauri)
 [target.'cfg(windows)'.dependencies]

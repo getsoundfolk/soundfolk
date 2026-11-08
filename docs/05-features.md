@@ -88,4 +88,9 @@ onwards.
   rest of the history — are looked up on MusicBrainz, the open music database, to get the canonical artist, album,
   release date, genres and artist country used by the stats. As with any request, the IP address is visible to
   MusicBrainz. One request per second at most; lookups wait while offline and resume later.
+* **New versions (desktop, on by default):** once a day, Soundfolk downloads `latest.json` from the latest GitHub
+  Release (the version number and its release page; GitHub sees the IP address). When it is newer, a dot on ⚙ and a
+  line in Settings › About link to the release page, with **Skip** for that version. Nothing is downloaded or
+  installed: the listener updates the way they installed. Never checked by a nightly, a Flatpak or Snap, or a build
+  whose packager set `SOUNDFOLK_NO_UPDATE_CHECK`, since their package manager updates them. Turned off in ⚙ › Privacy.
 * **No telemetry** beyond that.

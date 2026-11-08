@@ -20,6 +20,8 @@ mod share;
 mod track_services;
 mod tracks;
 mod tray;
+#[cfg(desktop)]
+mod updates;
 mod volume;
 
 use std::sync::{Arc, Mutex};
@@ -415,6 +417,19 @@ pub fn run() {
                     }
                 },
             );
+            #[cfg(desktop)]
+            {
+                let updates = Arc::new(updates::Updates::new(app.handle()));
+                app.manage(updates.clone());
+                updates::start(
+                    app.handle(),
+                    updates,
+                    app.path()
+                        .app_cache_dir()
+                        .ok()
+                        .map(|dir| dir.join("updates")),
+                );
+            }
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
@@ -609,6 +624,14 @@ pub fn run() {
             mini::close_mini_player,
             mini::set_mini_compact,
             mini::switch_favorite,
+            #[cfg(desktop)]
+            updates::get_update_check,
+            #[cfg(desktop)]
+            updates::set_update_check,
+            #[cfg(desktop)]
+            updates::get_update,
+            #[cfg(desktop)]
+            updates::skip_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Soundfolk")

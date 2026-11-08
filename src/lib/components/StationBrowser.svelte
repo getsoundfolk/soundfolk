@@ -26,6 +26,7 @@
   import StationRow from './StationRow.svelte';
   import Icon from './Icon.svelte';
   import styles from './StationBrowser.module.css';
+  import { updates } from '../updates.svelte';
 
   // The three destinations of docs/06-ui-principles.md §1: what is mine, what others offer, what I
   // heard.
@@ -271,10 +272,16 @@
     <button
       class={styles.tool}
       type="button"
-      aria-label="Settings"
-      title="Settings"
+      aria-label={updates.available ? 'Settings (a new version is available)' : 'Settings'}
+      title={updates.available
+        ? `Settings · Soundfolk ${updates.available.version} is out`
+        : 'Settings'}
       bind:this={gear}
-      onclick={ui.openSettings}><Icon name="settings" size={18} /></button
+      onclick={ui.openSettings}
+      ><Icon name="settings" size={18} />{#if updates.available}<span
+          class={styles.dot}
+          aria-hidden="true"
+        ></span>{/if}</button
     >
   </div>
 
