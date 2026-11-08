@@ -133,9 +133,9 @@ pub fn start(app: &AppHandle, updates: Arc<Updates>, cache_dir: Option<PathBuf>)
         };
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
-            let enabled = app
-                .state::<Database>()
-                .get_bool(SETTING_CHECK, true)
+            let db = app.state::<Database>();
+            let enabled = with_db(&db, |db| Ok(db.get_bool(SETTING_CHECK, true)?))
+                .await
                 .unwrap_or_else(|e| {
                     tracing::warn!("update check setting not read: {e}");
                     false

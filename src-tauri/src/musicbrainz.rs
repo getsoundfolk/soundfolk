@@ -14,6 +14,7 @@ use stream_download::http::reqwest::{Client, StatusCode, Url};
 use tauri::Manager;
 use tokio::sync::Notify;
 
+use crate::commands::with_db;
 use crate::db::{Database, TrackToIdentify};
 use crate::tracks;
 
@@ -208,11 +209,13 @@ pub fn spawn_worker(app: tauri::AppHandle, mb: Arc<MusicBrainz>, wake: Arc<Notif
     tauri::async_runtime::spawn(async move {
         loop {
             let db = app.state::<Database>();
-            let next = match db.get_bool(SETTING_IDENTIFY, false) {
-                Ok(true) => db.next_track_to_identify(),
-                Ok(false) => Ok(None),
-                Err(e) => Err(e),
-            };
+            let next = with_db(&db, |db| {
+                Ok(match db.get_bool(SETTING_IDENTIFY, false)? {
+                    true => db.next_track_to_identify()?,
+                    false => None,
+                })
+            })
+            .await;
             let wait = match next {
                 Ok(Some(track)) => identify(&db, &mb, &track).await,
                 Ok(None) => IDLE_WAIT,
@@ -228,30 +231,34 @@ pub fn spawn_worker(app: tauri::AppHandle, mb: Arc<MusicBrainz>, wake: Arc<Notif
 
 /// Identifies one track; returns how long to wait before the next request.
 async fn identify(db: &Database, mb: &MusicBrainz, track: &TrackToIdentify) -> Duration {
+    let key = track.track_key.clone();
     let Some(artist) = track.artist.as_deref() else {
         // Without an artist, a title-only search is too unreliable.
-        log_db(db.track_not_found(&track.track_key));
+        save(db, move |db| db.track_not_found(&key)).await;
         return Duration::ZERO;
     };
     let found = match mb.find_recording(artist, &track.title).await {
         Ok(found) => found,
         Err(e) => {
             tracing::debug!("MusicBrainz lookup failed: {e}");
-            log_db(db.postpone_track(&track.track_key));
+            save(db, move |db| db.postpone_track(&key)).await;
             return ERROR_WAIT;
         }
     };
     let Some(found) = found else {
-        log_db(db.track_not_found(&track.track_key));
+        save(db, move |db| db.track_not_found(&key)).await;
         return REQUEST_INTERVAL;
     };
-    log_db(db.save_track_match(&track.track_key, &found));
+    let matched = found.clone();
+    save(db, move |db| db.save_track_match(&key, &matched)).await;
 
     // Country and genres come from the artist, looked up once.
-    if db.artist_needs_lookup(&found.artist_mbid).unwrap_or(false) {
+    let mbid = found.artist_mbid.clone();
+    let needs_lookup = with_db(db, move |db| Ok(db.artist_needs_lookup(&mbid)?)).await;
+    if needs_lookup.unwrap_or(false) {
         tokio::time::sleep(REQUEST_INTERVAL).await;
         match mb.artist(&found.artist_mbid).await {
-            Ok(Some(info)) => log_db(db.save_artist(&info)),
+            Ok(Some(info)) => save(db, move |db| db.save_artist(&info)).await,
             Ok(None) => {}
             Err(e) => tracing::debug!("MusicBrainz artist lookup failed: {e}"),
         }
@@ -259,8 +266,12 @@ async fn identify(db: &Database, mb: &MusicBrainz, track: &TrackToIdentify) -> D
     REQUEST_INTERVAL
 }
 
-fn log_db(result: rusqlite::Result<()>) {
-    if let Err(e) = result {
+/// Saves what was found, off the async runtime ([`with_db`]); a failure is logged.
+async fn save(
+    db: &Database,
+    work: impl FnOnce(&Database) -> rusqlite::Result<()> + Send + 'static,
+) {
+    if let Err(e) = with_db(db, move |db| Ok(work(db)?)).await {
         tracing::warn!("track identification not saved: {e}");
     }
 }

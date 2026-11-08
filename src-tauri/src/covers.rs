@@ -30,6 +30,7 @@ use stream_download::http::reqwest::Url;
 use tauri::{Emitter, Manager};
 
 use crate::audio::NowPlaying;
+use crate::commands::with_db;
 use crate::db::Database;
 use crate::media_controls::SystemMedia;
 use crate::musicbrainz::{LookupError, MusicBrainz};
@@ -557,10 +558,13 @@ impl Covers {
                 },
                 SourceId::Station => Ok(None),
             };
-            let db = this.app.state::<Database>();
             match &result {
                 Ok(url) => {
-                    if let Err(e) = db.save_cover(&key, url.as_deref()) {
+                    let (key, url) = (key.clone(), url.clone());
+                    let db = this.app.state::<Database>();
+                    let saved =
+                        with_db(&db, move |db| Ok(db.save_cover(&key, url.as_deref())?)).await;
+                    if let Err(e) = saved {
                         tracing::warn!("cover not cached: {e}");
                     }
                 }

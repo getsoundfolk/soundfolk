@@ -203,7 +203,10 @@ pub fn close_mini_player(app: AppHandle) {
 /// The mini player's shrink and expand buttons.
 #[tauri::command]
 pub async fn set_mini_compact(app: AppHandle, compact: bool) -> Result<(), String> {
-    set_compact(&app, compact).map_err(|e| e.to_string())
+    // Off the async runtime: the setting is saved to the database.
+    crate::commands::blocking(move || set_compact(&app, compact).map_err(|e| e.to_string().into()))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Next or previous favorite, as the media keys and the tray do it.

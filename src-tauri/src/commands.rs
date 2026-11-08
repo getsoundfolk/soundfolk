@@ -262,11 +262,9 @@ async fn count_click_if_still_on_air(app: &AppHandle, play: u64, station_id: &st
     if audio.plays.load(Ordering::SeqCst) != play || !listening {
         return;
     }
-    if !app
-        .state::<Database>()
-        .get_bool(SETTING_CLICK_COUNTING, true)
-        .unwrap_or(false)
-    {
+    let db = app.state::<Database>();
+    let counting = with_db(&db, |db| Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)).await;
+    if !counting.unwrap_or(false) {
         return;
     }
     let catalog = app.state::<CatalogState>().0.clone();
