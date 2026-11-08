@@ -98,16 +98,9 @@ pub async fn refresh<T>(
         .get(header::ETAG)
         .and_then(|v| v.to_str().ok())
         .map(str::to_owned);
-    if response
-        .content_length()
-        .is_some_and(|n| n > MAX_SIZE as u64)
-    {
-        return Err(format!("{url}: too large"));
-    }
-    let body = response.bytes().await.map_err(|e| e.to_string())?;
-    if body.len() > MAX_SIZE {
-        return Err(format!("{url}: too large"));
-    }
+    let body = crate::http::body_at_most(response, MAX_SIZE)
+        .await
+        .map_err(|e| format!("{url}: {e}"))?;
     let text = std::str::from_utf8(&body).map_err(|e| format!("{url}: {e}"))?;
     let list = parse(text).map_err(|e| format!("{url}: {e}"))?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;

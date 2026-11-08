@@ -51,17 +51,18 @@ pub fn client(name: &str) -> Option<Client> {
         .ok()
 }
 
+/// Bigger than this, a catalog's answer to a track search is not one.
+const MAX_ANSWER: usize = 2 * 1024 * 1024;
+
 /// A catalog's JSON answer.
 pub async fn get_json<T: DeserializeOwned>(client: &Client, url: Url) -> Result<T, String> {
-    let bytes = client
+    let response = client
         .get(url)
         .send()
         .await
         .and_then(|r| r.error_for_status())
-        .map_err(|e| e.to_string())?
-        .bytes()
-        .await
         .map_err(|e| e.to_string())?;
+    let bytes = crate::http::body_at_most(response, MAX_ANSWER).await?;
     serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 

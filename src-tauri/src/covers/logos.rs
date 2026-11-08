@@ -17,6 +17,11 @@ use crate::audio::public_net;
 const MAX_BYTES: usize = 1024 * 1024;
 /// A kept logo older than this is fetched again (and still shown meanwhile).
 const MAX_AGE: Duration = Duration::from_secs(30 * 24 * 3600);
+/// A logo not fetched again for this long belongs to a station not played for two months at
+/// least: it is deleted at startup, so the folder does not grow with every station ever tried.
+const FORGOTTEN_AFTER: Duration = Duration::from_secs(3 * 30 * 24 * 3600);
+/// A half-written download this old was cut short.
+const PARTIAL_AFTER: Duration = Duration::from_secs(3600);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// Some image hosts (Wikimedia, where many logos live) ask clients to name themselves.
 const USER_AGENT: &str = concat!(
@@ -81,6 +86,35 @@ fn is_safe_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
+/// Deletes the logos not fetched again for [`FORGOTTEN_AFTER`], and downloads left half-written.
+fn prune(dir: &std::path::Path, now: SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let age = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|at| now.duration_since(at).ok());
+        // A `.part` is a download being written, or one an exit cut short: only an old one goes.
+        let partial = path.extension().is_some_and(|ext| ext == "part");
+        let limit = if partial {
+            PARTIAL_AFTER
+        } else {
+            FORGOTTEN_AFTER
+        };
+        if age.is_some_and(|age| age > limit) && std::fs::remove_file(&path).is_ok() {
+            removed += 1;
+        }
+    }
+    if removed > 0 {
+        tracing::debug!(removed, "old station logos deleted");
+    }
+}
+
 fn logo_of(bytes: &[u8], media_type: &str, file: Option<String>) -> Logo {
     let data = base64::engine::general_purpose::STANDARD.encode(bytes);
     Logo {
@@ -106,6 +140,14 @@ impl LogoCache {
             .build()
             .inspect_err(|e| tracing::warn!("no HTTP client for station logos: {e}"))
             .ok();
+        if let Some(dir) = dir.clone() {
+            let pruned = std::thread::Builder::new()
+                .name("logo-pruner".into())
+                .spawn(move || prune(&dir, SystemTime::now()));
+            if let Err(e) = pruned {
+                tracing::debug!("old station logos not pruned: {e}");
+            }
+        }
         Self { dir, client }
     }
 
@@ -143,27 +185,27 @@ impl LogoCache {
         url: &str,
         max: usize,
     ) -> Result<(Vec<u8>, &'static str, &'static str), String> {
-        let client = self.client.as_ref().ok_or("no HTTP client")?;
         // The client checks names once resolved, and redirects; an IP in the address is never
         // resolved, so it is checked here.
         let url = Url::parse(url).map_err(|e| e.to_string())?;
         public_net::check(&url)?;
-        let mut response = client
+        self.fetch_unchecked(url, max).await
+    }
+
+    /// [`LogoCache::download`] once the address is checked.
+    async fn fetch_unchecked(
+        &self,
+        url: Url,
+        max: usize,
+    ) -> Result<(Vec<u8>, &'static str, &'static str), String> {
+        let client = self.client.as_ref().ok_or("no HTTP client")?;
+        let response = client
             .get(url)
             .send()
             .await
             .and_then(|r| r.error_for_status())
             .map_err(|e| e.to_string())?;
-        if response.content_length().is_some_and(|n| n > max as u64) {
-            return Err("image too big".into());
-        }
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-            bytes.extend_from_slice(&chunk);
-            if bytes.len() > max {
-                return Err("image too big".into());
-            }
-        }
+        let bytes = crate::http::body_at_most(response, max).await?;
         let (ext, media_type) = format_of(&bytes).ok_or("not an image")?;
         Ok((bytes, ext, media_type))
     }
@@ -237,6 +279,59 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    #[test]
+    fn logos_of_stations_not_played_for_long_are_deleted() {
+        let dir =
+            std::env::temp_dir().join(format!("soundfolk-logos-prune-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["kept.png", "old.png", "writing.part", "cut.part"] {
+            std::fs::write(dir.join(name), PNG).unwrap();
+        }
+        let age = |name: &str, age: Duration| {
+            std::fs::File::options()
+                .write(true)
+                .open(dir.join(name))
+                .unwrap()
+                .set_modified(SystemTime::now() - age)
+                .unwrap();
+        };
+        age("old.png", FORGOTTEN_AFTER + Duration::from_secs(60));
+        age("cut.part", PARTIAL_AFTER + Duration::from_secs(60));
+        prune(&dir, SystemTime::now());
+        let mut left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["kept.png", "writing.part"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn images_too_big_are_not_kept() {
+        // The size rule is `http::body_at_most`'s, tested there; here, that it applies.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        // A local server: only the size is tested, so the public-network rule is left out.
+        let cache = LogoCache {
+            dir: None,
+            client: Some(Client::new()),
+        };
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 1024];
+            let _ = socket.read(&mut request).await;
+            let _ = socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2000000\r\n\r\n")
+                .await;
+        });
+        let url = format!("http://{address}/logo.png").parse().unwrap();
+        let result = cache.fetch_unchecked(url, MAX_BYTES).await;
+        assert!(result.is_err());
     }
 
     #[test]

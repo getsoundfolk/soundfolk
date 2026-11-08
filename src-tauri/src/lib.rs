@@ -10,6 +10,7 @@ mod donations;
 mod error;
 mod export;
 mod favorite_repair;
+mod http;
 mod listening;
 mod media_controls;
 mod mini;

@@ -125,10 +125,9 @@ impl MusicBrainz {
         let response = response
             .error_for_status()
             .map_err(|e| LookupError::Network(e.to_string()))?;
-        let bytes = response
-            .bytes()
+        let bytes = crate::http::body_at_most(response, MAX_ANSWER)
             .await
-            .map_err(|e| LookupError::Network(e.to_string()))?;
+            .map_err(LookupError::Network)?;
         serde_json::from_slice(&bytes).map_err(|e| LookupError::Invalid(e.to_string()))
     }
 
@@ -194,15 +193,17 @@ impl MusicBrainz {
         let response = response
             .error_for_status()
             .map_err(|e| LookupError::Network(e.to_string()))?;
-        let bytes = response
-            .bytes()
+        let bytes = crate::http::body_at_most(response, MAX_ANSWER)
             .await
-            .map_err(|e| LookupError::Network(e.to_string()))?;
+            .map_err(LookupError::Network)?;
         let body: Value =
             serde_json::from_slice(&bytes).map_err(|e| LookupError::Invalid(e.to_string()))?;
         Ok(front_cover(&body))
     }
 }
+
+/// Bigger than this, a MusicBrainz answer is not one (a search returns a few dozen KiB).
+const MAX_ANSWER: usize = 2 * 1024 * 1024;
 
 /// Runs for the whole life of the app: identifies liked tracks one by one while the setting is on.
 pub fn spawn_worker(app: tauri::AppHandle, mb: Arc<MusicBrainz>, wake: Arc<Notify>) {
