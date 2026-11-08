@@ -260,10 +260,10 @@ mod imp {
 /// Sets the app the notifications come from on macOS, once, before the first one.
 #[cfg(target_os = "macos")]
 fn init(identifier: &str) {
-    if !tauri::is_dev() {
-        if let Err(e) = notify_rust::set_application(identifier) {
-            tracing::warn!("notifications: app not set: {e}");
-        }
+    if !tauri::is_dev()
+        && let Err(e) = notify_rust::set_application(identifier)
+    {
+        tracing::warn!("notifications: app not set: {e}");
     }
 }
 

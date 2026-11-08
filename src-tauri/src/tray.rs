@@ -14,7 +14,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use crate::audio::PlayerState;
 use crate::media_controls::{control, Command};
@@ -52,6 +52,8 @@ pub fn set_available(available: bool) {
 /// after all, or the app would play on with no way back to it.
 #[cfg(target_os = "linux")]
 pub fn set_unavailable(app: &AppHandle) {
+    use tauri::Manager;
+
     set_available(false);
     if app.get_webview_window(crate::MAIN_WINDOW).is_none() {
         crate::show_main_window(app);
