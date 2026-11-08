@@ -273,6 +273,25 @@ async fn count_click_if_still_on_air(app: &AppHandle, play: u64, station_id: &st
     }
 }
 
+/// The station for a recipe tool: its catalog id if it has one, nothing else.
+fn catalog_ref(station_id: Option<String>) -> StationRef {
+    StationRef {
+        id: station_id.filter(|id| is_catalog_id(id)),
+        ..Default::default()
+    }
+}
+
+/// `base`, then `base-2`, `base-3`…: names to try until one is free.
+fn numbered(base: &str) -> impl Iterator<Item = String> + '_ {
+    (1..).map(move |n| {
+        if n == 1 {
+            base.to_owned()
+        } else {
+            format!("{base}-{n}")
+        }
+    })
+}
+
 /// Catalog stations have a UUID; personal stations (`user:…`) are never reported.
 pub(crate) fn is_catalog_id(id: &str) -> bool {
     !id.starts_with("user:") && id.len() == 36
@@ -434,10 +453,7 @@ pub async fn test_recipe(
         Ok(())
     })
     .await?;
-    let station = StationRef {
-        id: station_id.filter(|id| is_catalog_id(id)),
-        ..Default::default()
-    };
+    let station = catalog_ref(station_id);
     Ok(web.0.test(&station, &url).await)
 }
 
@@ -468,10 +484,7 @@ fn edit_recipe_file(
 ) -> AppResult<String> {
     let recipes = web.recipes().clone();
     let dir = recipes_folder(&recipes)?;
-    let station = StationRef {
-        id: station_id.filter(|id| is_catalog_id(id)),
-        ..Default::default()
-    };
+    let station = catalog_ref(station_id);
     let set = recipes.current();
     let existing = set.find(station.id.as_deref(), &url).cloned();
     let path = match existing {
@@ -494,14 +507,7 @@ fn edit_recipe_file(
                     .ok()
                     .and_then(|u| u.host_str().map(str::to_owned));
                 let base = recipes::slug(name.as_deref().or(host.as_deref()).unwrap_or("station"));
-                let path = (1..)
-                    .map(|n| {
-                        if n == 1 {
-                            base.clone()
-                        } else {
-                            format!("{base}-{n}")
-                        }
-                    })
+                let path = numbered(&base)
                     .filter(|id| !recipes.is_known_id(id))
                     .map(|id| dir.join(format!("{id}.toml")))
                     .find(|path| !path.exists())
@@ -546,10 +552,7 @@ pub async fn share_recipe(
     let titles = web.0.clone();
     let (entry, text) = blocking(move || {
         titles.reload_recipes();
-        let station = StationRef {
-            id: station_id.filter(|id| is_catalog_id(id)),
-            ..Default::default()
-        };
+        let station = catalog_ref(station_id);
         let entry = titles
             .recipes()
             .current()
@@ -1045,14 +1048,7 @@ pub(crate) fn save_download(
     std::fs::create_dir_all(&dir).at(&dir)?;
     let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
     let base = format!("{stem}-{date}");
-    let path = (1..)
-        .map(|n| {
-            if n == 1 {
-                base.clone()
-            } else {
-                format!("{base}-{n}")
-            }
-        })
+    let path = numbered(&base)
         .map(|name| dir.join(format!("{name}.{extension}")))
         .find(|path| !path.exists())
         .expect("an unused name");

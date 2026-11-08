@@ -11,6 +11,7 @@ use tauri::State;
 use unicode_normalization::UnicodeNormalization;
 use url::Url;
 
+use crate::catalog::radio_browser::is_uuid;
 use crate::catalog::Station;
 use crate::commands::{with_db, CatalogState};
 use crate::db::Database;
@@ -581,15 +582,6 @@ fn percent_decode(text: &str) -> String {
         .next()
         .map(|(_, v)| v.into_owned())
         .unwrap_or_default()
-}
-
-pub fn is_uuid(text: &str) -> bool {
-    let bytes = text.as_bytes();
-    bytes.len() == 36
-        && bytes.iter().enumerate().all(|(i, b)| match i {
-            8 | 13 | 18 | 23 => *b == b'-',
-            _ => b.is_ascii_hexdigit(),
-        })
 }
 
 fn is_list_id(id: &str) -> bool {

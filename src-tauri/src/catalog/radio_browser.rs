@@ -499,7 +499,8 @@ fn convert(raw: RawStation) -> Option<Station> {
     })
 }
 
-fn is_uuid(value: &str) -> bool {
+/// A Radio-Browser station id: a UUID in its usual text form.
+pub(crate) fn is_uuid(value: &str) -> bool {
     value.len() == 36
         && value.char_indices().all(|(i, c)| match i {
             8 | 13 | 18 | 23 => c == '-',
