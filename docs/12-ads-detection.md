@@ -109,7 +109,7 @@ station it matches shows the reason on its sheet: "Stream served by an ad platfo
   notification for it.
 
 ### 3.2 History, stats, covers
-* `journalize_title` ([lib.rs](../src-tauri/src/lib.rs)) writes nothing for an ad, and the track that comes after
+* `journalize_title` ([listening.rs](../src-tauri/src/listening.rs)) writes nothing for an ad, and the track that comes after
   it is logged as usual.
 * No cover lookup ([covers.rs](../src-tauri/src/covers.rs)) and no MusicBrainz query for an ad.
 * A title detected by the heuristic (2.4) gets the same treatment. Because that can be wrong, the station sheet

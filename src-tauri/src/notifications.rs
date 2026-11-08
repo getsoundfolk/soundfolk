@@ -2,10 +2,10 @@
 //! Track notifications: when a new track goes on air while Soundfolk is in the background (its
 //! window closed, minimized or behind another one), the desktop shows it. Off by default.
 //!
-//! A track is the one `journalize_title` adds to the history (`lib.rs`): a station repeating the
-//! same title, or sending its own name between tracks, notifies nothing. On Linux, each
-//! notification replaces the previous one and is marked transient, so a long listen does not fill
-//! the notification list.
+//! A track is the one `journalize_title` adds to the history (`listening.rs`): a station
+//! repeating the same title, or sending its own name between tracks, notifies nothing. On Linux,
+//! each notification replaces the previous one and is marked transient, so a long listen does not
+//! fill the notification list.
 //!
 //! The notification shows the track's cover, else the station's logo. It waits for them
 //! (`covers.rs`), at most [`PICTURE_WAIT`]: a cover already known comes at once, one looked up

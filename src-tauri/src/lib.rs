@@ -10,6 +10,7 @@ mod donations;
 mod error;
 mod export;
 mod favorite_repair;
+mod listening;
 mod media_controls;
 mod mini;
 mod musicbrainz;
@@ -29,16 +30,14 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WindowEvent};
 use tracing_subscriber::EnvFilter;
 
-use audio::{DesktopAudioEngine, NowPlaying, PlayerState, WebEvent, WebTitles};
+use audio::{DesktopAudioEngine, NowPlaying, WebEvent, WebTitles};
 use catalog::radio_browser::RadioBrowser;
-use commands::{AudioState, CatalogState, OnAir};
+use commands::{AudioState, CatalogState};
 use db::Database;
 use media_controls::SystemMedia;
 
 /// Event emitted on every player state change (payload: `PlayerState`).
 const PLAYER_STATE_EVENT: &str = "player:state";
-/// Event emitted when the on-air station or title changes (payload: `NowPlaying`).
-const NOW_PLAYING_EVENT: &str = "player:now-playing";
 /// Event emitted when the source of the title changes (payload: `TitleStatus`).
 const TITLE_STATUS_EVENT: &str = "player:title-status";
 /// Event emitted after a local recipe file was saved (payload: `RecipeNotice`).
@@ -47,145 +46,6 @@ const RECIPE_NOTICE_EVENT: &str = "recipes:notice";
 const DONATIONS_EVENT: &str = "donations:updated";
 /// Event emitted when new curated lists were downloaded (no payload).
 const LISTS_EVENT: &str = "lists:updated";
-/// How often an open listening session records that it is still playing.
-const SESSION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(60);
-
-/// Adds the title to `listening_history`, without consecutive duplicates: while listening goes on,
-/// the same track on the same station several times in a row is one entry (checked here, then by
-/// the database, which also catches another spelling of the title). After a stop (`last_logged`
-/// cleared, see `track_session`), the same track is heard again and gets its own entry. Some radios
-/// send their own name as the title between tracks: that is not a track, so it is skipped.
-/// Returns whether a new entry was added: a new track on air.
-fn journalize_title(
-    app: &tauri::AppHandle,
-    station: &Mutex<Option<OnAir>>,
-    last_logged: &Mutex<Option<Logged>>,
-    now_playing: &NowPlaying,
-) -> bool {
-    let Some(title) = now_playing
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-    else {
-        return false;
-    };
-    let Some(station) = station.lock().unwrap_or_else(|p| p.into_inner()).clone() else {
-        return false;
-    };
-    let is_station_name =
-        |name: Option<&str>| name.is_some_and(|n| n.trim().eq_ignore_ascii_case(title));
-    if is_station_name(station.name.as_deref()) || is_station_name(now_playing.station.as_deref()) {
-        return false;
-    }
-
-    let mut last = last_logged.lock().unwrap_or_else(|p| p.into_inner());
-    let entry = (station.id, title.to_owned());
-    let db = app.state::<Database>();
-    if let Some(logged) = last
-        .as_mut()
-        .filter(|l| l.station_id == entry.0 && l.title == entry.1)
-    {
-        // The same title, now with artist and title apart (a server API confirming the ICY title).
-        if let (Some(track), false) = (&now_playing.track, logged.structured) {
-            let parsed = tracks::ParsedTitle {
-                artist: track.artist.clone(),
-                title: track.title.clone(),
-            };
-            match db.set_track_parts(&entry.0, &entry.1, &parsed) {
-                Ok(()) => logged.structured = true,
-                Err(e) => tracing::warn!("listening history not updated: {e}"),
-            }
-        }
-        return false;
-    }
-    let structured = now_playing.track.is_some();
-    let continuing = last.is_some();
-    let logged = match &now_playing.track {
-        // Artist and title given apart by the source: stored as given, with the real start.
-        Some(track) => {
-            let parsed = tracks::ParsedTitle {
-                artist: track.artist.clone(),
-                title: track.title.clone(),
-            };
-            let played_at = track.started_at.as_deref().and_then(history_time);
-            db.log_structured_track(
-                &entry.0,
-                station.name.as_deref(),
-                &entry.1,
-                &parsed,
-                played_at.as_deref(),
-                continuing,
-            )
-        }
-        None => db.log_track(&entry.0, station.name.as_deref(), &entry.1, continuing),
-    };
-    match logged {
-        Ok(_) => {
-            *last = Some(Logged {
-                station_id: entry.0,
-                title: entry.1,
-                structured,
-            });
-            true
-        }
-        Err(e) => {
-            tracing::warn!("listening history not saved: {e}");
-            false
-        }
-    }
-}
-
-/// The last title added to the history.
-struct Logged {
-    station_id: String,
-    title: String,
-    /// Stored with artist and title as the source gave them.
-    structured: bool,
-}
-
-/// An RFC 3339 start as stored in the history (`YYYY-MM-DD HH:MM:SS`, UTC), if plausible: not
-/// in the future, and less than a day old.
-fn history_time(started_at: &str) -> Option<String> {
-    let started: jiff::Timestamp = started_at.parse().ok()?;
-    let age = jiff::Timestamp::now().duration_since(started);
-    (age >= jiff::SignedDuration::ZERO && age < jiff::SignedDuration::from_hours(24))
-        .then(|| started.strftime("%Y-%m-%d %H:%M:%S").to_string())
-}
-
-/// Opens a listening session when a station starts playing and closes it when playback stops. A
-/// stop, a pause or an error also ends the run of titles `journalize_title` merges; a
-/// reconnection does not.
-fn track_session(
-    app: &tauri::AppHandle,
-    station: &Mutex<Option<OnAir>>,
-    last_logged: &Mutex<Option<Logged>>,
-    state: &PlayerState,
-) {
-    if matches!(
-        state,
-        PlayerState::Idle | PlayerState::Paused | PlayerState::Error(_)
-    ) {
-        *last_logged.lock().unwrap_or_else(|p| p.into_inner()) = None;
-    }
-    let db = app.state::<Database>();
-    let result = match state {
-        PlayerState::Playing => match station.lock().unwrap_or_else(|p| p.into_inner()).clone() {
-            Some(s) => db.start_session(&s.id, s.name.as_deref()),
-            None => Ok(()),
-        },
-        // While reconnecting nothing is heard: the session ends when the sound stopped (a sleep
-        // is not listening time), and a new one starts when it comes back.
-        PlayerState::Idle
-        | PlayerState::Paused
-        | PlayerState::Reconnecting(_)
-        | PlayerState::Error(_) => db.end_session(),
-        PlayerState::Connecting => Ok(()),
-    };
-    if let Err(e) = result {
-        tracing::warn!("listening session not saved: {e}");
-    }
-}
 
 /// Label of the main window, as declared in `tauri.conf.json` (`create: false`: opened in `setup`).
 const MAIN_WINDOW: &str = "main";
@@ -339,13 +199,8 @@ pub fn run() {
             let on_air = Arc::new(Mutex::new(commands::saved_station(
                 &app.state::<Database>(),
             )));
-            let last_logged = Arc::new(Mutex::new(None::<Logged>));
-            let session_logged = last_logged.clone();
 
             let state_handle = app.handle().clone();
-            let title_handle = app.handle().clone();
-            let station = on_air.clone();
-            let session_station = on_air.clone();
             let media = Arc::new(SystemMedia::new(app.handle().clone()));
             let musicbrainz = musicbrainz::MusicBrainz::new()
                 .map(Arc::new)
@@ -430,12 +285,15 @@ pub fn run() {
                         .map(|dir| dir.join("updates")),
                 );
             }
+            let journal =
+                listening::Journal::start(app.handle().clone(), covers.clone(), on_air.clone())?;
+            let state_journal = journal.clone();
             let state_media = media.clone();
             let engine = DesktopAudioEngine::new(
                 Arc::new(move |state| {
                     let state = favorite_repair::on_state(&state_handle, state);
                     let state = media_controls::on_state(&state_handle, state);
-                    track_session(&state_handle, &session_station, &session_logged, &state);
+                    state_journal.state(&state);
                     commands::schedule_click(&state_handle, &state);
                     state_media.show_state(&state);
                     tray::show_state(&state_handle, &state);
@@ -443,28 +301,8 @@ pub fn run() {
                         tracing::warn!("failed to emit player state: {e}");
                     }
                 }),
-                Arc::new(move |now_playing: NowPlaying| {
-                    let new_track =
-                        journalize_title(&title_handle, &station, &last_logged, &now_playing);
-                    let on_air = station.lock().unwrap_or_else(|p| p.into_inner()).clone();
-                    let name = on_air.as_ref().and_then(|s| s.name.clone());
-                    let label = on_air.and_then(|s| {
-                        let db = title_handle.state::<Database>();
-                        db.station_name(&s.id).unwrap_or_else(|e| {
-                            tracing::warn!("station name not read: {e}");
-                            None
-                        })
-                    });
-                    if new_track {
-                        let notifications =
-                            title_handle.state::<notifications::TrackNotifications>();
-                        notifications.track(&now_playing, name.as_deref(), label.as_deref());
-                    }
-                    covers.update(now_playing.clone(), name, label);
-                    if let Err(e) = title_handle.emit(NOW_PLAYING_EVENT, now_playing) {
-                        tracing::warn!("failed to emit now-playing title: {e}");
-                    }
-                }),
+                // Logged, then announced, on the `listening` thread: never waits here.
+                Arc::new(move |now_playing: NowPlaying| journal.title(now_playing)),
                 web_titles,
             );
             app.manage(favorite_repair::FavoriteRepair::default());
@@ -480,16 +318,6 @@ pub fn run() {
                 musicbrainz::spawn_worker(app.handle().clone(), mb, identify.clone());
             }
             app.manage(musicbrainz::IdentifyWaker(identify));
-
-            let heartbeat = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    tokio::time::sleep(SESSION_HEARTBEAT).await;
-                    if let Err(e) = heartbeat.state::<Database>().touch_session() {
-                        tracing::warn!("listening session heartbeat failed: {e}");
-                    }
-                }
-            });
 
             // Launched at login: no window, so no web view, until the icon is clicked. If the icon turns
             // out to show nowhere, the window opens after all (`tray::set_unavailable`).
