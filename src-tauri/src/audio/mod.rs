@@ -1550,6 +1550,119 @@ mod tests {
         assert!(replays >= 6, "{seen:?}");
     }
 
+    /// Serves 1 s of silent WAV per connection, then hangs up; counts the connections.
+    fn hanging_up_station() -> (String, Arc<AtomicU32>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/live.wav", listener.local_addr().unwrap());
+        let served = Arc::new(AtomicU32::new(0));
+        let count = served.clone();
+        thread::spawn(move || {
+            for mut client in listener.incoming().flatten() {
+                count.fetch_add(1, Ordering::SeqCst);
+                let mut request = [0u8; 1024];
+                let _ = client.read(&mut request);
+                let rate = 16_000u32;
+                let mut wav = Vec::new();
+                wav.extend_from_slice(b"RIFF\xff\xff\xff\x7fWAVEfmt ");
+                wav.extend_from_slice(&16u32.to_le_bytes());
+                wav.extend_from_slice(&1u16.to_le_bytes()); // PCM
+                wav.extend_from_slice(&1u16.to_le_bytes()); // mono
+                wav.extend_from_slice(&rate.to_le_bytes());
+                wav.extend_from_slice(&(rate * 2).to_le_bytes());
+                wav.extend_from_slice(&2u16.to_le_bytes());
+                wav.extend_from_slice(&16u16.to_le_bytes());
+                wav.extend_from_slice(b"data\x00\x00\xf0\x7f");
+                wav.resize(wav.len() + rate as usize * 2, 0);
+                let _ = client.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: audio/wav\r\nConnection: close\r\n\r\n",
+                );
+                let _ = client.write_all(&wav);
+            }
+        });
+        (url, served)
+    }
+
+    /// The decoder's reconnection loop, without a sound card: its samples go to a buffer this
+    /// test empties. Each time the server hangs up, the player reconnects and plays again; it
+    /// never gives up on a station that played.
+    #[test]
+    fn the_decoder_reconnects_every_time_the_server_hangs_up() {
+        let (url, served) = hanging_up_station();
+        let states = Arc::new(Mutex::new(Vec::<PlayerState>::new()));
+        let sink = states.clone();
+        let status = Arc::new(Status {
+            state: Mutex::new(PlayerState::Idle),
+            listener: Arc::new(move |s| sink.lock().unwrap().push(s)),
+            now_playing: Mutex::new(NowPlaying::default()),
+            now_playing_listener: Arc::new(|_| {}),
+        });
+        let cancel = Arc::new(Cancel::default());
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let format = output::OutputFormat {
+            sample_rate: 48_000,
+            channels: 2,
+        };
+        let (producer, mut consumer) = rtrb::RingBuffer::<f32>::new(48_000 * 2);
+        let net = tokio::sync::watch::Sender::new(network::NetState {
+            online: true,
+            ..Default::default()
+        });
+        let drained = cancel.clone();
+        let drain = thread::spawn(move || {
+            while !drained.is_cancelled() {
+                while consumer.pop().is_ok() {}
+                thread::sleep(Duration::from_millis(5));
+            }
+        });
+        decoder::spawn(decoder::Job {
+            url: url.parse().unwrap(),
+            public_only: false,
+            level: loudness::StationLevel::new(None, url.clone(), 48_000, 2, false),
+            format,
+            producer,
+            reporter: Reporter {
+                status,
+                controls: Arc::new(Controls::new()),
+                cancel: cancel.clone(),
+                stream: Arc::new(StreamMeta::default()),
+            },
+            cancel: cancel.clone(),
+            runtime: runtime.handle().clone(),
+            // Online, whatever the machine running the test says: the test is about the loop.
+            net: net.subscribe(),
+        })
+        .unwrap();
+
+        let replays = || {
+            states
+                .lock()
+                .unwrap()
+                .windows(2)
+                .filter(|w| {
+                    matches!(w[0], PlayerState::Reconnecting(_)) && w[1] == PlayerState::Playing
+                })
+                .count()
+        };
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < deadline && replays() < 3 {
+            thread::sleep(Duration::from_millis(50));
+        }
+        cancel.cancel();
+        drain.join().unwrap();
+        let seen = states.lock().unwrap().clone();
+        assert!(replays() >= 3, "{seen:?}");
+        assert!(served.load(Ordering::SeqCst) >= 4);
+        assert!(
+            !seen.iter().any(|s| matches!(s, PlayerState::Error(_))),
+            "{seen:?}"
+        );
+    }
+
     /// A local station plays for 1 s, then its server stops for good: the player says whose
     /// fault it is, only when proven. With Internet: the station's. With no route at all
     /// (`unshare -rn`, `SOUNDFOLK_EXPECT=no-network`): the connection's. In a network namespace

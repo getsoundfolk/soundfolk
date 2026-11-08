@@ -1076,6 +1076,103 @@ mod tests {
     }
 
     #[test]
+    fn tracks_keep_only_what_the_player_can_use() {
+        let at: Timestamp = "2026-11-08T12:00:00Z".parse().unwrap();
+        let raw = RawTrack {
+            artist: Some("Air".into()),
+            title: Some("Sexy Boy".into()),
+            start: Some(Start::At(at)),
+            duration: Some(SignedDuration::from_secs(298)),
+            cover: None,
+        };
+        let info = track_info(&raw).unwrap();
+        assert_eq!(info.started_at.as_deref(), Some("2026-11-08T12:00:00Z"));
+        assert_eq!(info.duration_secs, Some(298));
+        // A wall-clock start has no date: the player is not given it.
+        let local = RawTrack {
+            start: Some(Start::Local("12:00".parse().unwrap())),
+            ..raw.clone()
+        };
+        assert_eq!(track_info(&local).unwrap().started_at, None);
+        // A negative duration is no duration; no title, no track.
+        let odd = RawTrack {
+            duration: Some(SignedDuration::from_secs(-5)),
+            ..raw.clone()
+        };
+        assert_eq!(track_info(&odd).unwrap().duration_secs, None);
+        let untitled = RawTrack { title: None, ..raw };
+        assert!(track_info(&untitled).is_none());
+    }
+
+    #[test]
+    fn an_empty_read_says_what_to_check() {
+        assert!(nothing_found(&Snapshot::default()).contains("`item` and `title`"));
+        let only_next = Snapshot {
+            next: vec![RawTrack::default()],
+            ..Snapshot::default()
+        };
+        assert!(nothing_found(&only_next).contains("not the one on air"));
+    }
+
+    #[test]
+    fn waits_are_capped_and_never_negative() {
+        let now: Timestamp = "2026-11-08T12:00:00Z".parse().unwrap();
+        assert_eq!(
+            until(now - SignedDuration::from_secs(10), now),
+            Duration::ZERO
+        );
+        assert_eq!(
+            until(now + SignedDuration::from_secs(2), now),
+            Duration::from_secs(2)
+        );
+        assert_eq!(until(now + SignedDuration::from_hours(1), now), CLOCK_CHECK);
+    }
+
+    /// Serves one raw HTTP response on a local port; its address.
+    async fn serve(response: Vec<u8>) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = [0; 1024];
+            let _ = socket.read(&mut request).await;
+            let _ = socket.write_all(&response).await;
+        });
+        format!("http://{address}/")
+    }
+
+    #[tokio::test]
+    async fn pages_come_with_the_site_clock_and_their_charset() {
+        let page = b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=iso-8859-1\r\n\
+            Date: Sun, 08 Nov 2026 12:00:00 GMT\r\nContent-Length: 4\r\n\r\n\xe9t\xe9!";
+        let url = serve(page.to_vec()).await;
+        let (text, date) = fetch(&Client::new(), &url).await.unwrap();
+        assert_eq!(text, "été!");
+        assert_eq!(date, Some("2026-11-08T12:00:00Z".parse().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn errors_and_pages_too_large_are_refused() {
+        let missing = serve(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec()).await;
+        assert_eq!(
+            fetch(&Client::new(), &missing).await.unwrap_err(),
+            "HTTP 404 Not Found"
+        );
+        let mut huge = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n",
+            MAX_PAGE_BYTES + 1
+        )
+        .into_bytes();
+        huge.resize(huge.len() + MAX_PAGE_BYTES + 1, b'x');
+        let url = serve(huge).await;
+        assert_eq!(
+            fetch(&Client::new(), &url).await.unwrap_err(),
+            "page too large"
+        );
+    }
+
+    #[test]
     fn origins_ignore_paths() {
         let a: Url = "https://radio.example.org/live.mp3".parse().unwrap();
         let b: Url = "https://radio.example.org:443/hd.aac".parse().unwrap();

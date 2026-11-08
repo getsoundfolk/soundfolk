@@ -389,11 +389,16 @@ pub const OPENED_EVENT: &str = "share:opened";
 #[derive(Default)]
 pub struct OpenedLink(std::sync::Mutex<Option<String>>);
 
+/// A `soundfolk://` link short enough to read: the only text taken from the command line.
+fn is_app_link(url: &str) -> bool {
+    url.starts_with(&format!("{SCHEME}://")) && url.len() <= MAX_LINK
+}
+
 /// Keeps a link opened from outside for the window. Only `soundfolk://` links: nothing else from
 /// the command line is read. Returns whether it was kept.
 pub fn opened(app: &tauri::AppHandle, url: &str) -> bool {
     use tauri::{Emitter, Manager};
-    if !url.starts_with(&format!("{SCHEME}://")) || url.len() > MAX_LINK {
+    if !is_app_link(url) {
         return false;
     }
     *app.state::<OpenedLink>()
@@ -821,6 +826,19 @@ mod tests {
                 "{url}"
             );
         }
+    }
+
+    #[test]
+    fn only_app_links_are_taken_from_outside() {
+        assert!(is_app_link(&format!("soundfolk://s/#{FIP}")));
+        assert!(!is_app_link(&format!(
+            "https://getsoundfolk.github.io/s/#{FIP}"
+        )));
+        assert!(!is_app_link("--hidden"));
+        assert!(!is_app_link(&format!(
+            "soundfolk://s/#n={}",
+            "x".repeat(MAX_LINK)
+        )));
     }
 
     #[test]

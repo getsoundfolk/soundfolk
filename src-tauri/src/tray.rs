@@ -232,7 +232,7 @@ mod imp {
     }
 
     /// Tauri gives RGBA; StatusNotifierItem wants ARGB32 in network byte order.
-    fn pixmap(image: &tauri::image::Image<'_>) -> Vec<Icon> {
+    pub(super) fn pixmap(image: &tauri::image::Image<'_>) -> Vec<Icon> {
         let mut data = image.rgba().to_vec();
         for pixel in data.as_chunks_mut::<4>().0 {
             pixel.rotate_right(1);
@@ -389,5 +389,29 @@ mod imp {
         {
             tracing::debug!("tray: Show / Hide label not updated: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn menu_labels_say_what_a_click_does() {
+        assert_eq!(play_pause_label(true), "Pause");
+        assert_eq!(play_pause_label(false), "Play");
+        assert_eq!(mute_label(true), "Unmute");
+        assert_eq!(mute_label(false), "Mute");
+        assert_eq!(toggle_label(true), "Hide Soundfolk");
+        assert_eq!(toggle_label(false), "Show Soundfolk");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn icon_pixels_go_from_rgba_to_argb() {
+        let rgba = [1, 2, 3, 4, 5, 6, 7, 8];
+        let icons = imp::pixmap(&tauri::image::Image::new(&rgba, 2, 1));
+        assert_eq!((icons[0].width, icons[0].height), (2, 1));
+        assert_eq!(icons[0].data, [4, 1, 2, 3, 8, 5, 6, 7]);
     }
 }
