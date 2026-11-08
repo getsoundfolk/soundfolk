@@ -20,7 +20,8 @@ these.
   * **History:** tracks heard, likes and stats.
 * Settings live in a menu, not in the main navigation.
 * **One navigation level.** No tabs inside tabs, no icon bar repeating the same actions. A screen may have filters, not
-  sub-sections.
+  sub-sections. One exception: History shows its tracks as *All*, *Liked* or *Stats*, three views of the same
+  listening, and Stats may choose its period and what it counts. Nothing goes deeper than that.
 * Every icon has a label (or at least a tooltip on desktop). No "…" tab, no unexplained "+".
 
 ## 2. Playback first
@@ -63,7 +64,8 @@ these.
 
 ## 7. Language
 * **Everything is translated**, genres included. Raw tags (`aac,news,talk`) are never displayed; they are mapped to
-  translated genres.
+  translated genres. *For now* the app is in English only, with no translation layer yet: it comes as a project of
+  its own, and until the tags map to genres, lists show no genre at all.
 * Words a listener uses: "My stations" rather than "Custom", "Working now" rather than "lastcheckok", "Unknown" only
   when there is genuinely nothing to show — and then nothing is shown instead.
 

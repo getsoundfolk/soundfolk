@@ -51,7 +51,7 @@
   flex-direction: column;
   gap: 0.125rem;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.625rem;
+  border-radius: 0.5rem;
   background: var(--color-surface-raised);
   color: var(--color-text-muted);
   font-size: 0.75rem;
@@ -70,7 +70,7 @@
   gap: 0.5rem;
   padding: 0.75rem 0.75rem;
   border: 1px solid var(--color-border-strong);
-  border-radius: 0.625rem;
+  border-radius: 0.5rem;
   color: var(--color-text-soft);
   font-size: 0.75rem;
   line-height: 1.4;

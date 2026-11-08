@@ -17,6 +17,7 @@
   import { onAir, wheelVolume } from '../onAir.svelte';
   import { player } from '../player.svelte';
   import { stationNames } from '../stationNames.svelte';
+  import { shortcutKeydown } from '../shortcuts';
   import { displayTitle } from '../trackLinks';
   import Icon from './Icon.svelte';
   import Waves from './Waves.svelte';
@@ -119,7 +120,12 @@
 </script>
 
 <!-- On the window, not the slider: a drag that ends elsewhere never sends pointerup to it. -->
-<svelte:window bind:innerWidth={width} onpointerup={() => (volumeDrag = false)} />
+<!-- Space and M as in the main window (the search shortcuts find nothing to focus here). -->
+<svelte:window
+  bind:innerWidth={width}
+  onpointerup={() => (volumeDrag = false)}
+  onkeydown={shortcutKeydown}
+/>
 
 {#snippet playButton()}
   <button

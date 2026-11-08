@@ -21,7 +21,8 @@ document.addEventListener('contextmenu', (event) => {
   const selected = window.getSelection()?.toString() ?? '';
   if (selected.trim()) {
     event.preventDefault();
-    void showCopyMenu(selected);
+    // A menu that cannot open leaves the selection as it is: nothing to tell.
+    showCopyMenu(selected).catch((e) => console.warn('copy menu not shown', e));
     return;
   }
 
@@ -31,7 +32,13 @@ document.addEventListener('contextmenu', (event) => {
 async function showCopyMenu(text: string) {
   const label = navigator.language.startsWith('fr') ? 'Copier' : 'Copy';
   const menu = await Menu.new({
-    items: [{ id: 'copy', text: label, action: () => void writeText(text) }],
+    items: [
+      {
+        id: 'copy',
+        text: label,
+        action: () => writeText(text).catch((e) => console.warn('text not copied', e)),
+      },
+    ],
   });
   await menu.popup();
 }

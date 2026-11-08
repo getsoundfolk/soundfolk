@@ -68,7 +68,12 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: 56%;
-  background: linear-gradient(to right, rgb(0 0 0 / 0.72) 0%, rgb(0 0 0 / 0.58) 70%, transparent);
+  background: linear-gradient(
+    to right,
+    var(--color-art-shade) 0%,
+    var(--color-art-shade-soft) 70%,
+    transparent
+  );
   pointer-events: none;
 }
 
@@ -82,7 +87,7 @@
   justify-content: space-between;
   min-width: 0;
   padding: 0.75rem 0.75rem 0.75rem 1rem;
-  color: #fff;
+  color: var(--color-on-art);
 }
 
 .tools {
@@ -97,7 +102,7 @@
   flex-direction: column;
   gap: 0.125rem;
   min-width: 0;
-  text-shadow: 0 1px 4px rgb(0 0 0 / 0.7);
+  text-shadow: 0 1px 4px var(--color-art-text-shadow);
 }
 
 .station,
@@ -119,18 +124,18 @@
 .title {
   font-size: 0.875rem;
   font-weight: 500;
-  color: rgb(255 255 255 / 0.92);
+  color: var(--color-on-art-strong);
 }
 
 .artist {
   font-size: 0.8125rem;
-  color: rgb(255 255 255 / 0.72);
+  color: var(--color-on-art-soft);
 }
 
 .message {
   margin-top: 0.25rem;
   font-size: 0.75rem;
-  color: rgb(255 255 255 / 0.65);
+  color: var(--color-on-art-muted);
 }
 
 .message[data-error='true'] {
@@ -329,12 +334,12 @@
 .artButton {
   width: 1.5rem;
   height: 1.5rem;
-  color: rgb(255 255 255 / 0.75);
+  color: var(--color-on-art-soft);
 }
 
 .artButton:hover {
-  background: rgb(255 255 255 / 0.15);
-  color: #fff;
+  background: var(--color-on-art-wash);
+  color: var(--color-on-art);
 }
 
 .control[data-like='true'],
@@ -373,7 +378,7 @@
   z-index: 1;
   width: 1.5rem;
   height: 1.5rem;
-  color: rgb(255 255 255 / 0.65);
+  color: var(--color-on-art-muted);
   opacity: 0;
   transition: opacity var(--duration-fast) var(--ease);
 }
@@ -384,8 +389,8 @@
 }
 
 .back:hover {
-  background: rgb(255 255 255 / 0.15);
-  color: #fff;
+  background: var(--color-on-art-wash);
+  color: var(--color-on-art);
 }
 
 .control:focus-visible,
@@ -443,7 +448,7 @@
 
 .slider {
   --track: 0.25rem;
-  --fill-color: #fff;
+  --fill-color: var(--color-on-art);
   width: 0;
   min-width: 0;
   height: 1.5rem;
@@ -465,7 +470,7 @@
 }
 
 .slider[data-muted='true'] {
-  --fill-color: rgb(255 255 255 / 0.4);
+  --fill-color: var(--color-on-art-faint);
 }
 
 .slider::-webkit-slider-runnable-track {
@@ -474,7 +479,7 @@
   background: linear-gradient(
     to right,
     var(--fill-color) var(--fill),
-    rgb(255 255 255 / 0.25) var(--fill)
+    var(--color-on-art-track) var(--fill)
   );
 }
 
@@ -484,8 +489,8 @@
   margin-top: calc((var(--track) - 0.625rem) / 2);
   border: 0;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.5);
+  background: var(--color-on-art);
+  box-shadow: 0 1px 3px var(--color-art-knob-shadow);
   -webkit-appearance: none;
   appearance: none;
 }

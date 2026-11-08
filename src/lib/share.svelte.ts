@@ -3,6 +3,7 @@
 // links made to send. A link is something someone else chose: it opens a sheet, it never plays
 // or saves anything by itself (§3.3).
 import { listen } from '@tauri-apps/api/event';
+import { unsubscribed } from './errors.svelte';
 import {
   api,
   errorMessage,
@@ -57,7 +58,7 @@ class ShareStore {
   /** Call once on mount: takes the `soundfolk://` link Soundfolk was opened with, and the ones
    *  opened later. Returns the unsubscribe function. */
   async init(): Promise<() => void> {
-    const off = await listen('share:opened', () => this.takeOpened()).catch(() => () => {});
+    const off = await listen('share:opened', () => this.takeOpened()).catch(unsubscribed);
     await this.takeOpened();
     return off;
   }

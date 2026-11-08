@@ -7,6 +7,7 @@
   import { api, errorMessage, type PersonalStation, type Station } from '../api';
   import { player } from '../player.svelte';
   import { share } from '../share.svelte';
+  import { hostOf } from '../stations';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
   import styles from './StationSheet.module.css';
@@ -70,14 +71,6 @@
         return 'Link';
     }
   });
-
-  const domain = (url: string) => {
-    try {
-      return new URL(url).host;
-    } catch {
-      return url;
-    }
-  };
 
   async function add(name: string, url: string) {
     adding[url] = 'adding';
@@ -160,7 +153,7 @@
         <dl class={styles.details}>
           <div>
             <dt>Stream from</dt>
-            <dd class={styles.mono}>{domain(received.link.url)}</dd>
+            <dd class={styles.mono}>{hostOf(received.link.url)}</dd>
           </div>
         </dl>
         {#if inCatalog}
@@ -206,7 +199,7 @@
         {/if}
         {#each received.link.personal as entry, i (i)}
           <div class={styles.result}>
-            <p>{entry.name} <span class={styles.hint}>· {domain(entry.url)}</span></p>
+            <p>{entry.name} <span class={styles.hint}>· {hostOf(entry.url)}</span></p>
             <div class={styles.actions}>{@render addButton(entry.name, entry.url)}</div>
           </div>
         {/each}

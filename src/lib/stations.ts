@@ -10,9 +10,19 @@ export const playableOf = (s: Station): Playable => ({
   homepage: s.homepage,
 });
 
-/** Country and the first two tags, the short form used in the lists. */
-export const shortMeta = (s: Station) =>
-  [s.country_code, s.tags.slice(0, 2).join(', ')].filter(Boolean).join(' · ');
+/** What a list row says of a catalog station besides its name: its country. Genres come once
+ *  Radio-Browser's tags map to translated genres (06 §7: raw tags are never shown); codec and
+ *  bitrate belong to the station sheet (06 §5). */
+export const shortMeta = (s: Station) => s.country_code ?? '';
+
+/** The host of a stream address, or the address itself when it cannot be read. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 export function warningOf(s: Station): string | null {
   if (s.health.status !== 'unreachable') return null;

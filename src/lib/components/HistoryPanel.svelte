@@ -152,7 +152,8 @@
   const time = (r: Row) =>
     r.at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   const meta = (r: Row) =>
-    [r.artist, r.station_name ?? 'Unknown station', time(r)].filter(Boolean).join(' · ');
+    // A station whose name was never known shows nothing rather than "Unknown" (06 §7).
+    [r.artist, r.station_name, time(r)].filter(Boolean).join(' · ');
 
   function notify(message: string, ms = 1800) {
     toast = message;

@@ -14,7 +14,7 @@
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { Reorder } from '../reorder.svelte';
-  import { pickRandom, playableOf, warningOf } from '../stations';
+  import { hostOf, pickRandom, playableOf, shortMeta, warningOf } from '../stations';
   import { stationNames } from '../stationNames.svelte';
   import { share } from '../share.svelte';
   import { ui } from '../ui.svelte';
@@ -216,15 +216,6 @@
     genre: f.genre,
   });
 
-  const meta = (s: Station) =>
-    [
-      s.country_code,
-      [s.codec, s.bitrate > 0 ? `${s.bitrate} kbit/s` : ''].filter(Boolean).join(' '),
-      s.tags.slice(0, 2).join(', '),
-    ]
-      .filter(Boolean)
-      .join(' · ');
-
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
   let wasOpen = false;
@@ -347,7 +338,7 @@
             {#each shownFavorites as f (f.station_id)}
               <StationRow
                 name={stationNames.shown(f.station_id, f.name)}
-                meta={f.genre ?? ''}
+                meta={f.station_id.startsWith('user:') ? (f.genre ?? '') : ''}
                 personal={f.station_id.startsWith('user:')}
                 active={isActive(f.station_id)}
                 favorite
@@ -405,7 +396,7 @@
             {#each personal as p (p.station_id)}
               <StationRow
                 name={stationNames.shown(p.station_id, p.name)}
-                meta={p.genre ?? new URL(p.stream_url).host}
+                meta={p.genre ?? hostOf(p.stream_url)}
                 personal
                 active={isActive(p.station_id)}
                 favorite={player.isFavorite(p.station_id)}
@@ -480,7 +471,7 @@
           {#each results as s (s.id)}
             <StationRow
               name={stationNames.shown(s.id, s.name)}
-              meta={meta(s)}
+              meta={shortMeta(s)}
               warning={warningOf(s)}
               active={isActive(s.id)}
               favorite={player.isFavorite(s.id)}

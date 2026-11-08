@@ -22,3 +22,10 @@ class ErrorStore {
 }
 
 export const errors = new ErrorStore();
+
+/** For `listen(…).catch(unsubscribed)`: an event the window could not subscribe to is shown as a
+ *  player error (what it updates would silently go stale), and there is nothing to unsubscribe. */
+export const unsubscribed = (e: unknown) => {
+  errors.report('player', e);
+  return () => {};
+};
