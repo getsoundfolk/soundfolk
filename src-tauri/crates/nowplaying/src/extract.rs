@@ -9,7 +9,8 @@ use crate::recipe::{Extract, Fields, Recipe};
 use crate::value::{
     clean_text, duration_from_secs, parse_duration, parse_start, start_from_number,
 };
-use crate::{ExtractError, RawTrack, Snapshot};
+use crate::{clock, ExtractError, RawTrack, Snapshot, Start};
+use jiff::SignedDuration;
 
 /// Reads the page with the recipe, and drops the titles the recipe ignores.
 pub fn read(recipe: &Recipe, page: &str) -> Result<Snapshot, ExtractError> {
@@ -26,8 +27,25 @@ pub fn read(recipe: &Recipe, page: &str) -> Result<Snapshot, ExtractError> {
     if snapshot.current.as_ref().is_some_and(ignored) {
         snapshot.current = None;
     }
+    // An ignored next track (a jingle, a time signal) still says when the current one ends.
+    if let (Some(current), Some(first)) = (&mut snapshot.current, snapshot.next.first())
+        && current.duration.is_none()
+        && ignored(first)
+    {
+        current.duration = gap(current.start, first.start);
+    }
     snapshot.next.retain(|t| !ignored(t));
     Ok(snapshot)
+}
+
+/// The time from one start to the next, when both are of the same kind.
+fn gap(from: Option<Start>, to: Option<Start>) -> Option<SignedDuration> {
+    let gap = match (from?, to?) {
+        (Start::At(a), Start::At(b)) => b.duration_since(a),
+        (Start::Local(a), Start::Local(b)) => clock::forward_gap(a, b),
+        _ => return None,
+    };
+    gap.is_positive().then_some(gap)
 }
 
 /// Reads the page as `extract` says.
@@ -410,5 +428,39 @@ mod tests {
             (current.artist.as_deref(), current.title.as_deref()),
             (Some("Air"), Some("Sexy Boy"))
         );
+    }
+
+    #[test]
+    fn ignored_next_track_still_ends_the_current_one() {
+        let recipe = crate::recipe::Recipe::from_toml(
+            r#"schema = 1
+name = "LibreTime"
+match = { streams = ["example.org/live"] }
+fetch = { url = "https://example.org/live-info" }
+ignore = ["(?i)^top"]
+[extract]
+type = "json"
+item = "current"
+title = "title"
+start = "starts"
+next = "next"
+"#,
+        )
+        .unwrap();
+        let page = |next: &str| {
+            format!(
+                r#"{{"current": {{"title": "Les douze maisons", "starts": "2026-11-06 09:57:52"}},
+                "next": {{"title": "{next}", "starts": "2026-11-06 10:00:00"}}}}"#
+            )
+        };
+        let snapshot = read(&recipe, &page("top 10h")).unwrap();
+        assert!(snapshot.next.is_empty());
+        assert_eq!(
+            snapshot.current.unwrap().duration,
+            Some(SignedDuration::from_secs(128))
+        );
+        // A next track that is kept gives the end itself: no duration made up.
+        let snapshot = read(&recipe, &page("Nino")).unwrap();
+        assert_eq!(snapshot.current.unwrap().duration, None);
     }
 }
