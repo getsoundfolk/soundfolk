@@ -62,7 +62,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.png"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
     "category": "Music",
     "shortDescription": "Discover and listen to web radios from around the world",
     "longDescription": "Soundfolk is a desktop player for internet radio stations: browse and play web radios from around the world, see what is on air, and keep a history of the tracks you heard.",
