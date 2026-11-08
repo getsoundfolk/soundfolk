@@ -13,8 +13,9 @@
 //!   import would stop the app from starting on older versions).
 //! * **macOS**: no system API checks Internet access (only that a route exists): nothing.
 
-/// What the system concludes.
+/// What the system concludes. Never concluded on macOS and other systems (see the module).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(any(target_os = "linux", windows)), allow(dead_code))]
 pub(crate) enum Connectivity {
     /// No Internet access (local network only, or limited).
     NoInternet,
