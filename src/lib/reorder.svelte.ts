@@ -30,6 +30,8 @@ export class Reorder {
   /** `items` in the order to show: the dragged order while dragging. */
   shown<T>(items: T[], id: (item: T) => string): T[] {
     if (!this.draft) return items;
+    // A lookup built and read here, never changed: nothing to make reactive.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const byId = new Map(items.map((item) => [id(item), item]));
     return this.draft.flatMap((i) => byId.get(i) ?? []);
   }
