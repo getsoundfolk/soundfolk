@@ -229,7 +229,7 @@ pub struct Covers {
 }
 
 /// The app icon, shipped in the binary: the media controls need it as a file.
-const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
+pub(crate) const APP_ICON: &[u8] = include_bytes!("../icons/icon.png");
 
 /// Writes the app icon to the cache folder (once) and returns its `file://` address (also the
 /// icon of the track notifications).

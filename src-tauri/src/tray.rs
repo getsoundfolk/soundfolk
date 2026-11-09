@@ -154,6 +154,8 @@ mod imp {
         muted: bool,
         window_shown: bool,
         icon: Vec<Icon>,
+        /// The icon as a PNG file ([`write_icon`]), empty if it could not be written.
+        icon_file: String,
     }
 
     impl Tray for SoundfolkTray {
@@ -172,6 +174,16 @@ mod imp {
             }
         }
 
+        /// The icon as a file, by its full path, as libappindicator gives it. Some hosts read
+        /// nothing else: ayatana-indicator-application (the Xfce, MATE and Budgie "Indicator"
+        /// panels) ignores the pixmap and shows a missing-icon sign for an item without a name.
+        /// Not a name looked up in an `IconThemePath`: that panel then draws the PNG at its
+        /// own 256 px and shows only its middle, an orange square, where a path is scaled.
+        fn icon_name(&self) -> String {
+            self.icon_file.clone()
+        }
+
+        /// The icon in pixels, for the hosts that read no file (or when it could not be written).
         fn icon_pixmap(&self) -> Vec<Icon> {
             self.icon.clone()
         }
@@ -231,6 +243,26 @@ mod imp {
         }
     }
 
+    /// Writes the app icon to a file (once) and returns its path, empty if it could not be
+    /// written.
+    fn write_icon(app: &AppHandle) -> String {
+        use tauri::Manager;
+
+        let Ok(dir) = app.path().app_cache_dir() else {
+            return String::new();
+        };
+        let path = dir.join("tray-icon.png");
+        let icon = crate::covers::APP_ICON;
+        if !std::fs::read(&path).is_ok_and(|bytes| bytes == icon) {
+            let written = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, icon));
+            if let Err(e) = written {
+                tracing::warn!("tray: icon not written, shown by its pixels only: {e}");
+                return String::new();
+            }
+        }
+        path.to_str().map(str::to_owned).unwrap_or_default()
+    }
+
     /// Tauri gives RGBA; StatusNotifierItem wants ARGB32 in network byte order.
     pub(super) fn pixmap(image: &tauri::image::Image<'_>) -> Vec<Icon> {
         let mut data = image.rgba().to_vec();
@@ -246,6 +278,7 @@ mod imp {
 
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
         let icon = app.default_window_icon().map(pixmap).unwrap_or_default();
+        let icon_file = write_icon(app.handle());
         let window_shown = WINDOW_SHOWN.load(Ordering::Relaxed);
         let tray = SoundfolkTray {
             app: app.handle().clone(),
@@ -253,6 +286,7 @@ mod imp {
             muted: MUTED.load(Ordering::Relaxed),
             window_shown,
             icon,
+            icon_file,
         };
         let handle = app.handle().clone();
         // Registering is asynchronous: a failure costs the icon, not the app, so it is logged.
