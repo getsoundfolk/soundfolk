@@ -17,6 +17,7 @@ mod media_controls;
 mod mini;
 mod musicbrainz;
 mod notifications;
+mod now_playing;
 mod player;
 mod recipe_list;
 mod recipes;
@@ -28,17 +29,22 @@ mod tray;
 #[cfg(desktop)]
 mod updates;
 mod volume;
+mod windows;
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindowBuilder, WindowEvent};
+use tauri::{Emitter, Manager};
 use tracing_subscriber::EnvFilter;
 
-use audio::{DesktopAudioEngine, NowPlaying, WebEvent, WebTitles};
+use audio::{DesktopAudioEngine, NowPlaying};
 use catalog::radio_browser::RadioBrowser;
+use covers::Covers;
 use db::Database;
 use media_controls::SystemMedia;
-use player::AudioState;
+use musicbrainz::MusicBrainz;
+use now_playing::{WebEvent, WebTitles};
+use player::{AudioState, OnAir};
 use state::CatalogState;
 
 /// Event emitted on every player state change (payload: `PlayerState`).
@@ -52,117 +58,173 @@ const DONATIONS_EVENT: &str = "donations:updated";
 /// Event emitted when new curated lists were downloaded (no payload).
 const LISTS_EVENT: &str = "lists:updated";
 
-/// Label of the main window, as declared in `tauri.conf.json` (`create: false`: opened in `setup`).
-const MAIN_WINDOW: &str = "main";
-
 /// Argument of the launch at login (Settings): the app starts in the notification area, without
 /// its window, and does not play.
 const HIDDEN_ARG: &str = "--hidden";
 
-/// Size and position of the main window when it was last closed, to open it again in the same place.
-#[derive(Default)]
-struct WindowGeometry(Mutex<Option<(PhysicalPosition<i32>, PhysicalSize<u32>)>>);
-
-/// Whether the main window is open, visible and not minimized.
-fn main_window_shown(app: &tauri::AppHandle) -> bool {
-    app.get_webview_window(MAIN_WINDOW).is_some_and(|window| {
-        window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false)
-    })
+/// A folder in the app's cache, if the platform gives one.
+fn cache_dir(app: &tauri::App, name: &str) -> Option<PathBuf> {
+    app.path().app_cache_dir().ok().map(|dir| dir.join(name))
 }
 
-/// Shows the main window if it is closed or minimized, closes it otherwise.
-fn toggle_main_window(app: &tauri::AppHandle) {
-    match app.get_webview_window(MAIN_WINDOW) {
-        Some(window) if main_window_shown(app) => {
-            if let Err(e) = window.close() {
-                tracing::warn!("failed to close the main window: {e}");
+/// Emits a payload-less event, logging a failure.
+fn announce(app: &tauri::AppHandle, event: &str) {
+    if let Err(e) = app.emit(event, ()) {
+        tracing::warn!("failed to emit {event}: {e}");
+    }
+}
+
+/// The web titles (station recipes): the bundled and local recipes, the recipe list kept up to
+/// date in the background, and their events sent to the window.
+fn start_web_titles(app: &tauri::App) -> Arc<WebTitles> {
+    let local_recipes = app
+        .path()
+        .app_config_dir()
+        .ok()
+        .map(|dir| dir.join("recipes"));
+    let events = app.handle().clone();
+    let web_titles = Arc::new(WebTitles::new(
+        Arc::new(recipes::Recipes::new(local_recipes)),
+        // A setting that cannot be read takes its default, as Constant volume does: it
+        // is no reason not to start.
+        app.state::<Database>()
+            .get_bool(state::SETTING_WEB_TITLES, true)
+            .unwrap_or_else(|e| {
+                tracing::warn!("web titles setting not read: {e}");
+                true
+            }),
+        Box::new(move |event| {
+            let sent = match event {
+                WebEvent::Status(status) => events.emit(TITLE_STATUS_EVENT, status),
+                WebEvent::Notice(notice) => events.emit(RECIPE_NOTICE_EVENT, notice),
+            };
+            if let Err(e) = sent {
+                tracing::warn!("failed to emit a recipe event: {e}");
             }
-        }
-        _ => show_main_window(app),
-    }
+        }),
+    ));
+    app.manage(state::WebTitlesState(web_titles.clone()));
+    recipe_list::start(web_titles.clone(), cache_dir(app, "recipes"));
+    web_titles
 }
 
-/// Brings the main window to the front, even from the notification area: once closed it no longer
-/// exists, so it is created again (from any thread: windows are built on the main thread).
-fn show_main_window(app: &tauri::AppHandle) {
-    let handle = app.clone();
-    let shown = app.run_on_main_thread(move || {
-        let window = match handle.get_webview_window(MAIN_WINDOW) {
-            Some(window) => window,
-            None => match open_main_window(&handle) {
-                Ok(window) => window,
-                Err(e) => return tracing::warn!("failed to open the main window: {e}"),
-            },
-        };
-        if let Err(e) = window
-            .show()
-            .and_then(|()| window.unminimize())
-            .and_then(|()| window.set_focus())
-        {
-            tracing::warn!("failed to show the main window: {e}");
-        }
-        // Only once the main window is there: the mini player is the app's last window otherwise.
-        mini::close(&handle);
-    });
-    if let Err(e) = shown {
-        tracing::warn!("failed to show the main window: {e}");
-    }
-}
-
-/// Creates the main window as `tauri.conf.json` declares it, where it was when it was closed.
-fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewWindow> {
-    let windows = &app.config().app.windows;
-    let config = windows
-        .iter()
-        .find(|w| w.label == MAIN_WINDOW)
-        .cloned()
-        .ok_or(tauri::Error::WindowNotFound)?;
-    let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
-    let geometry = *app
-        .state::<WindowGeometry>()
-        .0
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
-    if let Some((position, size)) = geometry
-        && let Err(e) = window
-            .set_size(size)
-            .and_then(|()| window.set_position(position))
-    {
-        tracing::debug!("previous window geometry not restored: {e}");
-    }
-    Ok(window)
-}
-
-/// `soundfolk://` links (docs/16-sharing.md §3.1): the one Soundfolk was started with, and the
-/// ones opened while it runs (a second launch hands them over through single-instance). The
-/// scheme is registered again at every launch on Linux and Windows, which covers the AppImage and
-/// development builds; the `.deb` declares it too.
-#[cfg(desktop)]
-fn watch_share_links(app: &tauri::App) {
-    use tauri_plugin_deep_link::DeepLinkExt;
+/// What is downloaded in the background: donation links, curated lists and, on desktop, updates.
+fn start_downloads(app: &tauri::App) {
+    let donations = Arc::new(donations::Donations::default());
+    app.manage(donations.clone());
     let handle = app.handle().clone();
-    app.deep_link().on_open_url(move |event| {
-        if let Some(url) = event.urls().last()
-            && share::opened(&handle, url.as_str())
-        {
-            show_main_window(&handle);
-        }
+    donations::start(donations, cache_dir(app, "stations"), move || {
+        announce(&handle, DONATIONS_EVENT)
     });
-    if let Ok(Some(urls)) = app.deep_link().get_current()
-        && let Some(url) = urls.last()
+
+    let lists = Arc::new(curated_lists::CuratedLists::default());
+    app.manage(lists.clone());
+    let handle = app.handle().clone();
+    curated_lists::start(lists, cache_dir(app, "stations"), move || {
+        announce(&handle, LISTS_EVENT)
+    });
+
+    #[cfg(desktop)]
     {
-        share::opened(app.handle(), url.as_str());
+        let updates = Arc::new(updates::Updates::new(app.handle()));
+        app.manage(updates.clone());
+        updates::start(app.handle(), updates, cache_dir(app, "updates"));
     }
-    #[cfg(any(target_os = "linux", windows))]
-    {
-        // Runs `update-desktop-database` and `xdg-mime` on Linux: not on the startup path.
-        let handle = app.handle().clone();
-        std::thread::spawn(move || {
-            if let Err(e) = handle.deep_link().register_all() {
-                tracing::warn!("soundfolk:// links not registered: {e}");
+}
+
+/// The audio engine, and everything that follows its state: favorite repair, media controls,
+/// listening journal, click counting, tray and window.
+fn start_player(
+    app: &tauri::App,
+    on_air: Arc<Mutex<Option<OnAir>>>,
+    media: Arc<SystemMedia>,
+    covers: Arc<Covers>,
+    web_titles: Arc<WebTitles>,
+) -> tauri::Result<()> {
+    let journal = listening::Journal::start(app.handle().clone(), covers, on_air.clone())?;
+    let state_journal = journal.clone();
+    let state_handle = app.handle().clone();
+    let engine = DesktopAudioEngine::new(
+        Arc::new(move |state| {
+            let state = favorite_repair::on_state(&state_handle, state);
+            let state = media_controls::on_state(&state_handle, state);
+            state_journal.state(&state);
+            player::schedule_click(&state_handle, &state);
+            media.show_state(&state);
+            tray::show_state(&state_handle, &state);
+            if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
+                tracing::warn!("failed to emit player state: {e}");
             }
-        });
+        }),
+        // Logged, then announced, on the `listening` thread: never waits here.
+        Arc::new(move |now_playing: NowPlaying| journal.title(now_playing)),
+        web_titles,
+    );
+    app.manage(favorite_repair::FavoriteRepair::default());
+    app.manage(media_controls::Zap::default());
+    engine.set_normalize(volume::constant_volume(&app.state::<Database>()));
+    engine.set_level_memory(Arc::new(volume::DatabaseLevels(app.handle().clone())));
+    app.manage(AudioState::new(engine, on_air));
+    app.manage(volume::Sound::default());
+    Ok(())
+}
+
+/// The tray icon, and the main window unless the app was launched at login.
+fn open_windows(app: &tauri::App) -> tauri::Result<()> {
+    // Launched at login: no window, so no web view, until the icon is clicked. If the icon turns
+    // out to show nowhere, the window opens after all (`tray::set_unavailable`).
+    let hidden = std::env::args().skip(1).any(|arg| arg == HIDDEN_ARG);
+    if hidden {
+        tray::show_window_state(app.handle(), false);
     }
+    // Without an icon, closing the window quits: there would be no way back to it
+    if let Err(e) = tray::init(app) {
+        tracing::warn!("no notification area icon: {e}");
+        tray::set_available(false);
+    }
+    if !hidden || !tray::available() {
+        windows::open_main_window(app.handle())?;
+    }
+    Ok(())
+}
+
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let data_dir = app.path().app_data_dir()?;
+    std::fs::create_dir_all(&data_dir)?;
+    app.manage(Database::open(data_dir.join("soundfolk.db"))?);
+    app.manage(windows::WindowGeometry::default());
+    app.manage(share::OpenedLink::default());
+    #[cfg(desktop)]
+    share::watch_links(app);
+
+    // The last station is in the player from launch: Play (window, tray, media keys) starts it.
+    let on_air = Arc::new(Mutex::new(player::saved_station(&app.state::<Database>())));
+
+    let media = Arc::new(SystemMedia::new(app.handle().clone()));
+    let musicbrainz = MusicBrainz::new()
+        .map(Arc::new)
+        .inspect_err(|e| tracing::warn!("MusicBrainz lookups disabled: {e}"))
+        .ok();
+    let covers = Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
+    app.manage(state::CoversState(covers.clone()));
+    app.manage(notifications::TrackNotifications::new(
+        app.handle(),
+        &app.state::<Database>(),
+        covers::app_icon_file(app.handle()),
+    ));
+    let web_titles = start_web_titles(app);
+    start_downloads(app);
+    start_player(app, on_air, media, covers, web_titles)?;
+    app.manage(CatalogState(Arc::new(RadioBrowser::default())));
+
+    let identify = Arc::new(tokio::sync::Notify::new());
+    if let Some(mb) = musicbrainz {
+        musicbrainz::spawn_worker(app.handle().clone(), mb, identify.clone());
+    }
+    app.manage(musicbrainz::IdentifyWaker(identify));
+
+    open_windows(app)?;
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -180,7 +242,7 @@ pub fn run() {
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            show_main_window(app)
+            windows::show_main_window(app)
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(
@@ -191,196 +253,8 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
-            std::fs::create_dir_all(&data_dir)?;
-            app.manage(Database::open(data_dir.join("soundfolk.db"))?);
-            app.manage(WindowGeometry::default());
-            app.manage(share::OpenedLink::default());
-            #[cfg(desktop)]
-            watch_share_links(app);
-
-            // The last station is in the player from launch: Play (window, tray, media keys) starts it.
-            let on_air = Arc::new(Mutex::new(player::saved_station(&app.state::<Database>())));
-
-            let state_handle = app.handle().clone();
-            let media = Arc::new(SystemMedia::new(app.handle().clone()));
-            let musicbrainz = musicbrainz::MusicBrainz::new()
-                .map(Arc::new)
-                .inspect_err(|e| tracing::warn!("MusicBrainz lookups disabled: {e}"))
-                .ok();
-            let covers =
-                covers::Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
-            app.manage(state::CoversState(covers.clone()));
-            app.manage(notifications::TrackNotifications::new(
-                app.handle(),
-                &app.state::<Database>(),
-                covers::app_icon_file(app.handle()),
-            ));
-            let local_recipes = app
-                .path()
-                .app_config_dir()
-                .ok()
-                .map(|dir| dir.join("recipes"));
-            let events = app.handle().clone();
-            let web_titles = Arc::new(WebTitles::new(
-                Arc::new(recipes::Recipes::new(local_recipes)),
-                // A setting that cannot be read takes its default, as Constant volume does: it
-                // is no reason not to start.
-                app.state::<Database>()
-                    .get_bool(state::SETTING_WEB_TITLES, true)
-                    .unwrap_or_else(|e| {
-                        tracing::warn!("web titles setting not read: {e}");
-                        true
-                    }),
-                Box::new(move |event| {
-                    let sent = match event {
-                        WebEvent::Status(status) => events.emit(TITLE_STATUS_EVENT, status),
-                        WebEvent::Notice(notice) => events.emit(RECIPE_NOTICE_EVENT, notice),
-                    };
-                    if let Err(e) = sent {
-                        tracing::warn!("failed to emit a recipe event: {e}");
-                    }
-                }),
-            ));
-            app.manage(state::WebTitlesState(web_titles.clone()));
-            recipe_list::start(
-                web_titles.clone(),
-                app.path()
-                    .app_cache_dir()
-                    .ok()
-                    .map(|dir| dir.join("recipes")),
-            );
-            let donations = Arc::new(donations::Donations::default());
-            app.manage(donations.clone());
-            let donation_events = app.handle().clone();
-            donations::start(
-                donations,
-                app.path()
-                    .app_cache_dir()
-                    .ok()
-                    .map(|dir| dir.join("stations")),
-                move || {
-                    if let Err(e) = donation_events.emit(DONATIONS_EVENT, ()) {
-                        tracing::warn!("failed to emit {DONATIONS_EVENT}: {e}");
-                    }
-                },
-            );
-            let lists = Arc::new(curated_lists::CuratedLists::default());
-            app.manage(lists.clone());
-            let list_events = app.handle().clone();
-            curated_lists::start(
-                lists,
-                app.path()
-                    .app_cache_dir()
-                    .ok()
-                    .map(|dir| dir.join("stations")),
-                move || {
-                    if let Err(e) = list_events.emit(LISTS_EVENT, ()) {
-                        tracing::warn!("failed to emit {LISTS_EVENT}: {e}");
-                    }
-                },
-            );
-            #[cfg(desktop)]
-            {
-                let updates = Arc::new(updates::Updates::new(app.handle()));
-                app.manage(updates.clone());
-                updates::start(
-                    app.handle(),
-                    updates,
-                    app.path()
-                        .app_cache_dir()
-                        .ok()
-                        .map(|dir| dir.join("updates")),
-                );
-            }
-            let journal =
-                listening::Journal::start(app.handle().clone(), covers.clone(), on_air.clone())?;
-            let state_journal = journal.clone();
-            let state_media = media.clone();
-            let engine = DesktopAudioEngine::new(
-                Arc::new(move |state| {
-                    let state = favorite_repair::on_state(&state_handle, state);
-                    let state = media_controls::on_state(&state_handle, state);
-                    state_journal.state(&state);
-                    player::schedule_click(&state_handle, &state);
-                    state_media.show_state(&state);
-                    tray::show_state(&state_handle, &state);
-                    if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
-                        tracing::warn!("failed to emit player state: {e}");
-                    }
-                }),
-                // Logged, then announced, on the `listening` thread: never waits here.
-                Arc::new(move |now_playing: NowPlaying| journal.title(now_playing)),
-                web_titles,
-            );
-            app.manage(favorite_repair::FavoriteRepair::default());
-            app.manage(media_controls::Zap::default());
-            engine.set_normalize(volume::constant_volume(&app.state::<Database>()));
-            engine.set_level_memory(Arc::new(volume::DatabaseLevels(app.handle().clone())));
-            app.manage(AudioState::new(engine, on_air));
-            app.manage(volume::Sound::default());
-            app.manage(CatalogState(Arc::new(RadioBrowser::default())));
-
-            let identify = Arc::new(tokio::sync::Notify::new());
-            if let Some(mb) = musicbrainz {
-                musicbrainz::spawn_worker(app.handle().clone(), mb, identify.clone());
-            }
-            app.manage(musicbrainz::IdentifyWaker(identify));
-
-            // Launched at login: no window, so no web view, until the icon is clicked. If the icon turns
-            // out to show nowhere, the window opens after all (`tray::set_unavailable`).
-            let hidden = std::env::args().skip(1).any(|arg| arg == HIDDEN_ARG);
-            if hidden {
-                tray::show_window_state(app.handle(), false);
-            }
-            // Without an icon, closing the window quits: there would be no way back to it
-            if let Err(e) = tray::init(app) {
-                tracing::warn!("no notification area icon: {e}");
-                tray::set_available(false);
-            }
-            if !hidden || !tray::available() {
-                open_main_window(app.handle())?;
-            }
-            Ok(())
-        })
-        // Closing the window really closes it: its web view (WebKit, most of the app's memory) is
-        // freed while the app keeps playing from the notification area (`tray.rs`). "Quit" in its menu exits.
-        .on_window_event(|window, event| {
-            // Nothing in the mini player closes it, but a window manager shortcut can: that is a
-            // return to the main window, or the app would play on with no window to come back to.
-            if window.label() == mini::LABEL {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    api.prevent_close();
-                    show_main_window(window.app_handle());
-                }
-                return;
-            }
-            if let WindowEvent::CloseRequested { .. } = event
-                && let (Ok(position), Ok(size)) = (window.outer_position(), window.inner_size())
-            {
-                let geometry = window.app_handle().state::<WindowGeometry>();
-                *geometry.0.lock().unwrap_or_else(|p| p.into_inner()) = Some((position, size));
-            }
-            // The tray menu offers to show the window or to hide it, whichever it would do. Being
-            // minimized or restored comes as a resize (or a focus change), closing as `Destroyed`.
-            // Track notifications are only for when the window does not have the focus.
-            if window.label() == MAIN_WINDOW {
-                match event {
-                    WindowEvent::Focused(focused) => notifications::set_foreground(*focused),
-                    WindowEvent::Destroyed => notifications::set_foreground(false),
-                    _ => {}
-                }
-                match event {
-                    WindowEvent::Destroyed => tray::show_window_state(window.app_handle(), false),
-                    WindowEvent::Resized(_) | WindowEvent::Focused(_) => tray::show_window_state(
-                        window.app_handle(),
-                        main_window_shown(window.app_handle()),
-                    ),
-                    _ => {}
-                }
-            }
-        })
+        .setup(setup)
+        .on_window_event(windows::on_window_event)
         .invoke_handler(tauri::generate_handler![
             commands::play_stream,
             commands::stop_stream,

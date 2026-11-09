@@ -3,29 +3,31 @@
 //!
 //! 1. `stream-download` fetches the HTTP stream into a **bounded** in-memory buffer (a live stream is endless).
 //! 2. `symphonia` detects the format (MP3, AAC, Ogg/Vorbis, FLAC...) and decodes to PCM.
-//! 3. [`Converter`] adapts channels and sample rate to the output device.
+//! 3. [`convert::Converter`] adapts channels and sample rate to the output device.
 //! 4. Samples are pushed into the ring buffer read by the cpal callback.
 //!
-//! If the connection drops *after* the first sound, the stream is reopened automatically, for
+//! If the connection drops *after* the first sound, the stream is reopened automatically ([`retry`]), for
 //! as long as it takes when the network is down (sleep, Wi-Fi lost): the attempt starts as soon as
 //! it is back (see [`super::network`]). A connection still open across a network change or a
-//! sleep is dropped as soon as it stops receiving, instead of waiting for the read timeout.
+//! sleep is dropped as soon as it stops receiving ([`watchdog`]), instead of waiting for the read
+//! timeout.
 //! After a failure, the user is told whose fault it is, **only when proven** (see
 //! [`super::failure`]): no network, no Internet access, a captive portal (waited for as long as it
 //! takes), or the station itself (its server stopped, the stream was removed…: retried, then given
 //! up; on the very first connection, reported at once). Without proof, the player says what it
 //! sees and keeps trying.
 
+mod convert;
+mod retry;
+mod watchdog;
+
 use std::io;
 use std::num::NonZeroUsize;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rtrb::Producer;
-use rubato::audioadapter_buffers::direct::InterleavedSlice;
-use rubato::{Fft, FixedSync, Resampler};
 use stream_download::http::reqwest::header::{HeaderMap, HeaderValue};
 use stream_download::http::reqwest::{Client, Url};
 use stream_download::http::HttpStream;
@@ -40,7 +42,9 @@ use symphonia::core::io::{MediaSource, MediaSourceStream, ReadOnlySource};
 use symphonia::core::meta::{MetadataOptions, MetadataRevision, StandardTag};
 use tokio::sync::watch;
 
-use super::failure::{self, Failure};
+use self::convert::Converter;
+use self::watchdog::{Activity, Fired, NetGuard, Watchdog};
+use super::failure::Failure;
 use super::icy::{IcyReader, TitleCallback};
 use super::loudness::StationLevel;
 use super::network::NetState;
@@ -61,20 +65,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// times per second; the buffers cover this gap). Catches what the network watch cannot see,
 /// like a gateway that dies with the link still up.
 const READ_TIMEOUT: Duration = Duration::from_secs(8);
-/// After a network change or a wake from sleep, a connection that receives nothing for this long
-/// is dead (a live stream delivers several times per second). One that keeps receiving is kept:
-/// switching Ethernet → Wi-Fi with both up does not cut the sound.
-const STALL_AFTER_CHANGE: Duration = Duration::from_secs(3);
-/// Longest wait between two attempts while the network is up.
-const MAX_BACKOFF: Duration = Duration::from_secs(30);
-/// The station is given up after failing this long **with the network up** (time offline or
-/// asleep does not count).
-const GIVE_UP_AFTER: Duration = Duration::from_secs(5 * 60);
-
-const RECONNECTING: &str = "Reconnecting…";
-const NO_NETWORK: &str = "No network — waiting…";
-const NO_INTERNET: &str = "No Internet access — waiting…";
-const SIGN_IN: &str = "Sign in to the network (captive portal) — waiting…";
 
 pub struct Job {
     pub url: Url,
@@ -94,7 +84,7 @@ pub struct Job {
 pub fn spawn(job: Job) -> io::Result<()> {
     thread::Builder::new()
         .name("audio-decoder".into())
-        .spawn(move || run(job))?;
+        .spawn(move || retry::run(job))?;
     Ok(())
 }
 
@@ -119,159 +109,6 @@ impl std::fmt::Display for Interrupt {
             Self::Network => "the network changed",
             Self::Wake => "the computer woke from sleep",
         })
-    }
-}
-
-fn run(mut job: Job) {
-    if job.public_only
-        && let Err(message) = public_net::check(&job.url)
-    {
-        return job.reporter.failed(message);
-    }
-    let client = match build_client(job.public_only) {
-        Ok(client) => client,
-        Err(message) => return job.reporter.failed(message),
-    };
-
-    let mut ever_played = false;
-    let mut attempts = 0;
-    // Since when the station itself fails (time without network or Internet does not count).
-    let mut failing_since: Option<Instant> = None;
-
-    loop {
-        let mut played = false;
-        let end = play_once(&mut job, &client, &mut played);
-        ever_played |= played;
-        if played {
-            attempts = 0;
-            failing_since = None;
-        }
-
-        let failure = match end {
-            End::Cancelled => return,
-            End::Failed(failure) => Some(failure),
-            End::Interrupted(why) => {
-                tracing::info!(url = %job.url, "connection dropped: {why}");
-                None
-            }
-        };
-        if job.cancel.is_cancelled() {
-            return;
-        }
-        let interrupted = failure.is_none();
-        let message = match failure {
-            None => RECONNECTING.to_owned(),
-            // Retrying would fail the same way.
-            Some(Failure::Internal(message)) => return job.reporter.failed(message),
-            Some(failure) => {
-                tracing::warn!(url = %job.url, ?failure, "playback failed");
-                // Right after the sound stopped, the check is shown; later the last reason stays.
-                match blame(&job, ever_played && attempts == 0, &failure) {
-                    Blame::Connection(message) => {
-                        failing_since = None;
-                        message.to_owned()
-                    }
-                    // Nobody can be blamed: what was seen, and no giving up (it may be the
-                    // connection, which is waited for as long as it takes).
-                    Blame::Unknown => {
-                        failing_since = None;
-                        format!(
-                            "Cannot play the station ({}) — retrying…",
-                            failure.symptom()
-                        )
-                    }
-                    Blame::Station => {
-                        let reason = failure.reason();
-                        // Never played: dead URL, not audio… the user must be told right away.
-                        if !ever_played {
-                            return job
-                                .reporter
-                                .failed(format!("The station is not broadcasting: {reason}"));
-                        }
-                        if failing_since.get_or_insert_with(Instant::now).elapsed() > GIVE_UP_AFTER
-                        {
-                            return job
-                                .reporter
-                                .failed(format!("The station stopped broadcasting: {reason}"));
-                        }
-                        format!("The station is not broadcasting ({reason}) — retrying…")
-                    }
-                }
-            }
-        };
-
-        attempts += 1;
-        // A connection dropped on purpose is reopened at once; then exponential backoff
-        // (1 s, 2 s, 4 s… capped), cut short when the network comes back or changes.
-        let delay = match (interrupted, attempts) {
-            (true, 1) => Duration::ZERO,
-            _ => Duration::from_secs(1u64 << (attempts - 1).min(5)).min(MAX_BACKOFF),
-        };
-        if !wait_before_retry(&job, delay, &message) {
-            return;
-        }
-    }
-}
-
-/// Whose fault a failure is, on proof only (see [`failure::diagnose`]).
-enum Blame {
-    /// No network, no Internet access, or a captive portal: waited for as long as it takes.
-    Connection(&'static str),
-    /// Internet works: the station is at fault.
-    Station,
-    /// Cannot be told: nobody is named.
-    Unknown,
-}
-
-fn blame(job: &Job, sound_just_stopped: bool, failure: &Failure) -> Blame {
-    if !job.net.borrow().online {
-        return Blame::Connection(NO_NETWORK);
-    }
-    if sound_just_stopped {
-        // The check takes a moment: the player must not look like it still plays.
-        job.reporter.reconnecting(RECONNECTING);
-    }
-    match failure::diagnose(failure, &job.runtime, &job.cancel) {
-        failure::Verdict::Station => Blame::Station,
-        failure::Verdict::NoInternet => Blame::Connection(NO_INTERNET),
-        failure::Verdict::SignIn => Blame::Connection(SIGN_IN),
-        failure::Verdict::Unknown => Blame::Unknown,
-    }
-}
-
-/// Waits `delay` showing `message`, or for the network if it is down; returns at once when the
-/// network comes back or changes. `false` if the playback was stopped meanwhile.
-fn wait_before_retry(job: &Job, delay: Duration, message: &str) -> bool {
-    let mut net = job.net.clone();
-    net.mark_unchanged();
-    let deadline = tokio::time::Instant::now() + delay;
-    // Without network news (the watch thread is gone), only the delay and the stop are waited for.
-    let mut watched = true;
-    loop {
-        if job.cancel.is_cancelled() {
-            return false;
-        }
-        let state = *net.borrow_and_update();
-        job.reporter
-            .reconnecting(if state.online { message } else { NO_NETWORK });
-        if state.online && tokio::time::Instant::now() >= deadline {
-            return true;
-        }
-        // Offline, the delay does not count: only the network coming back ends the wait.
-        let changed = job.runtime.block_on(async {
-            tokio::select! {
-                () = job.cancel.cancelled() => false,
-                news = net.changed(), if watched => {
-                    watched = news.is_ok();
-                    watched
-                }
-                () = tokio::time::sleep_until(deadline), if state.online => false,
-            }
-        });
-        if changed && net.borrow().online {
-            tracing::info!("network back or changed: reconnecting now");
-            return !job.cancel.is_cancelled();
-        }
     }
 }
 
@@ -361,92 +198,6 @@ struct OpenedStream {
     _watchdog: Option<Watchdog>,
     /// Stop cancels this connection's download, unblocking a read waiting for data.
     _cancel_hook: ScopedHook,
-}
-
-/// Why the watchdog dropped the connection, read once the decoder sees the stream end.
-type Fired = Arc<Mutex<Option<Interrupt>>>;
-
-/// What the watchdog needs: the network state, and where to say why it fired.
-struct NetGuard {
-    net: watch::Receiver<NetState>,
-    fired: Fired,
-}
-
-/// When the connection last received data.
-struct Activity {
-    base: Instant,
-    last_ms: AtomicU64,
-}
-
-impl Activity {
-    fn new() -> Self {
-        Self {
-            base: Instant::now(),
-            last_ms: AtomicU64::new(0),
-        }
-    }
-
-    fn touch(&self) {
-        self.last_ms
-            .store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
-    }
-
-    fn idle(&self) -> Duration {
-        self.base
-            .elapsed()
-            .saturating_sub(Duration::from_millis(self.last_ms.load(Ordering::Relaxed)))
-    }
-}
-
-/// Task that drops the connection when it stops receiving after a network change or a sleep.
-/// Ends with the stream (`Drop`).
-struct Watchdog(tokio::task::JoinHandle<()>);
-
-impl Drop for Watchdog {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
-impl Watchdog {
-    fn spawn(
-        runtime: &tokio::runtime::Handle,
-        guard: &NetGuard,
-        opened_at: NetState,
-        activity: Arc<Activity>,
-        stop: impl FnOnce() + Send + 'static,
-    ) -> Self {
-        let net = guard.net.clone();
-        let fired = guard.fired.clone();
-        Self(runtime.spawn(async move {
-            let mut net = net;
-            // Nothing to check before a change; returns at once if one came since the opening.
-            let changed =
-                |now: &NetState| now.wake != opened_at.wake || now.network != opened_at.network;
-            if net.wait_for(changed).await.is_err() {
-                return; // the network is no longer watched
-            }
-            // Then the stream has until STALL_AFTER_CHANGE without data: wait exactly that long
-            // after the last data received, again and again while data keeps coming.
-            loop {
-                let idle = activity.idle();
-                if idle < STALL_AFTER_CHANGE {
-                    tokio::time::sleep(STALL_AFTER_CHANGE - idle).await;
-                    continue;
-                }
-                let now = *net.borrow();
-                let why = if now.wake != opened_at.wake {
-                    Interrupt::Wake
-                } else {
-                    Interrupt::Network
-                };
-                tracing::info!("{why}, and the stream stopped receiving: reconnecting");
-                *fired.lock().unwrap_or_else(|p| p.into_inner()) = Some(why);
-                stop();
-                return;
-            }
-        }))
-    }
 }
 
 fn build_client(public_only: bool) -> Result<Client, String> {
@@ -821,213 +572,4 @@ fn push_blocking(producer: &mut Producer<f32>, mut samples: &[f32], cancel: &Can
         samples = rest;
     }
     true
-}
-
-/// Block size of the FFT resampler (~21 ms at 48 kHz): latency / CPU cost trade-off.
-const RESAMPLER_CHUNK_FRAMES: usize = 1024;
-
-/// Remaps channels then resamples to the output device's format.
-///
-/// Resampling (`rubato::Fft`, high quality, fixed ratio) works on fixed-size blocks:
-/// decoded packets, whose size varies by codec, are accumulated in `pending`.
-/// When the sample rates match, it is bypassed (direct copy).
-struct Converter {
-    src_rate: u32,
-    src_channels: usize,
-    dst_channels: usize,
-    remapped: Vec<f32>,
-    resampler: Option<Fft<f32>>,
-    /// Remapped frames not yet fed to the resampler (interleaved).
-    pending: Vec<f32>,
-    /// Output of one block (interleaved), sized to the resampler's maximum.
-    scratch: Vec<f32>,
-    /// Initial silent frames introduced by the filter, to be discarded.
-    skip_frames: usize,
-}
-
-impl Converter {
-    fn new(src_rate: u32, src_channels: usize, dst: OutputFormat) -> Result<Self, String> {
-        let (resampler, scratch, skip_frames) = if src_rate == dst.sample_rate {
-            (None, Vec::new(), 0)
-        } else {
-            let resampler = Fft::<f32>::new(
-                src_rate as usize,
-                dst.sample_rate as usize,
-                RESAMPLER_CHUNK_FRAMES,
-                dst.channels,
-                FixedSync::Input,
-            )
-            .map_err(|e| format!("Cannot resample {src_rate} → {} Hz: {e}", dst.sample_rate))?;
-            let scratch = vec![0.0; resampler.output_frames_max() * dst.channels];
-            let delay = resampler.output_delay();
-            (Some(resampler), scratch, delay)
-        };
-
-        Ok(Self {
-            src_rate,
-            src_channels,
-            dst_channels: dst.channels,
-            remapped: Vec::new(),
-            resampler,
-            pending: Vec::new(),
-            scratch,
-            skip_frames,
-        })
-    }
-
-    fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
-        self.remap(input);
-        let Some(resampler) = self.resampler.as_mut() else {
-            out.extend_from_slice(&self.remapped);
-            return;
-        };
-
-        let ch = self.dst_channels;
-        self.pending.extend_from_slice(&self.remapped);
-        loop {
-            let needed = resampler.input_frames_next();
-            if self.pending.len() < needed * ch {
-                break;
-            }
-            let capacity = resampler.output_frames_max();
-            let (Ok(frames_in), Ok(mut frames_out)) = (
-                InterleavedSlice::new(&self.pending[..needed * ch], ch, needed),
-                InterleavedSlice::new_mut(&mut self.scratch[..capacity * ch], ch, capacity),
-            ) else {
-                unreachable!("sizes computed from the resampler");
-            };
-
-            match resampler.process_into_buffer(&frames_in, &mut frames_out, None) {
-                Ok((read, written)) => {
-                    let skip = self.skip_frames.min(written);
-                    self.skip_frames -= skip;
-                    out.extend_from_slice(&self.scratch[skip * ch..written * ch]);
-                    self.pending.drain(..read * ch);
-                }
-                Err(e) => {
-                    // Should not happen; drop the block rather than loop.
-                    tracing::warn!("resampling: {e}");
-                    self.pending.clear();
-                    break;
-                }
-            }
-        }
-    }
-
-    fn remap(&mut self, input: &[f32]) {
-        let (src, dst) = (self.src_channels, self.dst_channels);
-        self.remapped.clear();
-        if src == dst {
-            self.remapped.extend_from_slice(input);
-            return;
-        }
-        for frame in input.chunks_exact(src) {
-            for c in 0..dst {
-                self.remapped.push(match (src, dst) {
-                    (1, _) => frame[0],
-                    // Downmix to mono: average of front left/right.
-                    (_, 1) => (frame[0] + frame[1]) * 0.5,
-                    _ => frame.get(c).copied().unwrap_or(0.0),
-                });
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::f32::consts::TAU;
-
-    fn format(rate: u32, channels: usize) -> OutputFormat {
-        OutputFormat {
-            sample_rate: rate,
-            channels,
-        }
-    }
-
-    fn sine(rate: u32, hz: f32, seconds: f32) -> Vec<f32> {
-        (0..(rate as f32 * seconds) as usize)
-            .map(|n| (TAU * hz * n as f32 / rate as f32).sin())
-            .collect()
-    }
-
-    /// Frequency estimated by counting rising zero crossings.
-    fn frequency(signal: &[f32], rate: u32) -> f32 {
-        let crossings = signal
-            .windows(2)
-            .filter(|w| w[0] < 0.0 && w[1] >= 0.0)
-            .count();
-        crossings as f32 * rate as f32 / signal.len() as f32
-    }
-
-    fn rms(signal: &[f32]) -> f32 {
-        (signal.iter().map(|s| s * s).sum::<f32>() / signal.len() as f32).sqrt()
-    }
-
-    #[test]
-    fn same_format_is_passthrough() {
-        let mut c = Converter::new(48_000, 2, format(48_000, 2)).unwrap();
-        let mut out = Vec::new();
-        c.process(&[0.1, 0.2, 0.3, 0.4], &mut out);
-        assert_eq!(out, [0.1, 0.2, 0.3, 0.4]);
-    }
-
-    #[test]
-    fn mono_is_duplicated_and_stereo_is_downmixed() {
-        let mut up = Converter::new(48_000, 1, format(48_000, 2)).unwrap();
-        let mut out = Vec::new();
-        up.process(&[0.5, -0.5], &mut out);
-        assert_eq!(out, [0.5, 0.5, -0.5, -0.5]);
-
-        let mut down = Converter::new(48_000, 2, format(48_000, 1)).unwrap();
-        out.clear();
-        down.process(&[1.0, 0.0, 0.5, 0.5], &mut out);
-        assert_eq!(out, [0.5, 0.5]);
-    }
-
-    #[test]
-    fn upsampling_preserves_pitch_and_level_across_irregular_packets() {
-        // 1 kHz at 44.1 kHz → 48 kHz, in MP3-sized packets (1152): no pitch or level drift.
-        let mut c = Converter::new(44_100, 1, format(48_000, 1)).unwrap();
-        let mut out = Vec::new();
-        for chunk in sine(44_100, 1000.0, 2.0).chunks(1152) {
-            c.process(chunk, &mut out);
-        }
-        // The last blocks stay pending: the loss is bounded by the block size.
-        assert!(
-            out.len() > 2 * 48_000 - 3 * RESAMPLER_CHUNK_FRAMES * 2,
-            "len = {}",
-            out.len()
-        );
-
-        let steady = &out[4800..];
-        assert!((frequency(steady, 48_000) - 1000.0).abs() < 5.0);
-        assert!(
-            (rms(steady) - std::f32::consts::FRAC_1_SQRT_2).abs() < 0.02,
-            "rms = {}",
-            rms(steady)
-        );
-    }
-
-    #[test]
-    fn downsampling_stereo_keeps_both_channels_in_order() {
-        // Left channel = 440 Hz, right channel = silence: must stay separate after resampling.
-        let left = sine(48_000, 440.0, 1.0);
-        let interleaved: Vec<f32> = left.iter().flat_map(|&l| [l, 0.0]).collect();
-        let mut c = Converter::new(48_000, 2, format(24_000, 2)).unwrap();
-        let mut out = Vec::new();
-        for chunk in interleaved.chunks(2 * 1000) {
-            c.process(chunk, &mut out);
-        }
-        let l: Vec<f32> = out.iter().step_by(2).copied().collect();
-        let r: Vec<f32> = out.iter().skip(1).step_by(2).copied().collect();
-        assert!((frequency(&l[2000..], 24_000) - 440.0).abs() < 5.0);
-        assert!(rms(&r) < 1e-3, "leak into the right channel: {}", rms(&r));
-    }
-
-    #[test]
-    fn unsupported_rate_is_an_error_not_a_panic() {
-        assert!(Converter::new(0, 2, format(48_000, 2)).is_err());
-    }
 }

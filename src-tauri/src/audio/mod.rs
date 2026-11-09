@@ -25,7 +25,6 @@ mod network;
 mod output;
 mod playlist;
 pub(crate) mod public_net;
-mod web_source;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -35,13 +34,13 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::now_playing::WebTitles;
 use crate::tracks;
 pub use stream_download::http::reqwest::Url;
 
 pub use decoder::probe as probe_stream;
 pub use loudness::{LevelMemory, StoredLevel};
 pub use playlist::resolve_stream_url;
-pub use web_source::{RecipeTest, TitleStatus, WebEvent, WebTitles};
 
 /// Common facade for all platforms (see `docs/04-audio-engine.md`).
 pub trait AudioEngine {
@@ -612,7 +611,19 @@ impl DesktopAudioEngine {
         let (c, s, l) = (controls.clone(), status.clone(), levels.clone());
         thread::Builder::new()
             .name("audio-engine".into())
-            .spawn(move || engine_loop(rx, c, s, web, l))
+            .spawn(move || {
+                let Some(runtime) = network_runtime() else {
+                    return;
+                };
+                EngineCtx {
+                    controls: c,
+                    status: s,
+                    web,
+                    levels: l,
+                    runtime: runtime.handle().clone(),
+                }
+                .run(rx);
+            })
             .expect("failed to start the audio-engine thread");
 
         Self {
@@ -741,214 +752,177 @@ impl AudioEngine for DesktopAudioEngine {
     }
 }
 
-fn engine_loop(
-    rx: mpsc::Receiver<Command>,
-    controls: Arc<Controls>,
-    status: Arc<Status>,
-    web: Arc<WebTitles>,
-    levels: Levels,
-) {
-    // Dedicated runtime: it drives the HTTP download while the decoder thread
-    // blocks on synchronous reads from the `stream-download` buffer.
-    let runtime = match tokio::runtime::Builder::new_multi_thread()
+/// Dedicated runtime: it drives the HTTP download while the decoder thread blocks on
+/// synchronous reads from the `stream-download` buffer.
+fn network_runtime() -> Option<tokio::runtime::Runtime> {
+    tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("audio-net")
         .enable_all()
         .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => {
-            tracing::error!("tokio runtime unavailable: {e}");
-            return;
-        }
-    };
+        .inspect_err(|e| tracing::error!("tokio runtime unavailable: {e}"))
+        .ok()
+}
 
-    let mut session: Option<Session> = None;
-    let mut playback: Option<Playback> = None;
+/// What the engine thread hands to every playback session.
+struct EngineCtx {
+    controls: Arc<Controls>,
+    status: Arc<Status>,
+    web: Arc<WebTitles>,
+    levels: Levels,
+    runtime: tokio::runtime::Handle,
+}
 
-    loop {
-        // Nothing playing: nothing to watch either, so wait for the next command.
-        let next = if playback.is_some() {
-            rx.recv_timeout(OUTPUT_CHECK)
-        } else {
-            rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
-        };
-        let command = match next {
-            Ok(command) => command,
-            Err(RecvTimeoutError::Timeout) => {
-                reopen_lost_output(
-                    &mut session,
-                    &mut playback,
-                    &controls,
-                    &status,
-                    &web,
-                    &levels,
-                    runtime.handle(),
-                );
-                continue;
-            }
-            // The engine was dropped.
-            Err(RecvTimeoutError::Disconnected) => break,
-        };
-        // In every case, the previous session is stopped first.
-        session = None;
-        playback = None;
-        controls.set_station_gain(f32::NAN);
+impl EngineCtx {
+    fn run(&self, rx: mpsc::Receiver<Command>) {
+        let mut session: Option<Session> = None;
+        let mut playback: Option<Playback> = None;
 
-        match command {
-            Command::Stop => {
-                status.clear_now_playing();
-                unpause(&controls, &status, PlayerState::Idle);
-            }
-            Command::Play {
-                url,
-                station,
-                reply,
-            } => {
-                status.clear_now_playing();
-                unpause(&controls, &status, PlayerState::Connecting);
-                match start_session(
-                    url.clone(),
-                    station.clone(),
-                    &controls,
-                    &status,
-                    &web,
-                    &levels,
-                    runtime.handle(),
-                ) {
-                    Ok(new) => {
-                        session = Some(new);
-                        playback = Some(Playback {
-                            url,
-                            station,
-                            output_lost: None,
-                        });
-                        let _ = reply.send(Ok(()));
-                    }
-                    Err(message) => {
-                        status.set(PlayerState::Error(message.clone()));
-                        let _ = reply.send(Err(message));
+        loop {
+            // Nothing playing: nothing to watch either, so wait for the next command.
+            let next = if playback.is_some() {
+                rx.recv_timeout(OUTPUT_CHECK)
+            } else {
+                rx.recv().map_err(|_| RecvTimeoutError::Disconnected)
+            };
+            let command = match next {
+                Ok(command) => command,
+                Err(RecvTimeoutError::Timeout) => {
+                    self.reopen_lost_output(&mut session, &mut playback);
+                    continue;
+                }
+                // The engine was dropped.
+                Err(RecvTimeoutError::Disconnected) => break,
+            };
+            // In every case, the previous session is stopped first.
+            session = None;
+            playback = None;
+            self.controls.set_station_gain(f32::NAN);
+
+            match command {
+                Command::Stop => {
+                    self.status.clear_now_playing();
+                    self.unpause(PlayerState::Idle);
+                }
+                Command::Play {
+                    url,
+                    station,
+                    reply,
+                } => {
+                    self.status.clear_now_playing();
+                    self.unpause(PlayerState::Connecting);
+                    match self.start_session(url.clone(), station.clone()) {
+                        Ok(new) => {
+                            session = Some(new);
+                            playback = Some(Playback {
+                                url,
+                                station,
+                                output_lost: None,
+                            });
+                            let _ = reply.send(Ok(()));
+                        }
+                        Err(message) => {
+                            self.status.set(PlayerState::Error(message.clone()));
+                            let _ = reply.send(Err(message));
+                        }
                     }
                 }
             }
         }
+        drop(session);
     }
-    drop(session);
-}
 
-/// Clears the pause and sets `new` in one step: a `pause` between the two would see the old
-/// session's Playing and leave the next station paused.
-fn unpause(controls: &Controls, status: &Status, new: PlayerState) {
-    let mut state = status.lock();
-    controls.paused.store(false, Ordering::Relaxed);
-    status.replace(&mut state, new);
-}
+    /// Clears the pause and sets `new` in one step: a `pause` between the two would see the old
+    /// session's Playing and leave the next station paused.
+    fn unpause(&self, new: PlayerState) {
+        let mut state = self.status.lock();
+        self.controls.paused.store(false, Ordering::Relaxed);
+        self.status.replace(&mut state, new);
+    }
 
-/// The sound output died (device unplugged, sound server restarted, wake from sleep): plays the
-/// station again on a new one, keeping the pause and the title.
-fn reopen_lost_output(
-    session: &mut Option<Session>,
-    playback: &mut Option<Playback>,
-    controls: &Arc<Controls>,
-    status: &Arc<Status>,
-    web: &Arc<WebTitles>,
-    levels: &Levels,
-    runtime: &tokio::runtime::Handle,
-) {
-    let Some(play) = playback else { return };
-    if session.as_ref().is_some_and(|s| !s.output.health.is_lost()) {
-        return;
-    }
-    // The stream was given up: nothing to play again.
-    if matches!(*status.lock(), PlayerState::Error(_)) {
-        return;
-    }
-    if session.take().is_some() {
-        tracing::warn!("sound output lost: reopening it");
-        play.output_lost = Some(Instant::now());
-        status.set(PlayerState::Reconnecting(
-            "Reconnecting the sound output…".into(),
-        ));
-    }
-    match start_session(
-        play.url.clone(),
-        play.station.clone(),
-        controls,
-        status,
-        web,
-        levels,
-        runtime,
-    ) {
-        Ok(new) => {
-            *session = Some(new);
-            play.output_lost = None;
+    /// The sound output died (device unplugged, sound server restarted, wake from sleep): plays
+    /// the station again on a new one, keeping the pause and the title.
+    fn reopen_lost_output(&self, session: &mut Option<Session>, playback: &mut Option<Playback>) {
+        let Some(play) = playback else { return };
+        if session.as_ref().is_some_and(|s| !s.output.health.is_lost()) {
+            return;
         }
-        Err(message)
-            if play
-                .output_lost
-                .is_some_and(|since| since.elapsed() > OUTPUT_RETRY) =>
-        {
-            tracing::warn!("sound output not reopened: {message}");
-            *playback = None;
-            status.set(PlayerState::Error(message));
+        // The stream was given up: nothing to play again.
+        if matches!(*self.status.lock(), PlayerState::Error(_)) {
+            return;
         }
-        Err(message) => tracing::debug!("sound output not reopened yet: {message}"),
+        if session.take().is_some() {
+            tracing::warn!("sound output lost: reopening it");
+            play.output_lost = Some(Instant::now());
+            self.status.set(PlayerState::Reconnecting(
+                "Reconnecting the sound output…".into(),
+            ));
+        }
+        match self.start_session(play.url.clone(), play.station.clone()) {
+            Ok(new) => {
+                *session = Some(new);
+                play.output_lost = None;
+            }
+            Err(message)
+                if play
+                    .output_lost
+                    .is_some_and(|since| since.elapsed() > OUTPUT_RETRY) =>
+            {
+                tracing::warn!("sound output not reopened: {message}");
+                *playback = None;
+                self.status.set(PlayerState::Error(message));
+            }
+            Err(message) => tracing::debug!("sound output not reopened yet: {message}"),
+        }
     }
-}
 
-fn start_session(
-    url: Url,
-    station: StationRef,
-    controls: &Arc<Controls>,
-    status: &Arc<Status>,
-    web: &Arc<WebTitles>,
-    levels: &Levels,
-    runtime: &tokio::runtime::Handle,
-) -> Result<Session, String> {
-    let (output, producer) = output::open(controls.clone())?;
-    // Catalog stations are remembered by their UUID (the level survives a change of address),
-    // the others by their address.
-    let level = loudness::StationLevel::new(
-        levels.get().cloned(),
-        station.id.clone().unwrap_or_else(|| url.to_string()),
-        output.format.sample_rate,
-        output.format.channels,
-        controls.normalize(),
-    );
-    controls.set_station_gain(level.leveler.gain_db() as f32);
-    let cancel = Arc::new(Cancel::default());
-    let reporter = Reporter {
-        status: status.clone(),
-        controls: controls.clone(),
-        cancel: cancel.clone(),
-        stream: Arc::new(StreamMeta::default()),
-    };
+    fn start_session(&self, url: Url, station: StationRef) -> Result<Session, String> {
+        let (output, producer) = output::open(self.controls.clone())?;
+        // Catalog stations are remembered by their UUID (the level survives a change of
+        // address), the others by their address.
+        let level = loudness::StationLevel::new(
+            self.levels.get().cloned(),
+            station.id.clone().unwrap_or_else(|| url.to_string()),
+            output.format.sample_rate,
+            output.format.channels,
+            self.controls.normalize(),
+        );
+        self.controls
+            .set_station_gain(level.leveler.gain_db() as f32);
+        let cancel = Arc::new(Cancel::default());
+        let reporter = Reporter {
+            status: self.status.clone(),
+            controls: self.controls.clone(),
+            cancel: cancel.clone(),
+            stream: Arc::new(StreamMeta::default()),
+        };
 
-    let public_only = station.public_only;
-    // Streams that do not announce their title: look for it on the web.
-    web.spawn(
-        url.clone(),
-        station,
-        reporter.clone(),
-        cancel.clone(),
-        runtime,
-    );
+        let public_only = station.public_only;
+        // Streams that do not announce their title: look for it on the web.
+        self.web.spawn(
+            url.clone(),
+            station,
+            reporter.clone(),
+            cancel.clone(),
+            &self.runtime,
+        );
 
-    decoder::spawn(decoder::Job {
-        url,
-        public_only,
-        format: output.format,
-        producer,
-        level,
-        reporter,
-        cancel: cancel.clone(),
-        runtime: runtime.clone(),
-        // The network is watched while the decoder holds this (until the playback stops).
-        net: network::subscribe(),
-    })
-    .map_err(|e| format!("Failed to start the decoder: {e}"))?;
+        decoder::spawn(decoder::Job {
+            url,
+            public_only,
+            format: output.format,
+            producer,
+            level,
+            reporter,
+            cancel: cancel.clone(),
+            runtime: self.runtime.clone(),
+            // The network is watched while the decoder holds this (until the playback stops).
+            net: network::subscribe(),
+        })
+        .map_err(|e| format!("Failed to start the decoder: {e}"))?;
 
-    Ok(Session { cancel, output })
+        Ok(Session { cancel, output })
+    }
 }
 
 #[cfg(test)]
@@ -969,6 +943,7 @@ mod tests {
     }
 
     use super::*;
+    use crate::now_playing::WebEvent;
 
     #[test]
     fn play_reply_gives_the_engine_answer() {

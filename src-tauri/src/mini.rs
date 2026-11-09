@@ -6,10 +6,10 @@
 //! player with no state of its own.
 //!
 //! Opening it **closes** the main window, as closing it from its title bar does: one web view at a
-//! time, the main window's memory freed (`lib.rs`). Coming back is always
-//! [`crate::show_main_window`] — the mini player's own button, the tray, a second launch — which
-//! opens the main window first, then takes the mini player down, so the app never goes without a
-//! window it can come back from.
+//! time, the main window's memory freed (`windows.rs`). Coming back is always
+//! [`crate::windows::show_main_window`] — the mini player's own button, the tray, a second
+//! launch — which opens the main window first, then takes the mini player down, so the app never
+//! goes without a window it can come back from.
 //!
 //! Two sizes, full and compact; the front end picks its layout from the window's width, so the
 //! size is the only copy of the mode. Both the size and the position are kept for the next time.
@@ -90,7 +90,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     }
     OPEN.store(true, Ordering::Relaxed);
     // Last, once the mini player is up: if it failed, the main window stays.
-    if let Some(main) = app.get_webview_window(crate::MAIN_WINDOW) {
+    if let Some(main) = app.get_webview_window(crate::windows::MAIN_WINDOW) {
         main.close()?;
     }
     Ok(())
@@ -197,7 +197,7 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
 /// Back to the main window, the same way as from the tray.
 #[tauri::command]
 pub fn close_mini_player(app: AppHandle) {
-    crate::show_main_window(&app);
+    crate::windows::show_main_window(&app);
 }
 
 /// The mini player's shrink and expand buttons.
@@ -270,7 +270,7 @@ fn bottom_right(
     (width, height): (f64, f64),
 ) -> Option<PhysicalPosition<i32>> {
     let anchor = app
-        .get_webview_window(crate::MAIN_WINDOW)
+        .get_webview_window(crate::windows::MAIN_WINDOW)
         .unwrap_or_else(|| window.clone());
     let monitor = anchor
         .current_monitor()

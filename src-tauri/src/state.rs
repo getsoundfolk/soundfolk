@@ -8,11 +8,11 @@
 
 use std::sync::Arc;
 
-use crate::audio::WebTitles;
 use crate::catalog::CatalogSource;
 use crate::covers::Covers;
 use crate::db::Database;
 use crate::error::{AppError, AppResult};
+use crate::now_playing::WebTitles;
 
 /// Station catalog (today Radio-Browser, behind `CatalogSource`).
 pub struct CatalogState(pub Arc<dyn CatalogSource>);

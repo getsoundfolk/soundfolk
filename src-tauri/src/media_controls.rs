@@ -419,7 +419,7 @@ mod native {
     /// Windows no Raise or Quit.
     fn handle(app: &tauri::AppHandle, event: MediaControlEvent) {
         let command = match event {
-            MediaControlEvent::Raise => return crate::show_main_window(app),
+            MediaControlEvent::Raise => return crate::windows::show_main_window(app),
             MediaControlEvent::Quit => return app.exit(0),
             MediaControlEvent::Play => Command::Play,
             MediaControlEvent::Pause => Command::Pause,

@@ -411,6 +411,38 @@ pub fn opened(app: &tauri::AppHandle, url: &str) -> bool {
     true
 }
 
+/// `soundfolk://` links (docs/16-sharing.md §3.1): the one Soundfolk was started with, and the
+/// ones opened while it runs (a second launch hands them over through single-instance). The
+/// scheme is registered again at every launch on Linux and Windows, which covers the AppImage and
+/// development builds; the `.deb` declares it too.
+#[cfg(desktop)]
+pub fn watch_links(app: &tauri::App) {
+    use tauri_plugin_deep_link::DeepLinkExt;
+    let handle = app.handle().clone();
+    app.deep_link().on_open_url(move |event| {
+        if let Some(url) = event.urls().last()
+            && opened(&handle, url.as_str())
+        {
+            crate::windows::show_main_window(&handle);
+        }
+    });
+    if let Ok(Some(urls)) = app.deep_link().get_current()
+        && let Some(url) = urls.last()
+    {
+        opened(app.handle(), url.as_str());
+    }
+    #[cfg(any(target_os = "linux", windows))]
+    {
+        // Runs `update-desktop-database` and `xdg-mime` on Linux: not on the startup path.
+        let handle = app.handle().clone();
+        std::thread::spawn(move || {
+            if let Err(e) = handle.deep_link().register_all() {
+                tracing::warn!("soundfolk:// links not registered: {e}");
+            }
+        });
+    }
+}
+
 /// The link opened from outside since the last call, if any.
 #[tauri::command]
 pub fn take_opened_link(opened: State<'_, OpenedLink>) -> Option<String> {

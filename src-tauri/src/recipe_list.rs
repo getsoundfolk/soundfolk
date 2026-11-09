@@ -19,8 +19,8 @@ use soundfolk_nowplaying::check::load_compiled;
 use soundfolk_nowplaying::recipe::Recipe;
 use stream_download::http::reqwest::Client;
 
-use crate::audio::WebTitles;
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
+use crate::now_playing::WebTitles;
 
 /// Where the list is published. `v1` is the list format, not the recipe schema: a breaking change
 /// of the list moves it, and older apps keep reading the old one.

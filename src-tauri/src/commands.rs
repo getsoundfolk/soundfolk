@@ -10,7 +10,7 @@
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::audio::{self, AudioEngine, NowPlaying, PlayerState, RecipeTest, TitleStatus};
+use crate::audio::{self, AudioEngine, NowPlaying, PlayerState};
 use crate::catalog::{surprise, SearchPage, SearchQuery, Station};
 use crate::covers::{self, Cover, CoverSource};
 use crate::db::{
@@ -20,6 +20,7 @@ use crate::error::AppResult;
 use crate::export;
 use crate::files::{open_path, save_download, ExportedFile};
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
+use crate::now_playing::{RecipeTest, TitleStatus};
 use crate::player::{self, catalog_ref, AudioState, PlayOutcome, ResolvedStation};
 use crate::recipes;
 use crate::state::{

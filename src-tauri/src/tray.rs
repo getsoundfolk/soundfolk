@@ -55,8 +55,11 @@ pub fn set_unavailable(app: &AppHandle) {
     use tauri::Manager;
 
     set_available(false);
-    if app.get_webview_window(crate::MAIN_WINDOW).is_none() {
-        crate::show_main_window(app);
+    if app
+        .get_webview_window(crate::windows::MAIN_WINDOW)
+        .is_none()
+    {
+        crate::windows::show_main_window(app);
     }
 }
 
@@ -113,7 +116,7 @@ fn toggle_label(window_shown: bool) -> &'static str {
 /// Shared by both backends: the menu ids are the contract between them.
 fn handle_menu(app: &AppHandle, id: &str) {
     let command = match id {
-        "toggle" => return crate::toggle_main_window(app),
+        "toggle" => return crate::windows::toggle_main_window(app),
         "mini" => return crate::mini::show(app),
         "quit" => return app.exit(0),
         "mute" => {
@@ -190,7 +193,7 @@ mod imp {
 
         /// Left click.
         fn activate(&mut self, _x: i32, _y: i32) {
-            crate::toggle_main_window(&self.app);
+            crate::windows::toggle_main_window(&self.app);
         }
 
         /// Middle click.
@@ -202,7 +205,7 @@ mod imp {
         /// the label is checked again as the menu opens. Some panels show the menu before the
         /// update arrives, hence the window events too.
         fn menu_about_to_show(&mut self) {
-            self.window_shown = crate::main_window_shown(&self.app);
+            self.window_shown = crate::windows::main_window_shown(&self.app);
             WINDOW_SHOWN.store(self.window_shown, Ordering::Relaxed);
         }
 
@@ -386,7 +389,7 @@ mod imp {
                     ..
                 } = event
                 {
-                    crate::toggle_main_window(tray.app_handle());
+                    crate::windows::toggle_main_window(tray.app_handle());
                 }
             });
         if let Some(icon) = app.default_window_icon() {

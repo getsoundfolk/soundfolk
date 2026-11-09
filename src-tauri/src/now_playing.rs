@@ -31,7 +31,7 @@ use soundfolk_nowplaying::{extract, RawTrack, SignedDuration, Snapshot, Start, T
 use stream_download::http::reqwest::{header, Client, Url};
 use tokio::sync::watch;
 
-use super::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
+use crate::audio::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
 use crate::recipes::{Change, Entry, Origin, Recipes};
 
 /// Network and audio buffers between the broadcast and what the listener hears (the output
@@ -128,8 +128,8 @@ pub struct RecipeTest {
     pub local_error: Option<LocalError>,
     /// The page that was read.
     pub url: Option<String>,
-    pub track: Option<super::TrackInfo>,
-    pub next: Option<super::TrackInfo>,
+    pub track: Option<TrackInfo>,
+    pub next: Option<TrackInfo>,
     pub show: Option<String>,
     /// The station's UTC offset, in minutes, when the page gives local times.
     pub utc_offset_minutes: Option<i32>,
@@ -348,7 +348,7 @@ impl WebTitles {
         match reading.on_air {
             Some(on_air) => {
                 report.track = Some((&on_air.current).into());
-                report.next = on_air.next.as_ref().map(super::TrackInfo::from);
+                report.next = on_air.next.as_ref().map(TrackInfo::from);
                 report.show = on_air.show;
             }
             None => report.error = Some(nothing_found(&reading.snapshot)),
