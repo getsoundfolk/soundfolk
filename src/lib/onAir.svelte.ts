@@ -2,11 +2,21 @@
 // What the player shows of the station on air, shared by the player and the mini player so that
 // both name the track and pick the cover the same way.
 import { untrack } from 'svelte';
+import { errors } from './errors.svelte';
 import { history } from './history.svelte';
 import { displayTitle } from './trackLinks';
 import { player } from './player.svelte';
 import { wheelSteps } from './wheel';
 import { stationNames } from './stationNames.svelte';
+
+const LABELS = {
+  idle: 'Stopped',
+  connecting: 'Connecting…',
+  reconnecting: 'Reconnecting…',
+  playing: 'Playing',
+  paused: 'Paused',
+  error: 'Error',
+} as const;
 
 class OnAir {
   // A new station shows its name at once; what was on air before (title, artist, up next, cover)
@@ -86,6 +96,25 @@ class OnAir {
   });
   /** The cover is the station's logo, not the track's art. */
   isLogo = $derived(player.cover.logo === true);
+
+  /** The player's state line: an error shown in the player counts as one; the text is that
+   *  error, the backend's own words, or the state's. Playing, paused and stopped are already said
+   *  by the play button and the title on air: `quiet` then, worth showing only to screen
+   *  readers. */
+  playerStatus = $derived.by(() => {
+    const status = errors.player ? 'error' : player.state.status;
+    const text =
+      errors.player ??
+      ('message' in player.state ? player.state.message : LABELS[player.state.status]);
+    const quiet = status === 'playing' || status === 'paused' || status === 'idle';
+    return { status, text, quiet };
+  });
+
+  /** The volume as the slider says it. */
+  volumePercent = $derived(Math.round(player.volume * 100));
+  volumeText = $derived(
+    player.muted ? `Muted (${this.volumePercent} %)` : `${this.volumePercent} %`,
+  );
 }
 
 export const onAir = new OnAir();

@@ -342,12 +342,12 @@
   color: var(--color-on-art);
 }
 
-.control[data-like='true'],
-.artButton[data-like='true'] {
+.control[data-on='true'],
+.artButton[data-on='true'] {
   color: var(--color-like);
 }
 
-.artButton[aria-pressed='true']:not([data-like]) {
+.artButton[aria-pressed='true']:not([data-on]) {
   color: var(--color-error);
 }
 

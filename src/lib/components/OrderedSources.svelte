@@ -15,9 +15,8 @@
 </script>
 
 <script lang="ts">
-  import { tick } from 'svelte';
-  import { moved } from '../order';
   import { flip } from 'svelte/animate';
+  import { Reorder } from '../reorder.svelte';
   import Icon from './Icon.svelte';
   import styles from './OrderedSources.module.css';
 
@@ -38,69 +37,13 @@
     onreset: () => void;
   } = $props();
 
-  /** The order while a row is being dragged, saved on release. */
-  let draft = $state<SourceItem[] | null>(null);
-  let draggedId = $state<string | null>(null);
-  let announcement = $state('');
-  const shown = $derived(draft ?? items);
-  const rows = new Map<string, HTMLElement>();
-  const handles = new Map<string, HTMLElement>();
-
-  function register(map: Map<string, HTMLElement>, id: string) {
-    return (node: HTMLElement) => {
-      map.set(id, node);
-      return () => map.delete(id);
-    };
-  }
-
-  function announce(list: SourceItem[], id: string) {
-    const index = list.findIndex((i) => i.id === id);
-    announcement = `${list[index].name}, position ${index + 1} of ${list.length}`;
-  }
-
-  function startDrag(e: PointerEvent, id: string) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    draggedId = id;
-    draft = [...items];
-  }
-
-  function drag(e: PointerEvent) {
-    if (!draft || !draggedId) return;
-    const from = draft.findIndex((i) => i.id === draggedId);
-    // The row under the pointer takes the dragged one's place.
-    const to = draft.findIndex((i) => {
-      const rect = rows.get(i.id)?.getBoundingClientRect();
-      return rect && e.clientY >= rect.top && e.clientY < rect.bottom;
-    });
-    if (to !== -1 && to !== from) draft = moved(draft, from, to);
-  }
-
-  function endDrag() {
-    if (!draft || !draggedId) return;
-    const changed = draft.some((item, i) => item.id !== items[i]?.id);
-    if (changed) {
-      onchange(draft);
-      announce(draft, draggedId);
-    }
-    draft = null;
-    draggedId = null;
-  }
-
-  async function onkeydown(e: KeyboardEvent, index: number) {
-    const to = e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : null;
-    if (to === null) return;
-    e.preventDefault();
-    if (to < 0 || to >= items.length) return;
-    const id = items[index].id;
-    const next = moved(items, index, to);
-    onchange(next);
-    announce(next, id);
-    // Moving the row in the page may take the focus away from its handle.
-    await tick();
-    handles.get(id)?.focus();
-  }
+  const byId = (id: string) => items.find((i) => i.id === id);
+  const order = new Reorder(
+    () => items.map((i) => i.id),
+    (id) => byId(id)?.name ?? id,
+    (ids) => onchange(ids.flatMap((id) => byId(id) ?? [])),
+  );
+  const shown = $derived(order.shown(items, (i) => i.id));
 
   const toggle = (id: string, enabled: boolean) =>
     onchange(items.map((i) => (i.id === id ? { ...i, enabled } : i)));
@@ -119,12 +62,11 @@
     {/if}
   </div>
 
-  <ol class={styles.list}>
+  <ol class={styles.list} {@attach order.attach}>
     {#each shown as item, index (item.id)}
       <li
         class={styles.row}
-        data-dragged={item.id === draggedId}
-        {@attach register(rows, item.id)}
+        data-dragged={item.id === order.draggedId}
         animate:flip={{ duration: 150 }}
       >
         <button
@@ -132,12 +74,7 @@
           type="button"
           aria-label={`Move ${item.name}, position ${index + 1} of ${shown.length}`}
           title="Drag, or use ↑ ↓, to reorder"
-          {@attach register(handles, item.id)}
-          onpointerdown={(e) => startDrag(e, item.id)}
-          onpointermove={drag}
-          onpointerup={endDrag}
-          onpointercancel={endDrag}
-          onkeydown={(e) => onkeydown(e, index)}><Icon name="grip" /></button
+          {...order.handle(item.id)}><Icon name="grip" /></button
         >
         <span class={styles.rank} aria-hidden="true">{index + 1}</span>
         <label class={styles.option}>
@@ -159,5 +96,5 @@
       </li>
     {/each}
   </ol>
-  <p class={styles.live} aria-live="polite">{announcement}</p>
+  <p class={styles.live} aria-live="polite">{order.announcement}</p>
 </div>

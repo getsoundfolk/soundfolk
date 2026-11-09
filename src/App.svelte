@@ -39,11 +39,7 @@
     };
   });
 
-  // The backend logs a title before announcing it: the player's ♥ then finds it in the history.
-  $effect(() => {
-    void player.nowPlaying.title;
-    history.refreshLatest();
-  });
+  history.followOnAir();
 </script>
 
 <!-- A share link dropped from the browser opens what it carries (docs/16-sharing.md §3.1). -->

@@ -7,7 +7,8 @@ import { player } from './player.svelte';
 class HistoryStore {
   /** Last logged title, if it is the one on air now (the player's ♥ applies to it). */
   latest = $state<HistoryEntry | null>(null);
-  /** Bumped after every like change: lists depending on likes reload. */
+  /** Bumped after every like change, rename or clearing: lists depending on the history reload.
+   *  Read it; change it only through the methods below. */
   version = $state(0);
 
   /** Title on air as logged in the history, or null (not logged, e.g. the station's own name). */
@@ -20,6 +21,15 @@ class HistoryStore {
   );
 
   /** Reads the last track logged. A failure is shown in `area`. */
+  /** Follows the title on air, from a component's setup: the backend logs a title before
+   *  announcing it, so the player's ♥ then finds it here. */
+  followOnAir(area: ErrorArea = 'history') {
+    $effect(() => {
+      void player.nowPlaying.title;
+      this.refreshLatest(area);
+    });
+  }
+
   async refreshLatest(area: ErrorArea = 'history') {
     try {
       this.latest = (await api.getListeningHistory(1))[0] ?? null;
@@ -43,6 +53,17 @@ class HistoryStore {
     } catch (e) {
       errors.report(area, e);
     }
+  }
+
+  /** The history was cleared: nothing is logged any more. */
+  cleared() {
+    this.latest = null;
+    this.version++;
+  }
+
+  /** A station was renamed: the history, the likes and the stats show the new name. */
+  renamed() {
+    this.version++;
   }
 }
 

@@ -11,15 +11,19 @@
      backend sizes the window and keeps the choice, so the mode has one copy only. -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, type Favorite, type HistoryEntry, type Playable } from '../api';
+  import { api, type HistoryEntry } from '../api';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { onAir, wheelVolume } from '../onAir.svelte';
   import { player } from '../player.svelte';
   import { stationNames } from '../stationNames.svelte';
   import { shortcutKeydown } from '../shortcuts';
+  import { playableOfSaved } from '../stations';
   import { displayTitle } from '../trackLinks';
   import Icon from './Icon.svelte';
+  import LikeButton from './LikeButton.svelte';
+  import SkipButton from './SkipButton.svelte';
+  import VolumeIcon from './VolumeIcon.svelte';
   import Waves from './Waves.svelte';
   import styles from './MiniPlayer.module.css';
 
@@ -29,12 +33,8 @@
     return () => void ready.then((off) => off());
   });
 
-  // The backend logs a title before announcing it: the ♥ then finds it in the history. This
-  // window shows only the player's errors.
-  $effect(() => {
-    void player.nowPlaying.title;
-    history.refreshLatest('player');
-  });
+  // This window shows only the player's errors.
+  history.followOnAir('player');
 
   // Zoom never applies to this window: CSS pixels are the logical size set by the backend.
   let width = $state(window.innerWidth);
@@ -45,22 +45,9 @@
   const back = () => api.closeMiniPlayer().catch(() => {});
 
   const cover = $derived(onAir.cover);
-  const status = $derived(errors.player ? 'error' : player.state.status);
+  const status = $derived(onAir.playerStatus);
   // Said only while it matters, as in the player: connecting, reconnecting, an error.
-  const message = $derived(
-    errors.player ??
-      (status === 'connecting'
-        ? 'Connecting…'
-        : status === 'reconnecting'
-          ? 'Reconnecting…'
-          : status === 'error' && 'message' in player.state
-            ? player.state.message
-            : null),
-  );
-  const track = $derived(history.onAir);
-  const level = $derived(player.muted ? 0 : player.volume);
-  const percent = $derived(Math.round(player.volume * 100));
-  const noFavorites = $derived(player.favorites.length === 0);
+  const message = $derived(status.quiet ? null : status.text);
 
   // The right column: the favorites (a click plays one) or the titles heard lately. Not kept:
   // the favorites are the useful default.
@@ -81,13 +68,6 @@
     return () => {
       current = false;
     };
-  });
-
-  const fromFavorite = (f: Favorite): Playable => ({
-    id: f.station_id,
-    name: f.name,
-    url: f.stream_url,
-    genre: f.genre,
   });
 
   // The station on air stays in sight in the list.
@@ -114,9 +94,6 @@
     window.addEventListener('mousedown', stop, { capture: true });
     return () => window.removeEventListener('mousedown', stop, { capture: true });
   });
-
-  const switchFavorite = (forward: boolean) =>
-    api.switchFavorite(forward).catch((e) => errors.report('player', e));
 </script>
 
 <!-- On the window, not the slider: a drag that ends elsewhere never sends pointerup to it. -->
@@ -138,33 +115,6 @@
     onclick={() => player.toggle()}
     ><Icon name={player.active ? 'pause' : 'play'} size={compact ? 14 : 16} /></button
   >
-{/snippet}
-
-{#snippet skip(forward: boolean)}
-  <button
-    class={styles.control}
-    type="button"
-    aria-label={forward ? 'Next favorite' : 'Previous favorite'}
-    title={forward ? 'Next favorite' : 'Previous favorite'}
-    disabled={noFavorites}
-    onclick={() => switchFavorite(forward)}><Icon name={forward ? 'next' : 'previous'} /></button
-  >
-{/snippet}
-
-{#snippet like(onArt: boolean)}
-  {#if track}
-    {@const t = track}
-    <button
-      class={onArt ? styles.artButton : styles.control}
-      type="button"
-      aria-pressed={t.liked}
-      aria-label={t.liked ? `Unlike ${t.title}` : `Like ${t.title}`}
-      title={t.liked ? 'Unlike' : 'Like'}
-      data-like={t.liked}
-      onclick={() => history.toggleLike({ ...t, historyId: t.id }, 'player')}
-      ><Icon name="heart" filled={t.liked} /></button
-    >
-  {/if}
 {/snippet}
 
 {#snippet art(className: string)}
@@ -198,18 +148,18 @@
     <div class={styles.compactBody}>
       <p class={styles.compactTitle} title={onAir.station}>{onAir.station}</p>
       {#if message}
-        <p class={styles.compactLine} data-error={status === 'error'} title={message}>
+        <p class={styles.compactLine} data-error={status.status === 'error'} title={message}>
           {message}
         </p>
       {:else if onAir.track}
         <p class={styles.compactLine} title={onAir.track}>{onAir.track}</p>
       {/if}
       <div class={styles.compactRow}>
-        {@render skip(false)}
+        <SkipButton forward={false} class={styles.control} />
         {@render playButton()}
-        {@render skip(true)}
+        <SkipButton forward class={styles.control} />
         <span class={styles.push}></span>
-        {@render like(false)}
+        <LikeButton class={styles.control} />
       </div>
     </div>
   {:else}
@@ -246,8 +196,8 @@
             data-open={volumeOpen}
             data-muted={player.muted}
             aria-label="Volume"
-            aria-valuetext={player.muted ? `Muted (${percent} %)` : `${percent} %`}
-            title={`Volume ${percent} %`}
+            aria-valuetext={onAir.volumeText}
+            title={`Volume ${onAir.volumePercent} %`}
             style:--fill={`${player.volume * 100}%`}
             value={player.volume}
             onpointerdown={() => (volumeDrag = true)}
@@ -262,25 +212,7 @@
             title={player.muted ? 'Unmute' : 'Mute'}
             onclick={() => player.toggleMute()}
           >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
-              {#if level === 0}
-                <path d="m16 9 5 6m0-6-5 6" />
-              {:else}
-                <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
-                {#if level > 0.5}<path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" />{/if}
-              {/if}
-            </svg>
+            <VolumeIcon />
           </button>
         </div>
         <button
@@ -290,7 +222,7 @@
           title="Shrink the mini player"
           onclick={() => setCompact(true)}><Icon name="shrink" /></button
         >
-        {@render like(true)}
+        <LikeButton class={styles.artButton} />
       </div>
 
       <div class={styles.text}>
@@ -298,7 +230,12 @@
         {#if onAir.title}<p class={styles.title} title={onAir.title}>{onAir.title}</p>{/if}
         {#if onAir.artist}<p class={styles.artist} title={onAir.artist}>{onAir.artist}</p>{/if}
         {#if message}
-          <p class={styles.message} data-error={status === 'error'} role="status" title={message}>
+          <p
+            class={styles.message}
+            data-error={status.status === 'error'}
+            role="status"
+            title={message}
+          >
             {message}
           </p>
         {:else if onAir.upNext}
@@ -321,7 +258,7 @@
               type="button"
               aria-current={on}
               title={name}
-              onclick={() => player.play(fromFavorite(f))}>{name}</button
+              onclick={() => player.play(playableOfSaved(f))}>{name}</button
             >
           {:else}
             <p class={styles.empty}>No favorites yet: star a station in the full player.</p>
@@ -340,9 +277,9 @@
       </div>
 
       <div class={styles.transport}>
-        {@render skip(false)}
+        <SkipButton forward={false} class={styles.control} />
         {@render playButton()}
-        {@render skip(true)}
+        <SkipButton forward class={styles.control} />
         <button
           class={`${styles.control} ${styles.tab}`}
           type="button"

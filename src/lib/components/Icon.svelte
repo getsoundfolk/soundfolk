@@ -25,7 +25,10 @@
     | 'previous'
     | 'next'
     | 'history'
-    | 'share';
+    | 'share'
+    | 'volume'
+    | 'volume-low'
+    | 'volume-off';
 </script>
 
 <script lang="ts">
@@ -137,6 +140,14 @@
     <circle cx="18" cy="19" r="3" />
     <path d="m8.59 13.51 6.83 3.98" />
     <path d="m15.41 6.51-6.82 3.98" />
+  {:else if name === 'volume' || name === 'volume-low' || name === 'volume-off'}
+    <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
+    {#if name === 'volume-off'}
+      <path d="m16 9 5 6m0-6-5 6" />
+    {:else}
+      <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
+      {#if name === 'volume'}<path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" />{/if}
+    {/if}
   {/if}
 </svg>
 

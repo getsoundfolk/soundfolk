@@ -30,8 +30,7 @@ class StationNamesStore {
     if (kept) names[id] = kept;
     else delete names[id];
     this.names = names;
-    // The history, the likes and the stats show the new name.
-    history.version++;
+    history.renamed();
   }
 }
 

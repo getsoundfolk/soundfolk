@@ -11,26 +11,14 @@
   import { share } from '../share.svelte';
   import { ui } from '../ui.svelte';
   import Icon from './Icon.svelte';
+  import LikeButton from './LikeButton.svelte';
+  import SkipButton from './SkipButton.svelte';
+  import VolumeIcon from './VolumeIcon.svelte';
   import Waves from './Waves.svelte';
   import styles from './PlayerControls.module.css';
 
-  const LABELS = {
-    idle: 'Stopped',
-    connecting: 'Connecting…',
-    reconnecting: 'Reconnecting…',
-    playing: 'Playing',
-    paused: 'Paused',
-    error: 'Error',
-  } as const;
-
-  const status = $derived(errors.player ? 'error' : player.state.status);
-  // Playing, paused and stopped are already said by the play button and the title on air: the
-  // line is shown only while connecting, reconnecting or failing, and stays for screen readers.
-  const quiet = $derived(status === 'playing' || status === 'paused' || status === 'idle');
-  const message = $derived(
-    errors.player ??
-      ('message' in player.state ? player.state.message : LABELS[player.state.status]),
-  );
+  // Shown only while connecting, reconnecting or failing; always there for screen readers.
+  const status = $derived(onAir.playerStatus);
   // Station, title and artist each on their line (onAir.svelte.ts).
   const stationName = $derived(onAir.stationName);
   const station = $derived(onAir.station);
@@ -38,10 +26,6 @@
   const artist = $derived(onAir.artist);
   const upNext = $derived(onAir.upNext);
   const cover = $derived(onAir.cover);
-
-  // Volume: the filled part of the track and the speaker's waves.
-  const level = $derived(player.muted ? 0 : player.volume);
-  const percent = $derived(Math.round(player.volume * 100));
 
   // The station's donation page (docs/13-donations.md §3), asked again when the station changes
   // or a new list was downloaded. A late answer for a previous station is dropped.
@@ -84,20 +68,6 @@
     lists.refreshFor(player.current);
   });
 </script>
-
-<!-- Previous / next favorite, as in the mini player, the tray and the media keys: it changes the
-     station, not the track (a live stream has no previous track). Quiet beside play. -->
-{#snippet skip(forward: boolean)}
-  <button
-    class={styles.skip}
-    type="button"
-    aria-label={forward ? 'Next favorite' : 'Previous favorite'}
-    title={forward ? 'Next favorite' : 'Previous favorite'}
-    disabled={player.favorites.length === 0}
-    onclick={() => api.switchFavorite(forward).catch((e) => errors.report('player', e))}
-    ><Icon name={forward ? 'next' : 'previous'} size={18} /></button
-  >
-{/snippet}
 
 <!-- Shares the station with the track on air (docs/16-sharing.md §4.1). -->
 {#snippet shareButton()}
@@ -153,25 +123,20 @@
           {#if player.current}{@render shareButton()}{@render info()}{/if}
         </div>
         <!-- Under the station, inside the block: connecting never changes its height. -->
-        <p class={styles.status} data-status={status} data-quiet={quiet} role="status">
+        <p
+          class={styles.status}
+          data-status={status.status}
+          data-quiet={status.quiet}
+          role="status"
+        >
           <span class={styles.dot} aria-hidden="true"></span>
-          {message}
+          {status.text}
         </p>
         {#if title}
           <div class={styles.line}>
             <p class={styles.title} {title}>{title}</p>
             {#if history.onAir}
-              {@const track = history.onAir}
-              <button
-                class={styles.like}
-                type="button"
-                aria-pressed={track.liked}
-                aria-label={track.liked ? `Unlike ${track.title}` : `Like ${track.title}`}
-                title={track.liked ? 'Unlike' : 'Like'}
-                data-on={track.liked}
-                onclick={() => history.toggleLike({ ...track, historyId: track.id }, 'player')}
-                ><Icon name="heart" size={16} filled={track.liked} /></button
-              >
+              <LikeButton class={styles.like} />
             {:else}
               <span class={styles.slot} aria-hidden="true"></span>
             {/if}
@@ -206,7 +171,8 @@
 
       <div class={styles.row}>
         <div class={styles.transport}>
-          {@render skip(false)}
+          <!-- Quiet beside play. -->
+          <SkipButton forward={false} class={styles.skip} size={18} />
           <button
             class={styles.button}
             type="button"
@@ -229,7 +195,7 @@
             </svg>
           </button>
 
-          {@render skip(true)}
+          <SkipButton forward class={styles.skip} size={18} />
         </div>
 
         <div class={styles.volume} onwheel={wheelVolume}>
@@ -241,25 +207,7 @@
             title={player.muted ? 'Unmute' : 'Mute'}
             onclick={() => player.toggleMute()}
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor" />
-              {#if level === 0}
-                <path d="m16 9 5 6m0-6-5 6" />
-              {:else}
-                <path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />
-                {#if level > 0.5}<path d="M18.5 6.5a7.5 7.5 0 0 1 0 11" />{/if}
-              {/if}
-            </svg>
+            <VolumeIcon size={20} />
           </button>
           <input
             class={styles.slider}
@@ -268,8 +216,8 @@
             max="1"
             step="0.01"
             aria-label="Volume"
-            aria-valuetext={player.muted ? `Muted (${percent} %)` : `${percent} %`}
-            title={`Volume ${percent} %`}
+            aria-valuetext={onAir.volumeText}
+            title={`Volume ${onAir.volumePercent} %`}
             data-muted={player.muted}
             style:--fill={`${player.volume * 100}%`}
             value={player.volume}
@@ -285,7 +233,7 @@
     <p class={styles.skipped}>Skipped {name}: {reason}</p>
   {/each}
 
-  {#if status === 'error' && player.goneFavorite && player.isFavorite(player.goneFavorite)}
+  {#if status.status === 'error' && player.goneFavorite && player.isFavorite(player.goneFavorite)}
     <p class={styles.ask}>
       Remove it from your favorites?
       <button class={styles.answer} type="button" onclick={() => player.answerGoneFavorite(true)}

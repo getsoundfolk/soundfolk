@@ -1,20 +1,20 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import {
-    api,
-    errorMessage,
-    type Favorite,
-    type PersonalStation,
-    type Playable,
-    type Station,
-  } from '../api';
+  import { api, errorMessage, type PersonalStation, type Playable, type Station } from '../api';
   import { rovingKeydown } from '../a11y';
   import { errors } from '../errors.svelte';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
   import { Reorder } from '../reorder.svelte';
-  import { hostOf, pickRandom, playableOf, shortMeta, warningOf } from '../stations';
+  import {
+    hostOf,
+    pickRandom,
+    playableOf,
+    playableOfSaved,
+    shortMeta,
+    warningOf,
+  } from '../stations';
   import { stationNames } from '../stationNames.svelte';
   import { share } from '../share.svelte';
   import { ui } from '../ui.svelte';
@@ -154,7 +154,8 @@
     errors.clear('stations');
     try {
       await api.removePersonalStation(station.station_id);
-      if (player.isFavorite(station.station_id)) await player.toggleFavorite(fromPersonal(station));
+      if (player.isFavorite(station.station_id))
+        await player.toggleFavorite(playableOfSaved(station));
       await loadPersonal();
     } catch (e) {
       errors.report('stations', e);
@@ -201,20 +202,6 @@
     (ids) => player.reorderFavorites(ids),
   );
   const shownFavorites = $derived(favoriteOrder.shown(player.favorites, (f) => f.station_id));
-
-  // ── Conversions to what the player can play ───────────────────────────
-  const fromPersonal = (p: PersonalStation): Playable => ({
-    id: p.station_id,
-    name: p.name,
-    url: p.stream_url,
-    genre: p.genre,
-  });
-  const fromFavorite = (f: Favorite): Playable => ({
-    id: f.station_id,
-    name: f.name,
-    url: f.stream_url,
-    genre: f.genre,
-  });
 
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
@@ -292,7 +279,8 @@
             <button
               class={styles.link}
               type="button"
-              onclick={() => surpriseFrom(player.favorites.map(fromFavorite))}>Surprise me</button
+              onclick={() => surpriseFrom(player.favorites.map(playableOfSaved))}
+              >Surprise me</button
             >
             <button class={styles.link} type="button" onclick={() => exportMine('favorites')}
               >Export M3U</button
@@ -342,8 +330,8 @@
                 personal={f.station_id.startsWith('user:')}
                 active={isActive(f.station_id)}
                 favorite
-                onplay={() => player.play(fromFavorite(f))}
-                onfavorite={() => player.toggleFavorite(fromFavorite(f))}
+                onplay={() => player.play(playableOfSaved(f))}
+                onfavorite={() => player.toggleFavorite(playableOfSaved(f))}
                 handle={player.favorites.length > 1
                   ? favoriteOrder.handle(f.station_id)
                   : undefined}
@@ -362,7 +350,7 @@
             <button
               class={styles.link}
               type="button"
-              onclick={() => surpriseFrom(personal.map(fromPersonal))}>Surprise me</button
+              onclick={() => surpriseFrom(personal.map(playableOfSaved))}>Surprise me</button
             >
             <button class={styles.link} type="button" onclick={() => exportMine('my_stations')}
               >Export M3U</button
@@ -400,8 +388,8 @@
                 personal
                 active={isActive(p.station_id)}
                 favorite={player.isFavorite(p.station_id)}
-                onplay={() => player.play(fromPersonal(p))}
-                onfavorite={() => player.toggleFavorite(fromPersonal(p))}
+                onplay={() => player.play(playableOfSaved(p))}
+                onfavorite={() => player.toggleFavorite(playableOfSaved(p))}
                 onremove={() => removePersonal(p)}
               />
             {/each}
@@ -464,8 +452,8 @@
               personal
               active={isActive(p.station_id)}
               favorite={player.isFavorite(p.station_id)}
-              onplay={() => player.play(fromPersonal(p))}
-              onfavorite={() => player.toggleFavorite(fromPersonal(p))}
+              onplay={() => player.play(playableOfSaved(p))}
+              onfavorite={() => player.toggleFavorite(playableOfSaved(p))}
             />
           {/each}
           {#each results as s (s.id)}

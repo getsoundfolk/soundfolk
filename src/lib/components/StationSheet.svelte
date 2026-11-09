@@ -10,7 +10,7 @@
   import { player } from '../player.svelte';
   import { share } from '../share.svelte';
   import { stationNames } from '../stationNames.svelte';
-  import { playableOf } from '../stations';
+  import { playableOf, warningOf } from '../stations';
   import { ui } from '../ui.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import Icon from './Icon.svelte';
@@ -127,12 +127,8 @@
         return 'Reachable at last check';
       case 'unsupported':
         return `Not playable here: ${s.health.reason}`;
-      case 'unreachable': {
-        const last = s.health.last_ok ? new Date(s.health.last_ok) : null;
-        return last && !Number.isNaN(last.getTime())
-          ? `Unreachable at last check (last success: ${last.toLocaleDateString(undefined, { dateStyle: 'medium' })})`
-          : 'Unreachable at last check';
-      }
+      case 'unreachable':
+        return warningOf(s) ?? 'Unreachable at last check';
     }
   }
 

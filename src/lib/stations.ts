@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 // Catalog stations as the rows and the player show them.
-import type { Playable, Station } from './api';
+import type { Favorite, PersonalStation, Playable, Station } from './api';
 
 export const playableOf = (s: Station): Playable => ({
   id: s.id,
@@ -8,6 +8,14 @@ export const playableOf = (s: Station): Playable => ({
   url: s.url,
   genre: s.tags[0] ?? null,
   homepage: s.homepage,
+});
+
+/** A favorite or a personal station, as the player plays it. */
+export const playableOfSaved = (s: Favorite | PersonalStation): Playable => ({
+  id: s.station_id,
+  name: s.name,
+  url: s.stream_url,
+  genre: s.genre,
 });
 
 /** What a list row says of a catalog station besides its name: its country. Genres come once
@@ -24,6 +32,7 @@ export function hostOf(url: string): string {
   }
 }
 
+/** What a row and the station sheet say of a stream the catalog could not reach; null otherwise. */
 export function warningOf(s: Station): string | null {
   if (s.health.status !== 'unreachable') return null;
   const last = s.health.last_ok ? new Date(s.health.last_ok) : null;

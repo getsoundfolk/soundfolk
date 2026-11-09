@@ -30,7 +30,7 @@ Items marked ✔ were checked twice by hand during the audit.
   [loudness.rs](src-tauri/src/audio/loudness.rs). Done in `3f1412f`: `WriteBehind` sends writes
   to a `level-writer` thread. **The player listeners still write from the decoder, see 5.1.**
 - [x] **1.3 Blocking file reads in the web title tasks.**
-  [web_source.rs](src-tauri/src/audio/web_source.rs). Done in `3f1412f`: the recipe text is
+  [now_playing.rs](src-tauri/src/now_playing.rs) (then `audio/web_source.rs`). Done in `3f1412f`: the recipe text is
   kept when the set is loaded.
 - [x] **1.4 ✔ `"csp": null`** while the webview shows remote data (names, favicons, covers).
   [tauri.conf.json](src-tauri/tauri.conf.json). Done in `1a3c336`. Rechecked on 2026-11-08:
@@ -83,20 +83,31 @@ All still open on 2026-11-08, and most got bigger.
   the opener and the clipboard). The volume commands moved to `volume.rs`, the track service
   settings to `track_services.rs`, the export queries to `export::render`. No module imports
   from `commands.rs` any more; it is down to 604 lines of adapters.
-- [ ] **2.2 `lib.rs` holds business logic.** Partly done in `71e24e5`: `journalize_title`,
+- [x] **2.2 `lib.rs` holds business logic.** Partly done in `71e24e5`: `journalize_title`,
   `track_session` and `history_time` moved to `listening.rs` (lib.rs now 483 lines). Left: a
   ~170-line `setup`, and window management (`main_window_shown`,
   `toggle_main_window`, `show_main_window`, `open_main_window`) and `watch_share_links`.
   Proposal: `windows.rs`.
-- [ ] **2.3 `audio/web_source.rs` doesn't belong in `audio/`** (1,171 lines; `audio/mod.rs`
+  Done: `windows.rs` holds `MAIN_WINDOW`, `WindowGeometry`, the four window functions and the
+  window event handler; `watch_share_links` is `share::watch_links`. `setup` is a function of
+  ~40 lines calling `start_web_titles`, `start_downloads` (donations, lists, updates),
+  `start_player` and `open_windows`. lib.rs is down to the wiring (366 lines, half of them
+  `run` with its plugins and the `generate_handler!` list).
+- [x] **2.3 `audio/web_source.rs` doesn't belong in `audio/`** (1,171 lines; `audio/mod.rs`
   re-exports `WebTitles`, `TitleStatus`, `RecipeTest`, `WebEvent`). Proposal: a `now_playing/`
   module.
-- [ ] **2.4 Split `decoder.rs`** (1,028 lines). Partly done: `failure.rs` now holds the failure
-  classification and the diagnosis. Left: the retry policy (`run` loop, `blame`,
-  `wait_before_retry`), the `Watchdog` and the `Converter` are still in `decoder.rs`; no
-  `EngineCtx` (`start_session` and `reopen_lost_output` take 7 parameters, `engine_loop` 5).
+  Done: the file is [now_playing.rs](src-tauri/src/now_playing.rs), a crate-level module (one
+  file, so no folder); `audio` no longer re-exports it. It still borrows from `audio` the session
+  plumbing it is driven by (`Cancel`, `Reporter`, `StationRef`, `TitleSource`, `TrackInfo`).
+- [x] **2.4 Split `decoder.rs`** (1,028 lines). Done: `failure.rs` holds the failure
+  classification and the diagnosis; `decoder/` is a folder: `mod.rs` (connection, detection,
+  decoding, stream test, 575 lines), `retry.rs` (the `run` loop, `blame`, `wait_before_retry`),
+  `watchdog.rs` (`Watchdog`, `Activity`, `NetGuard`) and `convert.rs` (`Converter` and its
+  tests). In `audio/mod.rs`, an `EngineCtx` (controls, status, web titles, levels, runtime)
+  carries `run`, `start_session` (now 2 parameters) and `reopen_lost_output` (2); the runtime
+  is built by `network_runtime`.
 - [ ] **2.5 A shared `http` module.** 9 `Client::builder()` in app code (radio_browser,
-  musicbrainz, web_source, failure, playlist, decoder, covers/search, covers/logos, daily_list),
+  musicbrainz, now_playing, failure, playlist, decoder, covers/search, covers/logos, daily_list),
   3 User-Agent spellings (`Soundfolk/x`, `Soundfolk/x ( https://… )`, `Soundfolk/x (+https://…)`)
   plus recipe-check's own. Clients are rebuilt per decoder session, per probe, per Internet
   check, per playlist and per `refresh_curated_lists`; `daily_list::client()` is built 5 times.
@@ -109,17 +120,24 @@ All still open on 2026-11-08, and most got bigger.
     `media_controls.rs`), and the two payloads now differ (only one has `skipped`).
 - [ ] **2.7 Hand-written TypeScript types:** `api.ts` declares 40 types by hand for 83 `invoke`
   calls, plus 13 event-name literals. Proposal: `tauri-specta`.
-- [ ] **2.8 `SettingsPage.svelte` (836 lines):** 7 near-identical toggle handlers and the switch
+- [x] **2.8 `SettingsPage.svelte` (836 lines):** 7 near-identical toggle handlers and the switch
   markup copied 7 times → a `toggleSetting` helper and a `SettingSwitch` component; split into
   Privacy, Services, Data. Stores are still changed from outside (`history.version++` from
   `SettingsPage` and `stationNames.svelte.ts`, `ui.personalChanged++` from `SharedSheet`) →
-  methods such as `history.cleared()`, `history.renamed()`.
-- [ ] **2.9 `MiniPlayer` duplicates `PlayerControls`** (new): status message, like button, skip
+  methods such as `history.cleared()`, `history.renamed()`. Done: `SettingSwitch.svelte` (with
+  `toggleSetting`) draws the 7 switches; `PrivacySettings`, `ServiceSettings` and `DataSettings`
+  hold their sections, `SettingsPage.svelte` is down to 262 lines; `history.cleared()`,
+  `history.renamed()` and `ui.personalAdded()` replace the bumps from outside.
+- [x] **2.9 `MiniPlayer` duplicates `PlayerControls`** (new): status message, like button, skip
   button, volume slider with an inline speaker SVG (against 07 §4, "icons from Icon.svelte"),
   `level`/`percent`; the `refreshLatest` effect is copied in `App.svelte` and `MiniPlayer`.
   `fromFavorite` is written twice, `warningOf` is repeated in `StationSheet`,
   `OrderedSources.svelte` re-implements the `Reorder` class. Proposal: a `playerStatus` derived
-  in `onAir`, `LikeButton` and `VolumeIcon` components, shared helpers in `stations.ts`.
+  in `onAir`, `LikeButton` and `VolumeIcon` components, shared helpers in `stations.ts`. Done:
+  `onAir.playerStatus` (with `volumePercent`/`volumeText`), `LikeButton`, `SkipButton` and
+  `VolumeIcon` (speaker icons now in `Icon.svelte`) serve both players; `history.followOnAir()`
+  replaces the copied effect; `playableOfSaved` and `warningOf` in `stations.ts`;
+  `OrderedSources` uses `Reorder`. The mini player now shows the backend's reconnecting message.
 - [x] **2.10 `StationSheet.svelte` (593 lines)** mixes details, renaming and recipe tooling
   (edit, test, share). Proposal: a `RecipeSection.svelte`. Done: the "Track on air" section and its
   recipe tooling live in `RecipeSection.svelte`; `StationSheet.svelte` is down to 393 lines.
@@ -184,7 +202,7 @@ New small leftovers, all done in `b496321`:
   listener runs `track_session` (`start_session`/`end_session`), the title listener
   `journalize_title` (several writes) and `station_name` ([lib.rs](src-tauri/src/lib.rs),
   `setup`). They are called from the decoder thread (`reporter.title`, `audible`,
-  `stream_tags`), from the 2-worker `audio-net` runtime (`web_source.rs`), and from
+  `stream_tags`), from the 2-worker `audio-net` runtime (`now_playing.rs`), and from
   `pause_stream`/`resume_stream` while the engine `std::Mutex` is held. The decoder then waits
   whenever an export or stats query holds the `Mutex<Connection>`. Proposal: a history writer
   thread fed by a channel, like `WriteBehind`. Done in `71e24e5`: a `listening` thread

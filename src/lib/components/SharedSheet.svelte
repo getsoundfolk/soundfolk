@@ -76,7 +76,7 @@
     adding[url] = 'adding';
     try {
       adding[url] = await api.addPersonalStation(url, name, true);
-      ui.personalChanged++;
+      ui.personalAdded();
     } catch (e) {
       adding[url] = { error: errorMessage(e) };
     }
