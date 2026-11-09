@@ -228,9 +228,13 @@ else per station:
   from the wrong station. A name field would only repeat that check, and drift from Radio-Browser's name.
   The app shows the Radio-Browser name as is, even an untidy one ("RADIO PRIMITIVE", "Fip Monde (metadata)"),
   the same name the station has everywhere else in the app.
-* **No stream fallback.** A UUID that disappears from Radio-Browser (entry deleted, or re-created under a new UUID)
-  is caught by the daily check (§6.2): the station is left out and the curators get an issue, and they paste the new
-  UUID. How often that happens is not measured; a fallback can come if it turns out frequent.
+* **Stream fallback, on the repository side.** A UUID that disappears from Radio-Browser (entry deleted, or
+  re-created under a new UUID) is caught by the daily check (§6.2). It turned out frequent: on 2026-11-09, 21 of the 59
+  launch stations vanished in one day, Radio-Browser deleting duplicates and keeping one copy. The daily status keeps
+  the last stream known for every station, and the copy playing that same stream (same name first) stands in for the
+  UUID in the published file, with nobody asked and the source unchanged. Only a station with no such copy is left
+  out, with an issue for the curators to paste the new UUID. The app does nothing: it gets the copy's UUID within a
+  day.
 * **No reference to a `stations/` entry.** It would couple the two kinds of files for no gain: an entry has a UUID
   too.
 * **Duplicates of the same station** (Radio-Browser often lists one station several times, by stream or bitrate):
@@ -264,12 +268,12 @@ else per station:
 * `lint.py`: schema, sizes, UUID syntax, no UUID twice, `use` and `genres` from `vocab.toml`. In a pull request,
   CI writes in the job summary the Radio-Browser name, country and stream state of every station of the lists that
   changed (a comment would need write access, which pull requests from forks don't get).
-* **Daily CI**, same rules as 12 §2.3: a UUID no longer in Radio-Browser is left out of the published list and an
-  issue is opened at once. An item whose stream does not answer is left out (the source file does not change) and
+* **Daily CI**, same rules as 12 §2.3: a UUID no longer in Radio-Browser is played through the copy with the same
+  stream (§6.1); with none, it is left out of the published list and an issue is opened at once. An item whose stream does not answer is left out (the source file does not change) and
   comes back when it answers again; an issue after 7 days. "Does not answer" means from CI and from Radio-Browser's
   own checkers (`lastcheckok`): a stream blocked outside its country fails from a US runner only, and stays in. A
   list that falls under 5 published items is published anyway, with an issue.
-* The same "more than 20 % failing at once" guard as donations.
+* The same "more than 20 % failing at once" guard as donations; a copy standing in is not a failure.
 * **A stable list is not stale.** A list nobody edited for years is fine as long as the daily check passes: age
   alone never triggers anything in the app.
 * **Unanswered breakage:** a list issue opened by CI and left without an answer from the list's curators for
