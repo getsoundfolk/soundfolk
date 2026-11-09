@@ -112,8 +112,9 @@ All still open on 2026-11-08, and most got bigger.
   `fromFavorite` is written twice, `warningOf` is repeated in `StationSheet`,
   `OrderedSources.svelte` re-implements the `Reorder` class. Proposal: a `playerStatus` derived
   in `onAir`, `LikeButton` and `VolumeIcon` components, shared helpers in `stations.ts`.
-- [ ] **2.10 `StationSheet.svelte` (593 lines)** mixes details, renaming and recipe tooling
-  (edit, test, share). Proposal: a `RecipeSection.svelte`.
+- [x] **2.10 `StationSheet.svelte` (593 lines)** mixes details, renaming and recipe tooling
+  (edit, test, share). Proposal: a `RecipeSection.svelte`. Done: the "Track on air" section and its
+  recipe tooling live in `RecipeSection.svelte`; `StationSheet.svelte` is down to 393 lines.
 
 ## 3. Dead or obsolete code
 
