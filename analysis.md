@@ -228,9 +228,9 @@ New small leftovers, all done in `b496321`:
 - [x] **5.9 Front-end leftovers.** Done in `acea4c4`: `--color-on-art*` / `--color-art-*` tokens
   in the mini player; failed subscriptions shown as a player error; the copy menu, clipboard and
   focus cleanup catch; one `hostOf` that never throws; Space and M in the mini player.
-- [ ] **5.10 Unbounded response bodies.** Done in `1524f88` for track searches, MusicBrainz, the
-  daily lists and logos (`http::body_at_most`). **Left: `radio_browser.rs`** (`response.bytes()`
-  in the mirror loop), which another session was changing at the time.
+- [x] **5.10 Unbounded response bodies.** Done in `1524f88` for track searches, MusicBrainz, the
+  daily lists and logos (`http::body_at_most`); `radio_browser.rs` (the mirror loop) since, at
+  4 MiB.
 - [x] **5.11 Logos were never evicted.** Done in `1524f88`: logos not fetched again for three
   months, and `.part` files over an hour old, are deleted at startup.
 - [x] **5.12 `clear_history` kept `listening_sessions`.** Done in `88651b0`: sessions go in the
@@ -243,8 +243,7 @@ New small leftovers, all done in `b496321`:
 
 ## Suggested order
 
-1. ~~Security, user-visible bugs, database off the audio threads, sections 3, 4 and 5~~: done,
-   except the `radio_browser.rs` body cap (5.10).
+1. ~~Security, user-visible bugs, database off the audio threads, sections 3, 4 and 5~~: done.
 2. `http` module (2.5): `body_at_most` and the public-only rule are its first pieces; one User-Agent
    and shared clients are left.
 3. The rest of section 2, one module at a time; tauri-specta (2.7) on its own.

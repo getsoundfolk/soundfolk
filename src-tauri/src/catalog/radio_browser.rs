@@ -32,6 +32,8 @@ const FALLBACK_SERVER: &str = "https://de1.api.radio-browser.info/";
 const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"));
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_ATTEMPTS: usize = 3;
+/// Largest answer read: a page holds at most `MAX_LIMIT` (100) stations, a few hundred KiB.
+const MAX_ANSWER: usize = 4 * 1024 * 1024;
 /// Mirrors are looked up again this often, as they come and go.
 const REFRESH_AFTER: Duration = Duration::from_secs(60 * 60);
 /// After DNS gave nothing, it is asked again this soon.
@@ -285,13 +287,13 @@ impl RadioBrowser {
                 .await
                 .and_then(|r| r.error_for_status())
             {
-                Ok(response) => match response.bytes().await {
+                Ok(response) => match crate::http::body_at_most(response, MAX_ANSWER).await {
                     Ok(bytes) => {
                         *self.preferred.lock().unwrap_or_else(|p| p.into_inner()) =
                             Some(mirror.key.clone());
-                        return Ok(bytes.to_vec());
+                        return Ok(bytes);
                     }
-                    Err(e) => last_error = network_error(e),
+                    Err(e) => last_error = CatalogError::Network(e),
                 },
                 Err(e) if unroutable(&e) => {
                     tracing::debug!(server = %mirror.key, "Radio-Browser mirror out of reach: {e}");
