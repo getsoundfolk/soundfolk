@@ -48,11 +48,11 @@ use logos::{Logo, LogoCache};
 /// Setting: the cover sources in order, with their switch (JSON list of [`CoverSource`]).
 pub const SETTING_COVER_SOURCES: &str = "cover_sources";
 /// Event emitted when the cover of the track on air changes (payload: [`Cover`]).
-const COVER_EVENT: &str = "player:cover";
+pub(crate) const COVER_EVENT: &str = "player:cover";
 /// After a failed lookup (network), the same track is not looked up again for this long.
 const RETRY_FAILED: Duration = Duration::from_secs(300);
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceId {
     Station,
@@ -74,7 +74,7 @@ impl SourceId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct CoverSource {
     pub id: SourceId,
     pub enabled: bool,
@@ -128,7 +128,7 @@ pub fn save_sources(db: &Database, list: Vec<CoverSource>) -> rusqlite::Result<V
 
 /// The cover shown for a title (`title` as in `NowPlaying.title`, so the window can tell it is
 /// still the track on air).
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
 pub struct Cover {
     pub title: Option<String>,
     pub url: Option<String>,

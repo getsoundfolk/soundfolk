@@ -61,6 +61,7 @@ pub fn constant_volume(db: &Database) -> bool {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_constant_volume(db: State<'_, Database>) -> AppResult<bool> {
     with_db(&db, |db| {
         Ok(db.get_bool(SETTING_CONSTANT_VOLUME, CONSTANT_VOLUME_DEFAULT)?)
@@ -69,6 +70,7 @@ pub async fn get_constant_volume(db: State<'_, Database>) -> AppResult<bool> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_constant_volume(
     db: State<'_, Database>,
     audio: State<'_, AudioState>,
@@ -85,6 +87,7 @@ pub async fn set_constant_volume(
 /// Gain *Constant volume* applies to the station playing, dB, rounded; `None` when it is off or
 /// nothing plays.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_level_adjustment(audio: State<'_, AudioState>) -> AppResult<Option<i32>> {
     Ok(audio
         .engine()
@@ -134,6 +137,9 @@ pub fn set_level(app: &AppHandle, level: f32) -> AppResult<()> {
     Ok(())
 }
 
+/// Event emitted when the sound is cut or comes back (payload: whether it is cut).
+pub(crate) const MUTED_EVENT: &str = "player:muted";
+
 /// Cuts the sound or brings it back, and tells the windows and the tray menu.
 pub fn mute(app: &AppHandle, muted: bool) -> AppResult<()> {
     let (Some(sound), Some(audio)) = (app.try_state::<Sound>(), app.try_state::<AudioState>())
@@ -147,7 +153,7 @@ pub fn mute(app: &AppHandle, muted: bool) -> AppResult<()> {
             .engine()
             .set_volume(if muted { 0.0 } else { s.level.unwrap_or(1.0) })?;
     }
-    if let Err(e) = app.emit("player:muted", muted) {
+    if let Err(e) = app.emit(MUTED_EVENT, muted) {
         tracing::warn!("mute not sent to the windows: {e}");
     }
     crate::tray::show_muted(app, muted);
@@ -163,12 +169,14 @@ pub fn toggle_mute(app: &AppHandle) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_volume(app: AppHandle, volume: f32) -> AppResult<()> {
     set_level(&app, volume)
 }
 
 /// Volume saved by `save_volume`, or `None` if the user never moved the slider.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
     let saved = with_db(&db, |db| Ok(db.get_str(SETTING_VOLUME)?)).await?;
     let saved = saved.and_then(|v| v.parse::<f32>().ok());
@@ -178,6 +186,7 @@ pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
 /// Remembers the volume for the next launch. Called once the slider is released, not on every
 /// step of a drag: concurrent commands could otherwise land out of order and keep a stale value.
 #[tauri::command]
+#[specta::specta]
 pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> {
     if !volume.is_finite() {
         return Err("Invalid volume".to_owned().into());
@@ -187,11 +196,13 @@ pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> 
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_muted(sound: State<'_, Sound>) -> AppResult<bool> {
     Ok(sound.muted())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_muted(app: AppHandle, muted: bool) -> AppResult<()> {
     mute(&app, muted)
 }

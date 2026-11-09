@@ -108,7 +108,7 @@ pub(crate) fn set_click_counting(db: &Database, enabled: bool) -> AppResult<()> 
     ])?)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct PlayOutcome {
     /// The frontend must show the click-counting notice (once only).
     pub show_click_notice: bool,
@@ -243,7 +243,7 @@ pub(crate) fn is_catalog_id(id: &str) -> bool {
 }
 
 /// What the player needs to play a station, whatever its origin.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct ResolvedStation {
     pub id: String,
     pub name: String,

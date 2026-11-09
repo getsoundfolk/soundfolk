@@ -14,7 +14,7 @@ use crate::musicbrainz::SETTING_IDENTIFY;
 /// Top entries kept per ranking.
 const TOP: u32 = 10;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct Stats {
     pub totals: Totals,
     pub identification: Identification,
@@ -28,8 +28,10 @@ pub struct Stats {
     /// Tracks heard on several stations (count = number of stations).
     pub shared_tracks: Vec<Count>,
     /// Listening hours per day of the week, Monday first (local time).
+    #[specta(type = Vec<crate::bindings::Number>)]
     pub hours_by_weekday: [f64; 7],
     /// Listening hours per hour of the day (local time).
+    #[specta(type = Vec<crate::bindings::Number>)]
     pub hours_by_hour: [f64; 24],
     pub decades: Vec<Count>,
     pub genres: Vec<Count>,
@@ -37,14 +39,15 @@ pub struct Stats {
     pub countries: Vec<Count>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct Totals {
     pub tracks_heard: u32,
     pub likes: u32,
+    #[specta(type = crate::bindings::Number)]
     pub listening_hours: f64,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct Identification {
     pub enabled: bool,
     /// Liked tracks (in the period) identified on MusicBrainz, not found, or not looked up yet.
@@ -53,26 +56,32 @@ pub struct Identification {
     pub pending: u32,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct StationStats {
     pub station_id: String,
     pub name: String,
     pub likes: u32,
     pub tracks_heard: u32,
+    #[specta(type = crate::bindings::Number)]
     pub listening_hours: f64,
     /// Likes per hour of listening (`None` without listening time).
+    #[specta(type = Option<crate::bindings::Number>)]
     pub likes_per_hour: Option<f64>,
     /// Likes ÷ tracks heard (`None` if no track was heard).
+    #[specta(type = Option<crate::bindings::Number>)]
     pub like_rate: Option<f64>,
     /// Plays per distinct track: how often the same tracks come back.
+    #[specta(type = Option<crate::bindings::Number>)]
     pub repetition: Option<f64>,
     /// Distinct artists per 100 tracks heard.
+    #[specta(type = Option<crate::bindings::Number>)]
     pub diversity: Option<f64>,
     /// Share of titles that could not be split into artist and title (ads, jingles, no metadata).
+    #[specta(type = Option<crate::bindings::Number>)]
     pub unrecognised_share: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct Count {
     pub label: String,
     /// Second line (an album's artist…).

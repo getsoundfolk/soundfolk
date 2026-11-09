@@ -23,7 +23,7 @@ use crate::player::OnAir;
 use crate::tracks;
 
 /// Event emitted when the on-air station or title changes (payload: `NowPlaying`).
-const NOW_PLAYING_EVENT: &str = "player:now-playing";
+pub(crate) const NOW_PLAYING_EVENT: &str = "player:now-playing";
 /// How often an open listening session records that it is still playing.
 const SESSION_HEARTBEAT: Duration = Duration::from_secs(60);
 

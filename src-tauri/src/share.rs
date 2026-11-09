@@ -37,7 +37,7 @@ const MAX_LIST_ID: usize = 64;
 const MAX_LINK: usize = 16 * 1024;
 
 /// What a link carries.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Shared {
     /// A catalog station, by its Radio-Browser UUID.
@@ -54,14 +54,14 @@ pub enum Shared {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct PersonalEntry {
     pub name: String,
     pub url: String,
 }
 
 /// A link: what it carries, the track on air when it was sent, and who sent it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct SharedLink {
     #[serde(flatten)]
     pub item: Shared,
@@ -445,6 +445,7 @@ pub fn watch_links(app: &tauri::App) {
 
 /// The link opened from outside since the last call, if any.
 #[tauri::command]
+#[specta::specta]
 pub fn take_opened_link(opened: State<'_, OpenedLink>) -> Option<String> {
     opened.0.lock().unwrap_or_else(|p| p.into_inner()).take()
 }
@@ -455,6 +456,7 @@ const SETTING_FROM: &str = "share_from";
 /// Reads a pasted, dropped or opened text. `None`: not a Soundfolk link (a search, say); an
 /// error: a Soundfolk link that cannot be read, with the reason.
 #[tauri::command]
+#[specta::specta]
 pub fn read_share_link(text: String) -> AppResult<Option<SharedLink>> {
     match parse(&text) {
         Ok(link) => Ok(Some(link)),
@@ -464,7 +466,7 @@ pub fn read_share_link(text: String) -> AppResult<Option<SharedLink>> {
 }
 
 /// A link ready to share, and its QR code.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct ShareOut {
     pub url: String,
     /// What the link carries: a personal station found in the catalog becomes the catalog's.
@@ -484,6 +486,7 @@ pub struct ShareOut {
 /// hand is looked up in the catalog by its stream first (§2.2): found there, the link names the
 /// catalog station and carries no address.
 #[tauri::command]
+#[specta::specta]
 pub async fn make_share_link(
     db: State<'_, Database>,
     catalog: State<'_, CatalogState>,
@@ -529,6 +532,7 @@ pub async fn make_share_link(
 /// The catalog station with this stream, offered in place of a personal station received in a
 /// link (§3.3).
 #[tauri::command]
+#[specta::specta]
 pub async fn catalog_station_for_stream(
     catalog: State<'_, CatalogState>,
     url: String,
@@ -537,12 +541,14 @@ pub async fn catalog_station_for_stream(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_share_name(db: State<'_, Database>) -> AppResult<String> {
     with_db(&db, |db| Ok(db.get_str(SETTING_FROM)?.unwrap_or_default())).await
 }
 
 /// Saves the sender's name, cleaned and cut to what a link carries; returns it.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_share_name(db: State<'_, Database>, name: String) -> AppResult<String> {
     let name = shorten(&name, MAX_FROM);
     with_db(&db, move |db| {

@@ -15,7 +15,7 @@
     pending = true;
     error = null;
     try {
-      const station = await api.addPersonalStation(url.trim(), name.trim());
+      const station = await api.addPersonalStation(url.trim(), name.trim(), false);
       url = '';
       name = '';
       onadded(station);

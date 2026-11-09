@@ -55,7 +55,7 @@ const DETAILS_RETRY: Duration = Duration::from_secs(10);
 const DETAILS_BACKOFF: Duration = Duration::from_secs(60);
 
 /// Where the title of the current playback comes from, for the station sheet.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
 pub struct TitleStatus {
     pub state: SourceState,
     /// The recipe in use, or the one that would be used.
@@ -69,7 +69,7 @@ pub struct TitleStatus {
     pub local_error: Option<LocalError>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum SourceState {
     /// Nothing playing yet.
@@ -87,7 +87,7 @@ pub enum SourceState {
     None,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct RecipeRef {
     pub id: String,
     pub name: String,
@@ -106,14 +106,14 @@ impl From<&Entry> for RecipeRef {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct LocalError {
     pub path: String,
     pub error: String,
 }
 
 /// Feedback after saving a local recipe.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct RecipeNotice {
     /// The file name.
     pub file: String,
@@ -122,7 +122,7 @@ pub struct RecipeNotice {
 }
 
 /// What a test reading of a recipe found.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
 pub struct RecipeTest {
     pub recipe: Option<RecipeRef>,
     pub local_error: Option<LocalError>,

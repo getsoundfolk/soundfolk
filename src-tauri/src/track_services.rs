@@ -17,7 +17,7 @@ const SETTING_TRACK_SERVICES: &str = "track_services";
 /// Sites the user added to that menu (JSON list of `CustomService`).
 const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct CustomService {
     /// `custom:…`, stored among the enabled ids (a comma-separated list).
     pub id: String,

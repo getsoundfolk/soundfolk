@@ -99,7 +99,12 @@
     if (!station) return;
     error = null;
     try {
-      opened = await api.editRecipe(station);
+      opened = await api.editRecipe(
+        station.url,
+        station.id,
+        station.name,
+        station.homepage ?? null,
+      );
     } catch (e) {
       error = errorMessage(e);
     }

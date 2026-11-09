@@ -83,6 +83,10 @@ npm run check
 npm test
 ```
 
+`src/lib/bindings.ts` (the commands and the types they carry) is generated from the Rust code: a test
+fails when it is out of date, and writes it again, so after changing a command or one of its types run
+`cargo test bindings` in `src-tauri` and commit the new file.
+
 New source files start with `SPDX-License-Identifier: MPL-2.0` (as a comment);
 `.github/scripts/check-spdx.sh` checks it.
 

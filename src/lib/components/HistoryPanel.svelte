@@ -89,7 +89,7 @@
   async function load(current: 'all' | 'liked', query: string) {
     const mine = ++requestId;
     try {
-      const q = query.trim() || undefined;
+      const q = query.trim() || null;
       const next =
         current === 'all'
           ? (await api.getListeningHistory(LIMIT, q)).map(fromEntry)
@@ -182,7 +182,7 @@
   }
 
   const copy = (text: string, done: string) => act(() => writeText(text), done);
-  const resolve = (r: Row) => api.resolveStation(r.station_id, r.station_name ?? undefined);
+  const resolve = (r: Row) => api.resolveStation(r.station_id, r.station_name);
 
   function toggleMenu(row: Row, button: HTMLElement) {
     if (menu?.id === row.id) {
@@ -221,7 +221,7 @@
     errors.clear('history');
     try {
       const list = view === 'all' ? 'history' : 'likes';
-      const file = await api.exportHistory(list, format, text.trim() || undefined);
+      const file = await api.exportHistory(list, format, text.trim() || null);
       notify(
         `${file.count} ${file.count === 1 ? 'track' : 'tracks'} saved to Downloads: ${file.file_name}`,
         4000,

@@ -181,6 +181,7 @@ pub fn show(app: &AppHandle) {
 
 /// Hands over from the main window to the mini player.
 #[tauri::command]
+#[specta::specta]
 pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
     // Windows are built on the main thread: the answer comes back from there, so that a failure
     // reaches the button rather than only the log.
@@ -196,12 +197,14 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
 
 /// Back to the main window, the same way as from the tray.
 #[tauri::command]
+#[specta::specta]
 pub fn close_mini_player(app: AppHandle) {
     crate::windows::show_main_window(&app);
 }
 
 /// The mini player's shrink and expand buttons.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_mini_compact(app: AppHandle, compact: bool) -> Result<(), String> {
     // Off the async runtime: the setting is saved to the database.
     crate::state::blocking(move || set_compact(&app, compact).map_err(|e| e.to_string().into()))
@@ -211,6 +214,7 @@ pub async fn set_mini_compact(app: AppHandle, compact: bool) -> Result<(), Strin
 
 /// Next or previous favorite, as the media keys and the tray do it.
 #[tauri::command]
+#[specta::specta]
 pub async fn switch_favorite(app: AppHandle, forward: bool) {
     let command = if forward {
         Command::Next

@@ -2,11 +2,11 @@
 // Share links (docs/16-sharing.md): links received (pasted, dropped, opened from the page) and
 // links made to send. A link is something someone else chose: it opens a sheet, it never plays
 // or saves anything by itself (§3.3).
-import { listen } from '@tauri-apps/api/event';
 import { unsubscribed } from './errors.svelte';
 import {
   api,
   errorMessage,
+  listen,
   type Playable,
   type ShareOut,
   type Shared,

@@ -52,7 +52,7 @@ pub enum CatalogError {
 }
 
 /// Health status of a station, as known to the catalog.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum Health {
     Ok,
@@ -78,7 +78,7 @@ impl Health {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct Station {
     pub id: String,
     pub name: String,
@@ -104,7 +104,7 @@ impl Station {
 }
 
 /// One page of search results.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct SearchPage {
     pub stations: Vec<Station>,
     /// Offset to pass to get the next page, or `None` when the catalog has no more results.
@@ -112,7 +112,7 @@ pub struct SearchPage {
     pub next_offset: Option<u32>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Deserialize, specta::Type)]
 #[serde(default)]
 pub struct SearchQuery {
     pub text: Option<String>,

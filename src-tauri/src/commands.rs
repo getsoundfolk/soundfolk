@@ -31,6 +31,7 @@ use crate::track_services::{self, CustomService};
 // ── Audio ────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub async fn play_stream(
     app: AppHandle,
     url: String,
@@ -41,27 +42,32 @@ pub async fn play_stream(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn stop_stream(audio: State<'_, AudioState>) -> AppResult<()> {
     Ok(audio.engine().stop()?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn pause_stream(audio: State<'_, AudioState>) -> AppResult<()> {
     Ok(audio.engine().pause()?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn resume_stream(audio: State<'_, AudioState>) -> AppResult<()> {
     Ok(audio.engine().resume()?)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_player_state(audio: State<'_, AudioState>) -> AppResult<PlayerState> {
     Ok(audio.engine().state())
 }
 
 /// Last station played (in this run or the previous one), for the player to show it ready to play.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_current_station(
     audio: State<'_, AudioState>,
 ) -> AppResult<Option<ResolvedStation>> {
@@ -69,26 +75,31 @@ pub async fn get_current_station(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_now_playing(audio: State<'_, AudioState>) -> AppResult<NowPlaying> {
     Ok(audio.engine().now_playing())
 }
 #[tauri::command]
+#[specta::specta]
 pub async fn get_click_counting(db: State<'_, Database>) -> AppResult<bool> {
     with_db(&db, player::click_counting).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppResult<()> {
     with_db(&db, move |db| player::set_click_counting(db, enabled)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_web_titles(db: State<'_, Database>) -> AppResult<bool> {
     with_db(&db, |db| Ok(db.get_bool(SETTING_WEB_TITLES, true)?)).await
 }
 
 /// Applies from the next station played.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_web_titles(
     db: State<'_, Database>,
     web: State<'_, WebTitlesState>,
@@ -102,6 +113,7 @@ pub async fn set_web_titles(
 /// Launch at login, hidden in the notification area. The system keeps the setting (on Linux a file
 /// in `~/.config/autostart`), so it is read from there, not from the database.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_autostart(app: AppHandle) -> AppResult<bool> {
     use tauri_plugin_autostart::ManagerExt;
     blocking(move || {
@@ -114,6 +126,7 @@ pub async fn get_autostart(app: AppHandle) -> AppResult<bool> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_autostart(app: AppHandle, enabled: bool) -> AppResult<()> {
     use tauri_plugin_autostart::ManagerExt;
     blocking(move || {
@@ -132,6 +145,7 @@ pub async fn set_autostart(app: AppHandle, enabled: bool) -> AppResult<()> {
 
 /// Where the title of the current playback comes from.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_title_status(web: State<'_, WebTitlesState>) -> AppResult<TitleStatus> {
     Ok(web.0.status())
 }
@@ -139,6 +153,7 @@ pub async fn get_title_status(web: State<'_, WebTitlesState>) -> AppResult<Title
 /// Picks up recipe files saved since the last check (called when the window gets the focus
 /// back, typically from the editor): no polling of the folder.
 #[tauri::command]
+#[specta::specta]
 pub async fn reload_recipes(web: State<'_, WebTitlesState>) -> AppResult<()> {
     let web = web.0.clone();
     blocking(move || {
@@ -150,6 +165,7 @@ pub async fn reload_recipes(web: State<'_, WebTitlesState>) -> AppResult<()> {
 
 /// Reads the station's recipe page now and says what it finds.
 #[tauri::command]
+#[specta::specta]
 pub async fn test_recipe(
     web: State<'_, WebTitlesState>,
     url: String,
@@ -168,6 +184,7 @@ pub async fn test_recipe(
 /// Opens the station's recipe in the user's editor, as a local file (see
 /// [`recipes::file_to_edit`]). Returns the file's path.
 #[tauri::command]
+#[specta::specta]
 pub async fn edit_recipe(
     app: AppHandle,
     web: State<'_, WebTitlesState>,
@@ -197,7 +214,7 @@ pub async fn edit_recipe(
 }
 
 /// What *Share this recipe* did.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct SharedRecipe {
     pub id: String,
     /// Where the recipe and fixture were saved, as in the repository (`stations/`, `fixtures/`).
@@ -210,6 +227,7 @@ pub struct SharedRecipe {
 /// excerpt the recipe reads as its fixture, writes the `[[test]]`, and opens the "Share a recipe"
 /// issue form filled in. A bot turns the issue into a pull request.
 #[tauri::command]
+#[specta::specta]
 pub async fn share_recipe(
     app: AppHandle,
     web: State<'_, WebTitlesState>,
@@ -254,7 +272,7 @@ pub async fn share_recipe(
     .await
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct LocalRecipes {
     pub folder: Option<String>,
     /// Files in the folder, valid or not.
@@ -262,7 +280,7 @@ pub struct LocalRecipes {
     pub errors: Vec<LocalRecipeError>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct LocalRecipeError {
     pub file: String,
     pub error: String,
@@ -270,6 +288,7 @@ pub struct LocalRecipeError {
 
 /// The user's own recipes, for the settings.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_local_recipes(web: State<'_, WebTitlesState>) -> AppResult<LocalRecipes> {
     let recipes = web.0.recipes();
     let set = recipes.current();
@@ -293,6 +312,7 @@ pub async fn get_local_recipes(web: State<'_, WebTitlesState>) -> AppResult<Loca
 
 /// Opens the local recipes folder in the file manager (created if needed).
 #[tauri::command]
+#[specta::specta]
 pub async fn open_recipes_folder(app: AppHandle, web: State<'_, WebTitlesState>) -> AppResult<()> {
     let web = web.0.clone();
     blocking(move || {
@@ -304,23 +324,27 @@ pub async fn open_recipes_folder(app: AppHandle, web: State<'_, WebTitlesState>)
 
 /// Ids of the services shown in a track's menu, or `None` if the user never chose.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_track_services(db: State<'_, Database>) -> AppResult<Option<Vec<String>>> {
     with_db(&db, track_services::enabled_ids).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_track_services(db: State<'_, Database>, ids: Vec<String>) -> AppResult<()> {
     with_db(&db, move |db| track_services::save_enabled_ids(db, ids)).await
 }
 
 /// Sites the user added.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_custom_track_services(db: State<'_, Database>) -> AppResult<Vec<CustomService>> {
     with_db(&db, track_services::load_custom).await
 }
 
 /// Replaces the whole list. Nothing is saved if one site fails the checks.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_custom_track_services(
     db: State<'_, Database>,
     services: Vec<CustomService>,
@@ -332,6 +356,7 @@ pub async fn set_custom_track_services(
 // ── Catalog ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub async fn search_stations(
     catalog: State<'_, CatalogState>,
     db: State<'_, Database>,
@@ -348,6 +373,7 @@ pub async fn search_stations(
 /// A catalog station by its id, with what the station sheet shows (genres, country, quality…).
 /// `None` when the catalog no longer has it.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_station(
     catalog: State<'_, CatalogState>,
     station_id: String,
@@ -358,6 +384,7 @@ pub async fn get_station(
 /// Stations drawn in the catalog for Surprise me: up for music, in the order to try them
 /// (see [`surprise`]). Can be empty; the frontend then draws again.
 #[tauri::command]
+#[specta::specta]
 pub async fn surprise_candidates(
     catalog: State<'_, CatalogState>,
     exclude: Option<String>,
@@ -371,6 +398,7 @@ const SURPRISE_DRAW: u32 = 60;
 /// Finds how to play a station known only by the ID stored in the history (see
 /// [`player::resolve`]).
 #[tauri::command]
+#[specta::specta]
 pub async fn resolve_station(
     db: State<'_, Database>,
     catalog: State<'_, CatalogState>,
@@ -386,6 +414,7 @@ pub async fn resolve_station(
 /// (connection, detection, first decoded packet) before being saved. A station received in a
 /// share link (`from_link`) may only reach public addresses, then and later (16 §6.2).
 #[tauri::command]
+#[specta::specta]
 pub async fn add_personal_station(
     db: State<'_, Database>,
     url: String,
@@ -423,11 +452,13 @@ pub async fn add_personal_station(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_personal_stations(db: State<'_, Database>) -> AppResult<Vec<PersonalStation>> {
     with_db(&db, |db| Ok(db.list_personal_stations()?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_personal_station(
     db: State<'_, Database>,
     station_id: String,
@@ -439,6 +470,7 @@ pub async fn remove_personal_station(
 
 /// Names the user gave stations, by station ID: shown instead of the catalog's.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_station_names(
     db: State<'_, Database>,
 ) -> AppResult<std::collections::HashMap<String, String>> {
@@ -448,6 +480,7 @@ pub async fn get_station_names(
 /// Names a station; a blank or missing name gives it back its own. Returns the name kept. The
 /// media controls follow at once when the station is on air.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_station_name(
     app: AppHandle,
     station_id: String,
@@ -468,22 +501,26 @@ pub async fn set_station_name(
 // ── Favorites ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub async fn add_favorite(db: State<'_, Database>, favorite: Favorite) -> AppResult<()> {
     with_db(&db, move |db| Ok(db.add_favorite(&favorite)?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_favorite(db: State<'_, Database>, station_id: String) -> AppResult<bool> {
     with_db(&db, move |db| Ok(db.remove_favorite(&station_id)?)).await
 }
 
 /// Saves the order the listener gave the favorites (station IDs, top first).
 #[tauri::command]
+#[specta::specta]
 pub async fn reorder_favorites(db: State<'_, Database>, station_ids: Vec<String>) -> AppResult<()> {
     with_db(&db, move |db| Ok(db.reorder_favorites(&station_ids)?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_favorites(db: State<'_, Database>) -> AppResult<Vec<Favorite>> {
     with_db(&db, |db| Ok(db.list_favorites()?)).await
 }
@@ -491,6 +528,7 @@ pub async fn list_favorites(db: State<'_, Database>) -> AppResult<Vec<Favorite>>
 // ── History & reports ────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_listening_history(
     db: State<'_, Database>,
     limit: Option<u32>,
@@ -504,17 +542,20 @@ pub async fn get_listening_history(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_history_summary(db: State<'_, Database>) -> AppResult<HistorySummary> {
     with_db(&db, |db| Ok(db.history_summary()?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
     with_db(&db, |db| Ok(db.clear_history()?)).await
 }
 /// Writes the whole history or all liked tracks (narrowed by `query`, as in the History tab)
 /// to a new file in the Downloads folder, then shows it in the file manager.
 #[tauri::command]
+#[specta::specta]
 pub async fn export_history(
     app: AppHandle,
     db: State<'_, Database>,
@@ -533,6 +574,7 @@ pub async fn export_history(
 // ── Likes ────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+#[specta::specta]
 pub async fn like_track(
     db: State<'_, Database>,
     waker: State<'_, IdentifyWaker>,
@@ -545,17 +587,20 @@ pub async fn like_track(
 
 /// Stats over the last `days` days, or all time.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_stats(db: State<'_, Database>, days: Option<u32>) -> AppResult<Stats> {
     with_db(&db, move |db| Ok(db.stats(days)?)).await
 }
 
 /// Whether liked tracks are identified on MusicBrainz (off by default).
 #[tauri::command]
+#[specta::specta]
 pub async fn get_track_identification(db: State<'_, Database>) -> AppResult<bool> {
     with_db(&db, |db| Ok(db.get_bool(SETTING_IDENTIFY, false)?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_track_identification(
     db: State<'_, Database>,
     waker: State<'_, IdentifyWaker>,
@@ -567,12 +612,14 @@ pub async fn set_track_identification(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_cover_sources(db: State<'_, Database>) -> AppResult<Vec<CoverSource>> {
     with_db(&db, |db| Ok(covers::load_sources(db)?)).await
 }
 
 /// Saves the order and switches, and chooses the cover of the track on air again.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_cover_sources(
     db: State<'_, Database>,
     covers: State<'_, CoversState>,
@@ -585,16 +632,19 @@ pub async fn set_cover_sources(
 
 /// The cover shown for the track on air (the window may open while a track is playing).
 #[tauri::command]
+#[specta::specta]
 pub async fn get_cover(covers: State<'_, CoversState>) -> AppResult<Cover> {
     Ok(covers.0.current())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn unlike_track(db: State<'_, Database>, track_key: String) -> AppResult<bool> {
     with_db(&db, move |db| Ok(db.unlike_track(&track_key)?)).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_likes(
     db: State<'_, Database>,
     limit: Option<u32>,

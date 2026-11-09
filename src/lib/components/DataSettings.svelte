@@ -46,7 +46,7 @@
     exporting = true;
     dataStatus = null;
     try {
-      const file = await api.exportHistory('history', format);
+      const file = await api.exportHistory('history', format, null);
       dataStatus = `${tracks(file.count)} saved to Downloads: ${file.file_name}`;
     } catch (e) {
       errors.report('settings', e);

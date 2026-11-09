@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS personal_stations (
 );
 ";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, specta::Type)]
 pub struct Favorite {
     pub station_id: String,
     pub name: String,
@@ -160,7 +160,7 @@ pub struct Favorite {
 }
 
 /// Station added by the user (`user:…` ID, private).
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct PersonalStation {
     pub station_id: String,
     pub name: String,

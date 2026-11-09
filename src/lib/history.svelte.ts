@@ -32,7 +32,7 @@ class HistoryStore {
 
   async refreshLatest(area: ErrorArea = 'history') {
     try {
-      this.latest = (await api.getListeningHistory(1))[0] ?? null;
+      this.latest = (await api.getListeningHistory(1, null))[0] ?? null;
     } catch (e) {
       errors.report(area, e);
     }
