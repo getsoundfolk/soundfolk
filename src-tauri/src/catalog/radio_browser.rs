@@ -919,7 +919,7 @@ mod tests {
     async fn live_stations_by_id_keep_the_order_asked() {
         let rb = RadioBrowser::default();
         let ids = [
-            "9615628c-0601-11e8-ae97-52543be04c81", // Radio Zinzine
+            "960bff9d-0601-11e8-ae97-52543be04c81", // Radio Zinzine
             "00000000-0000-4000-8000-000000000000", // not in the catalog
             "ab30ca84-c228-4f57-8cac-816c69ef651d", // RDWA
         ]
