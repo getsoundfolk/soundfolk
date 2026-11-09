@@ -19,8 +19,9 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::audio::PlayerState;
-use crate::commands::{self, AudioState, CatalogState};
 use crate::db::{Database, Favorite};
+use crate::player::{self, AudioState};
+use crate::state::CatalogState;
 
 /// Tells the window to read the favorites again (one of them has a new address).
 const FAVORITES_EVENT: &str = "favorites:changed";
@@ -146,7 +147,7 @@ pub(crate) fn watch(app: &AppHandle, station_id: Option<&str>, url: &str) {
         return;
     };
     let favorite = station_id
-        .filter(|id| commands::is_catalog_id(id))
+        .filter(|id| player::is_catalog_id(id))
         .and_then(|id| {
             app.state::<Database>()
                 .list_favorites()
@@ -236,7 +237,7 @@ fn retry(app: &AppHandle, watched: &Watched, url: String) -> Result<(), String> 
         repair.retry_url = Some(url.clone());
     }
     tracing::info!(station = %favorite.station_id, "favorite moved: trying its new address");
-    let outcome = commands::start_station(
+    let outcome = player::start_station(
         app,
         url.clone(),
         Some(favorite.station_id.clone()),

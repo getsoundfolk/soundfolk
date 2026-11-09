@@ -30,11 +30,11 @@ use stream_download::http::reqwest::Url;
 use tauri::{Emitter, Manager};
 
 use crate::audio::NowPlaying;
-use crate::commands::with_db;
 use crate::db::Database;
 use crate::media_controls::SystemMedia;
 use crate::musicbrainz::{LookupError, MusicBrainz};
 use crate::notifications::TrackNotifications;
+use crate::state::with_db;
 use crate::tracks;
 
 mod deezer;
@@ -336,7 +336,7 @@ impl Covers {
         }
         let this = self.clone();
         tauri::async_runtime::spawn(async move {
-            let catalog = this.app.state::<crate::commands::CatalogState>().0.clone();
+            let catalog = this.app.state::<crate::state::CatalogState>().0.clone();
             let favicon = match catalog.station(&id).await {
                 Ok(station) => station
                     .and_then(|s| s.favicon)

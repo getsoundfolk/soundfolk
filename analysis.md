@@ -68,13 +68,21 @@ Minor:
 
 All still open on 2026-11-08, and most got bigger.
 
-- [ ] **2.1 `commands.rs` acts as a service layer** (1,215 lines). It still defines `OnAir`,
+- [x] **2.1 `commands.rs` acts as a service layer** (1,215 lines). It still defines `OnAir`,
   `AudioState`, `start_station` and `schedule_click`, plus now `CatalogState`, `WebTitlesState`,
   `CoversState`, the `blocking`/`with_db` helpers and `save_download`. Nine modules import from
   it (lib, share, curated_lists, favorite_repair, media_controls, updates, notifications, volume,
   covers). The recipe file work (`edit_recipe*`, `share_recipe*`, `recipes_folder`, `open_path`)
   is still there. Proposal: a `player.rs`/`state.rs` carrying the logic, commands reduced to thin
   adapters; recipe logic moved to `recipes.rs`.
+  Done: `player.rs` holds `OnAir`, `AudioState`, `start_station`, `schedule_click`, the click
+  counting and last-station settings and `resolve`; `state.rs` the `CatalogState`,
+  `WebTitlesState`, `CoversState` and `blocking`/`with_db`; `files.rs` `numbered`,
+  `save_download` and `open_path`. The recipe file work (`folder`, `file_to_edit`,
+  `local_recipe`, `prepare_share`) is in `recipes.rs`, which stays free of Tauri (the commands do
+  the opener and the clipboard). The volume commands moved to `volume.rs`, the track service
+  settings to `track_services.rs`, the export queries to `export::render`. No module imports
+  from `commands.rs` any more; it is down to 604 lines of adapters.
 - [ ] **2.2 `lib.rs` holds business logic.** Partly done in `71e24e5`: `journalize_title`,
   `track_session` and `history_time` moved to `listening.rs` (lib.rs now 483 lines). Left: a
   ~170-line `setup`, and window management (`main_window_shown`,

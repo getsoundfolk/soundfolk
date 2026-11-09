@@ -19,6 +19,10 @@ use std::time::SystemTime;
 
 use serde::Serialize;
 use soundfolk_nowplaying::recipe::{LoadError, Recipe};
+use soundfolk_nowplaying::Timestamp;
+
+use crate::error::{AppResult, IoContext};
+use crate::files::numbered;
 
 include!(concat!(env!("OUT_DIR"), "/bundled_recipes.rs"));
 
@@ -502,6 +506,160 @@ fn toml_string(s: &str) -> String {
     }
     out.push('"');
     out
+}
+
+// ── Local recipe files (Edit recipe, Share this recipe) ─────────────────────────
+
+/// The local recipes folder, created with the JSON Schema next to the recipes (completion and
+/// checks in editors that read the `#:schema` line).
+pub fn folder(recipes: &Recipes) -> AppResult<PathBuf> {
+    let dir = recipes
+        .local_dir()
+        .ok_or_else(|| "no configuration folder on this system".to_owned())?
+        .to_path_buf();
+    std::fs::create_dir_all(&dir).at(&dir)?;
+    let schema = serde_json::to_string_pretty(&soundfolk_nowplaying::recipe::json_schema())
+        .expect("schema serializes");
+    let schema_path = dir.join(SCHEMA_FILE);
+    if std::fs::read_to_string(&schema_path).ok().as_deref() != Some(schema.as_str()) {
+        std::fs::write(&schema_path, schema).at(&schema_path)?;
+    }
+    Ok(dir)
+}
+
+/// A station, as *Edit recipe* knows it.
+pub struct EditedStation<'a> {
+    /// Catalog id, if the station has one.
+    pub id: Option<&'a str>,
+    pub stream: &'a str,
+    pub name: Option<&'a str>,
+    pub homepage: Option<&'a str>,
+    /// The station's local file that does not load (see `WebTitles::local_error_for`).
+    pub broken: Option<PathBuf>,
+}
+
+/// The local file to open for the station's recipe: the local recipe in use, a copy of the
+/// shipped or shared one, the station's local file that does not load yet, or a new recipe to
+/// fill in. Files written here are picked up at once, without a "saved" notice.
+pub fn file_to_edit(recipes: &Recipes, station: EditedStation) -> AppResult<PathBuf> {
+    let dir = folder(recipes)?;
+    let existing = recipes.current().find(station.id, station.stream).cloned();
+    let path = match existing {
+        Some(entry) if entry.origin == Origin::Local => entry.path.clone().unwrap_or_default(),
+        Some(entry) => {
+            let path = dir.join(format!("{}.toml", entry.id));
+            if !path.exists() {
+                let text = recipes
+                    .local_copy_of(&entry)
+                    .ok_or_else(|| "recipe not found".to_owned())?;
+                std::fs::write(&path, text).at(&path)?;
+            }
+            path
+        }
+        None => match station.broken {
+            Some(broken) => broken,
+            None => {
+                let name = station.name.map(str::trim).filter(|n| !n.is_empty());
+                let host = crate::audio::Url::parse(station.stream)
+                    .ok()
+                    .and_then(|u| u.host_str().map(str::to_owned));
+                let base = slug(name.or(host.as_deref()).unwrap_or("station"));
+                let path = numbered(&base)
+                    .filter(|id| !recipes.is_known_id(id))
+                    .map(|id| dir.join(format!("{id}.toml")))
+                    .find(|path| !path.exists())
+                    .expect("an unused name");
+                let text = template(&Template {
+                    name: name.or(host.as_deref()).unwrap_or("Station"),
+                    station_id: station.id,
+                    stream: station.stream,
+                    homepage: station.homepage,
+                });
+                std::fs::write(&path, text).at(&path)?;
+                path
+            }
+        },
+    };
+    // Written by the app, not by the user: no "saved" notice for it.
+    recipes.reload_if_changed();
+    Ok(path)
+}
+
+/// The station's recipe and its file's text, if it is one of the user's own: only those can be
+/// shared.
+pub fn local_recipe(
+    recipes: &Recipes,
+    station_id: Option<&str>,
+    stream: &str,
+) -> AppResult<(Entry, String)> {
+    let entry = recipes
+        .current()
+        .find(station_id, stream)
+        .cloned()
+        .ok_or_else(|| "No recipe matches this station.".to_owned())?;
+    let path = match (&entry.origin, &entry.path) {
+        (Origin::Local, Some(path)) => path.clone(),
+        _ => {
+            return Err(
+                "Only your own recipes can be shared: edit this one locally first."
+                    .to_owned()
+                    .into(),
+            )
+        }
+    };
+    let text = std::fs::read_to_string(&path).at(&path)?;
+    Ok((entry, text))
+}
+
+/// A recipe ready to share.
+pub struct PreparedShare {
+    /// Where the recipe and fixture were saved, laid out as in the repository (`stations/`,
+    /// `fixtures/`), for a pull request by hand.
+    pub folder: PathBuf,
+    /// The "Share a recipe" issue form, filled in.
+    pub link: String,
+    /// The fixture, when it was too long for the link: to paste in the form.
+    pub fixture_to_paste: Option<String>,
+}
+
+/// Prepares a local recipe for the shared list: keeps the excerpt of `page` the recipe reads as
+/// its fixture, writes the `[[test]]`, saves both under `to-share/`, and builds the issue link.
+pub fn prepare_share(
+    recipes: &Recipes,
+    entry: &Entry,
+    text: &str,
+    page_url: &str,
+    page: &str,
+    at: Timestamp,
+) -> AppResult<PreparedShare> {
+    let shared =
+        soundfolk_nowplaying::fixture::prepare(&entry.id, text, &entry.recipe, page_url, page, at)
+            .map_err(|e| format!("Not ready to share: {e}."))?;
+
+    let folder = folder(recipes)?.join("to-share");
+    let recipe_path = folder.join("stations").join(format!("{}.toml", entry.id));
+    let fixture_path = folder.join("fixtures").join(&shared.fixture_file);
+    for path in [&recipe_path, &fixture_path] {
+        let parent = path.parent().expect("a file in a folder");
+        std::fs::create_dir_all(parent).at(parent)?;
+    }
+    std::fs::write(&recipe_path, &shared.recipe).at(&recipe_path)?;
+    std::fs::write(&fixture_path, &shared.fixture).at(&fixture_path)?;
+
+    let name = &entry.recipe.name;
+    let link = share_link(&entry.id, name, &shared.recipe, Some(&shared.fixture));
+    if link.len() <= MAX_LINK {
+        return Ok(PreparedShare {
+            folder,
+            link,
+            fixture_to_paste: None,
+        });
+    }
+    Ok(PreparedShare {
+        folder,
+        link: share_link(&entry.id, name, &shared.recipe, None),
+        fixture_to_paste: Some(shared.fixture),
+    })
 }
 
 #[cfg(test)]

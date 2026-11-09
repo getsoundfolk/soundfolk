@@ -28,9 +28,9 @@ use serde::Serialize;
 use tauri::{Emitter, Manager};
 
 use crate::audio::{AudioEngine, NowPlaying, PlayerState};
-use crate::commands::{start_station, AudioState};
 use crate::db::{Database, Favorite};
 use crate::error::AppResult;
+use crate::player::{start_station, AudioState};
 
 /// Event emitted when the media controls switch station (payload: `StationChange`), so that the
 /// window shows the station on air.

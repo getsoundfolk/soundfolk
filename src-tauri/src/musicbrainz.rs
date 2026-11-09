@@ -14,8 +14,8 @@ use stream_download::http::reqwest::{Client, StatusCode, Url};
 use tauri::Manager;
 use tokio::sync::Notify;
 
-use crate::commands::with_db;
 use crate::db::{Database, TrackToIdentify};
+use crate::state::with_db;
 use crate::tracks;
 
 /// Setting: identify liked tracks on MusicBrainz (off by default: titles leave the device).

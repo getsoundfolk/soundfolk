@@ -20,10 +20,10 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Notify;
 
-use crate::commands::with_db;
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
 use crate::db::Database;
 use crate::error::AppResult;
+use crate::state::with_db;
 
 pub const DEFAULT_URL: &str =
     "https://github.com/getsoundfolk/soundfolk/releases/latest/download/latest.json";

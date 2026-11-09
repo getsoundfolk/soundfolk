@@ -204,7 +204,7 @@ pub fn close_mini_player(app: AppHandle) {
 #[tauri::command]
 pub async fn set_mini_compact(app: AppHandle, compact: bool) -> Result<(), String> {
     // Off the async runtime: the setting is saved to the database.
-    crate::commands::blocking(move || set_compact(&app, compact).map_err(|e| e.to_string().into()))
+    crate::state::blocking(move || set_compact(&app, compact).map_err(|e| e.to_string().into()))
         .await
         .map_err(|e| e.to_string())
 }

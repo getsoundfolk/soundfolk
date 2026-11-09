@@ -7,11 +7,14 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::{AudioEngine, LevelMemory, StoredLevel};
-use crate::commands::{with_db, AudioState};
 use crate::db::Database;
 use crate::error::AppResult;
+use crate::player::AudioState;
+use crate::state::with_db;
 
 pub const SETTING_CONSTANT_VOLUME: &str = "constant_volume";
+/// Volume the user last chose (`0.0..=1.0`), restored at the next launch.
+const SETTING_VOLUME: &str = "volume";
 /// On by default: it is what nearly every listener wants, and its failure mode (a station a bit
 /// quieter than its own mastering) is mild.
 pub const CONSTANT_VOLUME_DEFAULT: bool = true;
@@ -157,6 +160,30 @@ pub fn toggle_mute(app: &AppHandle) {
     if let Err(e) = mute(app, !muted) {
         tracing::warn!("mute not toggled: {e}");
     }
+}
+
+#[tauri::command]
+pub async fn set_volume(app: AppHandle, volume: f32) -> AppResult<()> {
+    set_level(&app, volume)
+}
+
+/// Volume saved by `save_volume`, or `None` if the user never moved the slider.
+#[tauri::command]
+pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
+    let saved = with_db(&db, |db| Ok(db.get_str(SETTING_VOLUME)?)).await?;
+    let saved = saved.and_then(|v| v.parse::<f32>().ok());
+    Ok(saved.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0)))
+}
+
+/// Remembers the volume for the next launch. Called once the slider is released, not on every
+/// step of a drag: concurrent commands could otherwise land out of order and keep a stale value.
+#[tauri::command]
+pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> {
+    if !volume.is_finite() {
+        return Err("Invalid volume".to_owned().into());
+    }
+    let volume = volume.clamp(0.0, 1.0).to_string();
+    with_db(&db, move |db| Ok(db.set_str(SETTING_VOLUME, &volume)?)).await
 }
 
 #[tauri::command]

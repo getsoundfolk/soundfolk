@@ -13,9 +13,9 @@ use url::Url;
 
 use crate::catalog::radio_browser::is_uuid;
 use crate::catalog::Station;
-use crate::commands::{with_db, CatalogState};
 use crate::db::Database;
 use crate::error::AppResult;
+use crate::state::{with_db, CatalogState};
 
 /// Where links point until `soundfolk.fm` exists (§2.1).
 const LINK_BASE: &str = "https://getsoundfolk.github.io";

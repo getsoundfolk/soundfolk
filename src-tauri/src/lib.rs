@@ -10,15 +10,18 @@ mod donations;
 mod error;
 mod export;
 mod favorite_repair;
+mod files;
 mod http;
 mod listening;
 mod media_controls;
 mod mini;
 mod musicbrainz;
 mod notifications;
+mod player;
 mod recipe_list;
 mod recipes;
 mod share;
+mod state;
 mod track_services;
 mod tracks;
 mod tray;
@@ -33,9 +36,10 @@ use tracing_subscriber::EnvFilter;
 
 use audio::{DesktopAudioEngine, NowPlaying, WebEvent, WebTitles};
 use catalog::radio_browser::RadioBrowser;
-use commands::{AudioState, CatalogState};
 use db::Database;
 use media_controls::SystemMedia;
+use player::AudioState;
+use state::CatalogState;
 
 /// Event emitted on every player state change (payload: `PlayerState`).
 const PLAYER_STATE_EVENT: &str = "player:state";
@@ -197,9 +201,7 @@ pub fn run() {
             watch_share_links(app);
 
             // The last station is in the player from launch: Play (window, tray, media keys) starts it.
-            let on_air = Arc::new(Mutex::new(commands::saved_station(
-                &app.state::<Database>(),
-            )));
+            let on_air = Arc::new(Mutex::new(player::saved_station(&app.state::<Database>())));
 
             let state_handle = app.handle().clone();
             let media = Arc::new(SystemMedia::new(app.handle().clone()));
@@ -209,7 +211,7 @@ pub fn run() {
                 .ok();
             let covers =
                 covers::Covers::new(app.handle().clone(), musicbrainz.clone(), media.clone());
-            app.manage(commands::CoversState(covers.clone()));
+            app.manage(state::CoversState(covers.clone()));
             app.manage(notifications::TrackNotifications::new(
                 app.handle(),
                 &app.state::<Database>(),
@@ -226,7 +228,7 @@ pub fn run() {
                 // A setting that cannot be read takes its default, as Constant volume does: it
                 // is no reason not to start.
                 app.state::<Database>()
-                    .get_bool(commands::SETTING_WEB_TITLES, true)
+                    .get_bool(state::SETTING_WEB_TITLES, true)
                     .unwrap_or_else(|e| {
                         tracing::warn!("web titles setting not read: {e}");
                         true
@@ -241,7 +243,7 @@ pub fn run() {
                     }
                 }),
             ));
-            app.manage(commands::WebTitlesState(web_titles.clone()));
+            app.manage(state::WebTitlesState(web_titles.clone()));
             recipe_list::start(
                 web_titles.clone(),
                 app.path()
@@ -301,7 +303,7 @@ pub fn run() {
                     let state = favorite_repair::on_state(&state_handle, state);
                     let state = media_controls::on_state(&state_handle, state);
                     state_journal.state(&state);
-                    commands::schedule_click(&state_handle, &state);
+                    player::schedule_click(&state_handle, &state);
                     state_media.show_state(&state);
                     tray::show_state(&state_handle, &state);
                     if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
@@ -384,9 +386,9 @@ pub fn run() {
             commands::stop_stream,
             commands::pause_stream,
             commands::resume_stream,
-            commands::set_volume,
-            commands::get_volume,
-            commands::save_volume,
+            volume::set_volume,
+            volume::get_volume,
+            volume::save_volume,
             commands::get_player_state,
             commands::get_now_playing,
             commands::get_current_station,

@@ -19,9 +19,9 @@ use std::time::Duration;
 use tauri::{AppHandle, State};
 
 use crate::audio::NowPlaying;
-use crate::commands::with_db;
 use crate::db::Database;
 use crate::error::AppResult;
+use crate::state::with_db;
 use crate::tracks::ParsedTitle;
 
 const SETTING_TRACK_NOTIFICATIONS: &str = "track_notifications";

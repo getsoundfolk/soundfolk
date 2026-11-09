@@ -16,10 +16,10 @@ use std::time::Duration;
 use tauri::{Emitter, Manager};
 
 use crate::audio::{NowPlaying, PlayerState};
-use crate::commands::OnAir;
 use crate::covers::Covers;
 use crate::db::Database;
 use crate::notifications::TrackNotifications;
+use crate::player::OnAir;
 use crate::tracks;
 
 /// Event emitted when the on-air station or title changes (payload: `NowPlaying`).

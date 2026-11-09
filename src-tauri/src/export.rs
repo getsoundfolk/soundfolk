@@ -6,7 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::db::{HistoryEntry, LikedTrack};
+use crate::db::{Database, HistoryEntry, LikedTrack};
+use crate::error::AppResult;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -81,6 +82,26 @@ const LIKED_COLUMNS: [&str; 6] = [
     "station_name",
     "station_id",
 ];
+
+/// The whole history or all liked tracks (narrowed by `query`, as in the History tab) in `format`,
+/// with the number of rows.
+pub fn render(
+    db: &Database,
+    list: List,
+    format: Format,
+    query: Option<&str>,
+) -> AppResult<(String, usize)> {
+    Ok(match list {
+        List::History => {
+            let entries = db.recent_history(u32::MAX, query)?;
+            (history(&entries, format), entries.len())
+        }
+        List::Likes => {
+            let tracks = db.list_likes(u32::MAX, query)?;
+            (likes(&tracks, format), tracks.len())
+        }
+    })
+}
 
 pub fn history(entries: &[HistoryEntry], format: Format) -> String {
     let rows: Vec<HistoryRow> = entries

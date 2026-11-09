@@ -1,133 +1,33 @@
 // SPDX-License-Identifier: MPL-2.0
-//! Tauri commands exposed to the frontend (`invoke("play_stream", { url })`, ...).
+//! Tauri commands exposed to the frontend (`invoke("play_stream", { url })`, ...): thin adapters
+//! over the player ([`crate::player`]), the recipes ([`crate::recipes`]), the database and the
+//! catalog.
 //!
-//! They are `async` so they run off the main thread: opening the audio output
-//! can take a few hundred ms and must not freeze the window. Their blocking work (SQLite, files,
-//! waiting for the audio engine) goes to Tokio's blocking pool through [`blocking`] and
-//! [`with_db`], so it never holds one of the runtime's few workers either.
+//! They are `async` so they run off the main thread: opening the audio output can take a few
+//! hundred ms and must not freeze the window. Their blocking work goes through
+//! [`blocking`] and [`with_db`] (see [`crate::state`]).
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
-
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
-use crate::audio::{
-    self, AudioEngine, DesktopAudioEngine, NowPlaying, PlayerState, RecipeTest, StationRef,
-    TitleStatus, WebTitles,
-};
-use crate::catalog::{surprise, CatalogSource, SearchPage, SearchQuery, Station};
-use crate::covers::{self, Cover, CoverSource, Covers};
+use crate::audio::{self, AudioEngine, NowPlaying, PlayerState, RecipeTest, TitleStatus};
+use crate::catalog::{surprise, SearchPage, SearchQuery, Station};
+use crate::covers::{self, Cover, CoverSource};
 use crate::db::{
     Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, Stats,
 };
-use crate::error::{AppError, AppResult, IoContext};
+use crate::error::AppResult;
 use crate::export;
+use crate::files::{open_path, save_download, ExportedFile};
 use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
-use crate::recipes::{self, Origin};
+use crate::player::{self, catalog_ref, AudioState, PlayOutcome, ResolvedStation};
+use crate::recipes;
+use crate::state::{
+    blocking, with_db, CatalogState, CoversState, WebTitlesState, SETTING_WEB_TITLES,
+};
 use crate::track_services::{self, CustomService};
 
-/// Station being played, as the history records it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct OnAir {
-    pub id: String,
-    pub name: Option<String>,
-    /// Stream URL, to play the station again from the system media controls.
-    pub url: String,
-}
-
-/// The trait takes `&mut self`: the engine lives behind a `Mutex` in the Tauri state. The lock is
-/// held only to send a command, never while the engine opens a sound output: it orders the
-/// commands (see `crate::favorite_repair`), it does not wait for them.
-pub struct AudioState {
-    engine: Mutex<DesktopAudioEngine>,
-    /// Station currently playing, shared with the listener that logs titles.
-    station: Arc<Mutex<Option<OnAir>>>,
-    /// Incremented on every station start: a delayed click count checks that it is unchanged.
-    plays: AtomicU64,
-    /// Catalog station to report, waiting for its first sound (`(play, station_id)`).
-    pending_click: Mutex<Option<(u64, String)>>,
-}
-
-impl AudioState {
-    pub fn new(engine: DesktopAudioEngine, station: Arc<Mutex<Option<OnAir>>>) -> Self {
-        Self {
-            engine: Mutex::new(engine),
-            station,
-            plays: AtomicU64::new(0),
-            pending_click: Mutex::new(None),
-        }
-    }
-
-    pub(crate) fn engine(&self) -> std::sync::MutexGuard<'_, DesktopAudioEngine> {
-        self.engine.lock().unwrap_or_else(|p| p.into_inner())
-    }
-
-    /// Last station played (kept after a stop).
-    pub(crate) fn station(&self) -> Option<OnAir> {
-        self.station
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .clone()
-    }
-}
-
 // ── Audio ────────────────────────────────────────────────────────────────────
-
-/// Station catalog (today Radio-Browser, behind `CatalogSource`).
-pub struct CatalogState(pub Arc<dyn CatalogSource>);
-
-/// Setting: report to the catalog that a station is being played (enabled by default).
-const SETTING_CLICK_COUNTING: &str = "click_counting";
-/// Read the title of streams that do not announce it from the web (station page, server status).
-pub const SETTING_WEB_TITLES: &str = "web_titles";
-
-/// Services listed under "Find this track on", by id. Unset: the frontend's defaults.
-const SETTING_TRACK_SERVICES: &str = "track_services";
-/// Sites the user added to that menu (JSON list of `CustomService`).
-const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
-/// Volume the user last chose (`0.0..=1.0`), restored at the next launch.
-const SETTING_VOLUME: &str = "volume";
-/// Last station played (JSON `OnAir`): the app opens with it in the player, ready to play.
-const SETTING_LAST_STATION: &str = "last_station";
-
-/// Last station played in a previous run, loaded in the player at launch.
-pub(crate) fn saved_station(db: &Database) -> Option<OnAir> {
-    let json = db
-        .get_str(SETTING_LAST_STATION)
-        .inspect_err(|e| tracing::warn!("last station not read: {e}"))
-        .ok()??;
-    serde_json::from_str(&json)
-        .inspect_err(|e| tracing::warn!("last station not restored: {e}"))
-        .ok()
-}
-
-fn save_station(db: &Database, station: &OnAir) {
-    let saved = serde_json::to_string(station)
-        .map_err(|e| e.to_string())
-        .and_then(|json| {
-            db.set_str(SETTING_LAST_STATION, &json)
-                .map_err(|e| e.to_string())
-        });
-    if let Err(e) = saved {
-        tracing::warn!("last station not saved: {e}");
-    }
-}
-
-/// Web title sources, to turn them on or off from the settings.
-pub struct WebTitlesState(pub Arc<WebTitles>);
-/// True once the click-counting notice has been shown to the user.
-const SETTING_CLICK_NOTICE_SEEN: &str = "click_notice_seen";
-/// A station is only reported once it has been audible this long: zapping through
-/// stations (with the media keys, for instance) does not count.
-const CLICK_LISTEN_DELAY: Duration = Duration::from_secs(30);
-
-#[derive(Debug, Serialize)]
-pub struct PlayOutcome {
-    /// The frontend must show the click-counting notice (once only).
-    pub show_click_notice: bool,
-}
 
 #[tauri::command]
 pub async fn play_stream(
@@ -136,165 +36,7 @@ pub async fn play_stream(
     station_id: Option<String>,
     station_name: Option<String>,
 ) -> AppResult<PlayOutcome> {
-    blocking(move || start_station(&app, url, station_id, station_name)).await
-}
-
-/// Runs blocking work (SQLite, files, waiting for the audio engine) on Tokio's blocking pool: an
-/// async command must not hold a runtime worker while it waits for the database lock or the disk.
-pub(crate) async fn blocking<T: Send + 'static>(
-    work: impl FnOnce() -> AppResult<T> + Send + 'static,
-) -> AppResult<T> {
-    tokio::task::spawn_blocking(work)
-        .await
-        .map_err(|e| AppError::from(format!("Task interrupted: {e}")))?
-}
-
-/// [`blocking`] with the database (a cheap clone that shares the connection).
-pub(crate) async fn with_db<T: Send + 'static>(
-    db: &Database,
-    work: impl FnOnce(&Database) -> AppResult<T> + Send + 'static,
-) -> AppResult<T> {
-    let db = db.clone();
-    blocking(move || work(&db)).await
-}
-
-/// Plays a station, from the window or from the system media controls.
-pub(crate) fn start_station(
-    app: &AppHandle,
-    url: String,
-    station_id: Option<String>,
-    station_name: Option<String>,
-) -> AppResult<PlayOutcome> {
-    let audio = app.state::<AudioState>();
-    let db = app.state::<Database>();
-    // Without a catalog ID, the URL identifies the station in the history.
-    let id = station_id.clone().unwrap_or_else(|| url.clone());
-    let name = station_name
-        .map(|n| n.trim().to_owned())
-        .filter(|n| !n.is_empty());
-    // Lets a recipe recognise the station by its Radio-Browser UUID.
-    let catalog_id = station_id.clone().filter(|id| is_catalog_id(id));
-    // Catalog stations and stations received in a link stay off the local network (16 §6.2).
-    let public_only = catalog_id.is_some()
-        || station_id.as_deref().is_some_and(|id| {
-            // Unknown origin: the station keeps the rule rather than lose it on a read error.
-            db.personal_station_from_link(id).unwrap_or_else(|e| {
-                tracing::warn!("station origin not read, kept off the local network: {e}");
-                true
-            })
-        });
-    let station = StationRef {
-        id: catalog_id,
-        public_only,
-    };
-    let on_air = OnAir {
-        id,
-        name,
-        url: url.clone(),
-    };
-    save_station(&db, &on_air);
-    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(on_air);
-    app.state::<CoversState>().0.set_station(station.id.clone());
-    let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
-    crate::favorite_repair::watch(app, station_id.as_deref(), &url);
-
-    // Decided before playing: the first sound may come before `play` returns.
-    let mut show_click_notice = false;
-    let mut pending_click = None;
-    if let Some(id) = station_id.filter(|id| is_catalog_id(id))
-        && db.get_bool(SETTING_CLICK_COUNTING, true)?
-    {
-        if db.get_bool(SETTING_CLICK_NOTICE_SEEN, false)? {
-            pending_click = Some((play, id));
-        } else {
-            // Nothing is sent until the user has seen the notice: this first
-            // click is therefore not counted.
-            db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
-            show_click_notice = true;
-        }
-    }
-    *audio
-        .pending_click
-        .lock()
-        .unwrap_or_else(|p| p.into_inner()) = pending_click;
-    // A recipe saved since the last check applies from this playback.
-    app.state::<WebTitlesState>().0.reload_recipes();
-    // The engine lock orders the request against the other commands; the answer is awaited
-    // without it, so the volume or the player state never wait for a sound output to open.
-    let reply = audio.engine().play(&url, station)?;
-    reply.wait()?;
-    Ok(PlayOutcome { show_click_notice })
-}
-
-/// Called on every player state change: the listening delay before a click is reported starts
-/// with the first sound, not when the station is chosen (connecting can take several seconds).
-/// Resuming after a pause does not start it again.
-pub(crate) fn schedule_click(app: &AppHandle, state: &PlayerState) {
-    if *state != PlayerState::Playing {
-        return;
-    }
-    let Some(audio) = app.try_state::<AudioState>() else {
-        return;
-    };
-    let Some((play, station_id)) = audio
-        .pending_click
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .take()
-    else {
-        return;
-    };
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        tokio::time::sleep(CLICK_LISTEN_DELAY).await;
-        count_click_if_still_on_air(&app, play, &station_id).await;
-    });
-}
-
-/// Reports the station if `play` is still the current playback and it is audible (or paused by
-/// the user), and if counting has not been turned off in the meantime.
-async fn count_click_if_still_on_air(app: &AppHandle, play: u64, station_id: &str) {
-    let audio = app.state::<AudioState>();
-    let listening = matches!(
-        audio.engine().state(),
-        PlayerState::Playing | PlayerState::Paused
-    );
-    if audio.plays.load(Ordering::SeqCst) != play || !listening {
-        return;
-    }
-    let db = app.state::<Database>();
-    let counting = with_db(&db, |db| Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)).await;
-    if !counting.unwrap_or(false) {
-        return;
-    }
-    let catalog = app.state::<CatalogState>().0.clone();
-    if let Err(e) = catalog.count_click(station_id).await {
-        tracing::debug!("failed to count click: {e}");
-    }
-}
-
-/// The station for a recipe tool: its catalog id if it has one, nothing else.
-fn catalog_ref(station_id: Option<String>) -> StationRef {
-    StationRef {
-        id: station_id.filter(|id| is_catalog_id(id)),
-        ..Default::default()
-    }
-}
-
-/// `base`, then `base-2`, `base-3`…: names to try until one is free.
-fn numbered(base: &str) -> impl Iterator<Item = String> + '_ {
-    (1..).map(move |n| {
-        if n == 1 {
-            base.to_owned()
-        } else {
-            format!("{base}-{n}")
-        }
-    })
-}
-
-/// Catalog stations have a UUID; personal stations (`user:…`) are never reported.
-pub(crate) fn is_catalog_id(id: &str) -> bool {
-    !id.starts_with("user:") && id.len() == 36
+    blocking(move || player::start_station(&app, url, station_id, station_name)).await
 }
 
 #[tauri::command]
@@ -313,30 +55,6 @@ pub async fn resume_stream(audio: State<'_, AudioState>) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub async fn set_volume(app: AppHandle, volume: f32) -> AppResult<()> {
-    crate::volume::set_level(&app, volume)
-}
-
-/// Volume saved by `save_volume`, or `None` if the user never moved the slider.
-#[tauri::command]
-pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
-    let saved = with_db(&db, |db| Ok(db.get_str(SETTING_VOLUME)?)).await?;
-    let saved = saved.and_then(|v| v.parse::<f32>().ok());
-    Ok(saved.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0)))
-}
-
-/// Remembers the volume for the next launch. Called once the slider is released, not on every
-/// step of a drag: concurrent commands could otherwise land out of order and keep a stale value.
-#[tauri::command]
-pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> {
-    if !volume.is_finite() {
-        return Err("Invalid volume".to_owned().into());
-    }
-    let volume = volume.clamp(0.0, 1.0).to_string();
-    with_db(&db, move |db| Ok(db.set_str(SETTING_VOLUME, &volume)?)).await
-}
-
-#[tauri::command]
 pub async fn get_player_state(audio: State<'_, AudioState>) -> AppResult<PlayerState> {
     Ok(audio.engine().state())
 }
@@ -346,35 +64,21 @@ pub async fn get_player_state(audio: State<'_, AudioState>) -> AppResult<PlayerS
 pub async fn get_current_station(
     audio: State<'_, AudioState>,
 ) -> AppResult<Option<ResolvedStation>> {
-    Ok(audio.station().map(|s| ResolvedStation {
-        name: s.name.unwrap_or_else(|| s.url.clone()),
-        id: s.id,
-        url: s.url,
-        genre: None,
-    }))
+    Ok(audio.station().map(ResolvedStation::from))
 }
 
 #[tauri::command]
 pub async fn get_now_playing(audio: State<'_, AudioState>) -> AppResult<NowPlaying> {
     Ok(audio.engine().now_playing())
 }
-
 #[tauri::command]
 pub async fn get_click_counting(db: State<'_, Database>) -> AppResult<bool> {
-    with_db(&db, |db| Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)).await
+    with_db(&db, player::click_counting).await
 }
 
 #[tauri::command]
 pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppResult<()> {
-    with_db(&db, move |db| {
-        // If the user sets counting themselves, the notice no longer needs to be shown.
-        let counting = if enabled { "true" } else { "false" };
-        Ok(db.set_strs(&[
-            (SETTING_CLICK_NOTICE_SEEN, "true"),
-            (SETTING_CLICK_COUNTING, counting),
-        ])?)
-    })
-    .await
+    with_db(&db, move |db| player::set_click_counting(db, enabled)).await
 }
 
 #[tauri::command]
@@ -460,9 +164,8 @@ pub async fn test_recipe(
     Ok(web.0.test(&station, &url).await)
 }
 
-/// Opens the station's recipe in the user's editor, as a local file: the local recipe in use,
-/// a copy of the shipped one, the station's local file that does not load yet, or a new
-/// recipe to fill in. Returns the file's path.
+/// Opens the station's recipe in the user's editor, as a local file (see
+/// [`recipes::file_to_edit`]). Returns the file's path.
 #[tauri::command]
 pub async fn edit_recipe(
     app: AppHandle,
@@ -473,63 +176,23 @@ pub async fn edit_recipe(
     homepage: Option<String>,
 ) -> AppResult<String> {
     let web = web.0.clone();
-    blocking(move || edit_recipe_file(&app, &web, url, station_id, name, homepage)).await
-}
-
-/// [`edit_recipe`]'s file work, on a blocking thread.
-fn edit_recipe_file(
-    app: &AppHandle,
-    web: &WebTitles,
-    url: String,
-    station_id: Option<String>,
-    name: Option<String>,
-    homepage: Option<String>,
-) -> AppResult<String> {
-    let recipes = web.recipes().clone();
-    let dir = recipes_folder(&recipes)?;
-    let station = catalog_ref(station_id);
-    let set = recipes.current();
-    let existing = set.find(station.id.as_deref(), &url).cloned();
-    let path = match existing {
-        Some(entry) if entry.origin == Origin::Local => entry.path.clone().unwrap_or_default(),
-        Some(entry) => {
-            let path = dir.join(format!("{}.toml", entry.id));
-            if !path.exists() {
-                let text = recipes
-                    .local_copy_of(&entry)
-                    .ok_or_else(|| "recipe not found".to_owned())?;
-                std::fs::write(&path, text).at(&path)?;
-            }
-            path
-        }
-        None => match web.local_error_for(&station, &url) {
-            Some(broken) => broken.path.into(),
-            None => {
-                let name = name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
-                let host = audio::Url::parse(&url)
-                    .ok()
-                    .and_then(|u| u.host_str().map(str::to_owned));
-                let base = recipes::slug(name.as_deref().or(host.as_deref()).unwrap_or("station"));
-                let path = numbered(&base)
-                    .filter(|id| !recipes.is_known_id(id))
-                    .map(|id| dir.join(format!("{id}.toml")))
-                    .find(|path| !path.exists())
-                    .expect("an unused name");
-                let template = recipes::template(&recipes::Template {
-                    name: name.as_deref().or(host.as_deref()).unwrap_or("Station"),
-                    station_id: station.id.as_deref(),
-                    stream: &url,
-                    homepage: homepage.as_deref(),
-                });
-                std::fs::write(&path, template).at(&path)?;
-                path
-            }
-        },
-    };
-    // Written by the app, not by the user: no "saved" notice for it.
-    recipes.reload_if_changed();
-    open_path(app, &path)?;
-    Ok(path.display().to_string())
+    blocking(move || {
+        let station = catalog_ref(station_id);
+        let broken = web.local_error_for(&station, &url).map(|e| e.path.into());
+        let path = recipes::file_to_edit(
+            web.recipes(),
+            recipes::EditedStation {
+                id: station.id.as_deref(),
+                stream: &url,
+                name: name.as_deref(),
+                homepage: homepage.as_deref(),
+                broken,
+            },
+        )?;
+        open_path(&app, &path)?;
+        Ok(path.display().to_string())
+    })
+    .await
 }
 
 /// What *Share this recipe* did.
@@ -556,24 +219,7 @@ pub async fn share_recipe(
     let (entry, text) = blocking(move || {
         titles.reload_recipes();
         let station = catalog_ref(station_id);
-        let entry = titles
-            .recipes()
-            .current()
-            .find(station.id.as_deref(), &url)
-            .cloned()
-            .ok_or_else(|| "No recipe matches this station.".to_owned())?;
-        let path = match (&entry.origin, &entry.path) {
-            (Origin::Local, Some(path)) => path.clone(),
-            _ => {
-                return Err(
-                    "Only your own recipes can be shared: edit this one locally first."
-                        .to_owned()
-                        .into(),
-                )
-            }
-        };
-        let text = std::fs::read_to_string(&path).at(&path)?;
-        Ok((entry, text))
+        recipes::local_recipe(titles.recipes(), station.id.as_deref(), &url)
     })
     .await?;
     let page_url = entry.recipe.fetch.url.clone();
@@ -584,54 +230,27 @@ pub async fn share_recipe(
         .map_err(|e| format!("Could not read the page: {e}."))?;
     let at = date.unwrap_or_else(soundfolk_nowplaying::Timestamp::now);
     let recipes = web.0.recipes().clone();
-    blocking(move || share_recipe_files(&app, &recipes, entry, &text, &page_url, &page, at)).await
-}
+    blocking(move || {
+        use tauri_plugin_clipboard_manager::ClipboardExt;
+        use tauri_plugin_opener::OpenerExt;
 
-/// [`share_recipe`]'s file work once the page is read, on a blocking thread.
-fn share_recipe_files(
-    app: &AppHandle,
-    recipes: &recipes::Recipes,
-    entry: recipes::Entry,
-    text: &str,
-    page_url: &str,
-    page: &str,
-    at: soundfolk_nowplaying::Timestamp,
-) -> AppResult<SharedRecipe> {
-    use tauri_plugin_clipboard_manager::ClipboardExt;
-    use tauri_plugin_opener::OpenerExt;
-
-    let shared =
-        soundfolk_nowplaying::fixture::prepare(&entry.id, text, &entry.recipe, page_url, page, at)
-            .map_err(|e| format!("Not ready to share: {e}."))?;
-
-    // A copy laid out as in the repository, for a pull request by hand.
-    let folder = recipes_folder(recipes)?.join("to-share");
-    let recipe_path = folder.join("stations").join(format!("{}.toml", entry.id));
-    let fixture_path = folder.join("fixtures").join(&shared.fixture_file);
-    for path in [&recipe_path, &fixture_path] {
-        let parent = path.parent().expect("a file in a folder");
-        std::fs::create_dir_all(parent).at(parent)?;
-    }
-    std::fs::write(&recipe_path, &shared.recipe).at(&recipe_path)?;
-    std::fs::write(&fixture_path, &shared.fixture).at(&fixture_path)?;
-
-    let name = &entry.recipe.name;
-    let mut link = recipes::share_link(&entry.id, name, &shared.recipe, Some(&shared.fixture));
-    let fixture_in_clipboard = link.len() > recipes::MAX_LINK;
-    if fixture_in_clipboard {
-        app.clipboard()
-            .write_text(shared.fixture.clone())
-            .map_err(|e| format!("could not copy the excerpt: {e}"))?;
-        link = recipes::share_link(&entry.id, name, &shared.recipe, None);
-    }
-    app.opener()
-        .open_url(&link, None::<&str>)
-        .map_err(|e| format!("could not open the browser: {e}"))?;
-    Ok(SharedRecipe {
-        id: entry.id,
-        folder: folder.display().to_string(),
-        fixture_in_clipboard,
+        let prepared = recipes::prepare_share(&recipes, &entry, &text, &page_url, &page, at)?;
+        let fixture_in_clipboard = prepared.fixture_to_paste.is_some();
+        if let Some(fixture) = prepared.fixture_to_paste {
+            app.clipboard()
+                .write_text(fixture)
+                .map_err(|e| format!("could not copy the excerpt: {e}"))?;
+        }
+        app.opener()
+            .open_url(&prepared.link, None::<&str>)
+            .map_err(|e| format!("could not open the browser: {e}"))?;
+        Ok(SharedRecipe {
+            id: entry.id,
+            folder: prepared.folder.display().to_string(),
+            fixture_in_clipboard,
+        })
     })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -676,67 +295,27 @@ pub async fn get_local_recipes(web: State<'_, WebTitlesState>) -> AppResult<Loca
 pub async fn open_recipes_folder(app: AppHandle, web: State<'_, WebTitlesState>) -> AppResult<()> {
     let web = web.0.clone();
     blocking(move || {
-        let dir = recipes_folder(web.recipes())?;
+        let dir = recipes::folder(web.recipes())?;
         open_path(&app, &dir)
     })
     .await
 }
 
-/// The local recipes folder, created with the JSON Schema next to the recipes (completion and
-/// checks in editors that read the `#:schema` line).
-fn recipes_folder(recipes: &recipes::Recipes) -> AppResult<std::path::PathBuf> {
-    let dir = recipes
-        .local_dir()
-        .ok_or_else(|| "no configuration folder on this system".to_owned())?
-        .to_path_buf();
-    std::fs::create_dir_all(&dir).at(&dir)?;
-    let schema = serde_json::to_string_pretty(&soundfolk_nowplaying::recipe::json_schema())
-        .expect("schema serializes");
-    let schema_path = dir.join(recipes::SCHEMA_FILE);
-    if std::fs::read_to_string(&schema_path).ok().as_deref() != Some(schema.as_str()) {
-        std::fs::write(&schema_path, schema).at(&schema_path)?;
-    }
-    Ok(dir)
-}
-
-fn open_path(app: &AppHandle, path: &std::path::Path) -> AppResult<()> {
-    use tauri_plugin_opener::OpenerExt;
-    app.opener()
-        .open_path(path.display().to_string(), None::<&str>)
-        .map_err(|e| AppError::from(format!("could not open {}: {e}", path.display())))
-}
-
 /// Ids of the services shown in a track's menu, or `None` if the user never chose.
 #[tauri::command]
 pub async fn get_track_services(db: State<'_, Database>) -> AppResult<Option<Vec<String>>> {
-    with_db(&db, |db| Ok(db.get_list(SETTING_TRACK_SERVICES)?)).await
+    with_db(&db, track_services::enabled_ids).await
 }
 
 #[tauri::command]
 pub async fn set_track_services(db: State<'_, Database>, ids: Vec<String>) -> AppResult<()> {
-    let ids: Vec<String> = ids
-        .into_iter()
-        .filter(|id| !id.is_empty() && !id.contains(','))
-        .collect();
-    with_db(
-        &db,
-        move |db| Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?),
-    )
-    .await
+    with_db(&db, move |db| track_services::save_enabled_ids(db, ids)).await
 }
 
-/// Sites the user added. A stored list that no longer passes the checks is dropped, not trusted.
+/// Sites the user added.
 #[tauri::command]
 pub async fn get_custom_track_services(db: State<'_, Database>) -> AppResult<Vec<CustomService>> {
-    let Some(json) = with_db(&db, |db| Ok(db.get_str(SETTING_CUSTOM_TRACK_SERVICES)?)).await?
-    else {
-        return Ok(Vec::new());
-    };
-    let stored: Vec<CustomService> = serde_json::from_str(&json).unwrap_or_default();
-    Ok(stored
-        .into_iter()
-        .filter_map(|s| track_services::validate(s).ok())
-        .collect())
+    with_db(&db, track_services::load_custom).await
 }
 
 /// Replaces the whole list. Nothing is saved if one site fails the checks.
@@ -746,11 +325,7 @@ pub async fn set_custom_track_services(
     services: Vec<CustomService>,
 ) -> AppResult<()> {
     let services = track_services::validate_all(services)?;
-    let json = serde_json::to_string(&services).map_err(|e| e.to_string())?;
-    with_db(&db, move |db| {
-        Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
-    })
-    .await
+    with_db(&db, move |db| track_services::save_custom(db, &services)).await
 }
 
 // ── Catalog ──────────────────────────────────────────────────────────────────
@@ -792,19 +367,8 @@ pub async fn surprise_candidates(
 
 /// How many stations one Surprise me request draws: about half pass the filters.
 const SURPRISE_DRAW: u32 = 60;
-
-/// What the player needs to play a station, whatever its origin.
-#[derive(Debug, Serialize)]
-pub struct ResolvedStation {
-    pub id: String,
-    pub name: String,
-    pub url: String,
-    pub genre: Option<String>,
-}
-
-/// Finds how to play a station known only by the ID stored in the history: personal stations
-/// from the database, catalog stations from the catalog (one request), and stations played
-/// without an ID are identified by their URL already.
+/// Finds how to play a station known only by the ID stored in the history (see
+/// [`player::resolve`]).
 #[tauri::command]
 pub async fn resolve_station(
     db: State<'_, Database>,
@@ -812,50 +376,7 @@ pub async fn resolve_station(
     station_id: String,
     name: Option<String>,
 ) -> AppResult<ResolvedStation> {
-    let id = station_id.clone();
-    let (personal, favorite) = with_db(&db, move |db| {
-        Ok((db.personal_station(&id)?, db.favorite(&id)?))
-    })
-    .await?;
-    if let Some(p) = personal {
-        return Ok(ResolvedStation {
-            id: p.station_id,
-            name: p.name,
-            url: p.stream_url,
-            genre: p.genre,
-        });
-    }
-    if let Some(f) = favorite {
-        return Ok(ResolvedStation {
-            id: f.station_id,
-            name: f.name,
-            url: f.stream_url,
-            genre: f.genre,
-        });
-    }
-    if is_catalog_id(&station_id) {
-        let station = catalog
-            .0
-            .station(&station_id)
-            .await?
-            .ok_or_else(|| "This station is no longer in the catalog".to_owned())?;
-        return Ok(ResolvedStation {
-            genre: station.tags.first().cloned(),
-            id: station.id,
-            name: station.name,
-            url: station.url,
-        });
-    }
-    if station_id.starts_with("http://") || station_id.starts_with("https://") {
-        let name = name.unwrap_or_else(|| station_id.clone());
-        return Ok(ResolvedStation {
-            id: station_id.clone(),
-            name,
-            url: station_id,
-            genre: None,
-        });
-    }
-    Err(format!("Unknown station: {station_id}").into())
+    player::resolve(&db, catalog.0.as_ref(), station_id, name).await
 }
 
 // ── Personal stations (private, never sent) ──────────────────────────────────
@@ -990,15 +511,6 @@ pub async fn get_history_summary(db: State<'_, Database>) -> AppResult<HistorySu
 pub async fn clear_listening_history(db: State<'_, Database>) -> AppResult<usize> {
     with_db(&db, |db| Ok(db.clear_history()?)).await
 }
-
-#[derive(Debug, Serialize)]
-pub struct ExportedFile {
-    pub path: String,
-    /// File name alone, for a short notice.
-    pub file_name: String,
-    pub count: usize,
-}
-
 /// Writes the whole history or all liked tracks (narrowed by `query`, as in the History tab)
 /// to a new file in the Downloads folder, then shows it in the file manager.
 #[tauri::command]
@@ -1010,67 +522,11 @@ pub async fn export_history(
     query: Option<String>,
 ) -> AppResult<ExportedFile> {
     let db = db.inner().clone();
-    blocking(move || export_file(&app, &db, list, format, query)).await
-}
-
-/// [`export_history`]'s queries and file, on a blocking thread.
-fn export_file(
-    app: &AppHandle,
-    db: &Database,
-    list: export::List,
-    format: export::Format,
-    query: Option<String>,
-) -> AppResult<ExportedFile> {
-    let (content, count) = match list {
-        export::List::History => {
-            let entries = db.recent_history(u32::MAX, query.as_deref())?;
-            (export::history(&entries, format), entries.len())
-        }
-        export::List::Likes => {
-            let tracks = db.list_likes(u32::MAX, query.as_deref())?;
-            (export::likes(&tracks, format), tracks.len())
-        }
-    };
-    save_download(app, list.file_stem(), format.extension(), &content, count)
-}
-
-/// Writes an export to a new file `<stem>-<date>.<extension>` in the Downloads folder (`-2`, `-3`…
-/// when it exists), then shows it in the file manager.
-pub(crate) fn save_download(
-    app: &AppHandle,
-    stem: &str,
-    extension: &str,
-    content: &str,
-    count: usize,
-) -> AppResult<ExportedFile> {
-    let dir = app
-        .path()
-        .download_dir()
-        .or_else(|_| app.path().home_dir())
-        .map_err(|e| format!("no folder to save the export in: {e}"))?;
-    std::fs::create_dir_all(&dir).at(&dir)?;
-    let date = jiff::Timestamp::now().strftime("%Y-%m-%d").to_string();
-    let base = format!("{stem}-{date}");
-    let path = numbered(&base)
-        .map(|name| dir.join(format!("{name}.{extension}")))
-        .find(|path| !path.exists())
-        .expect("an unused name");
-    std::fs::write(&path, content).at(&path)?;
-    {
-        use tauri_plugin_opener::OpenerExt;
-        // The file is saved either way; a file manager that cannot be opened is not an error.
-        if let Err(e) = app.opener().reveal_item_in_dir(&path) {
-            tracing::warn!("could not show {} in the file manager: {e}", path.display());
-        }
-    }
-    Ok(ExportedFile {
-        file_name: path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
-        path: path.display().to_string(),
-        count,
+    blocking(move || {
+        let (content, count) = export::render(&db, list, format, query.as_deref())?;
+        save_download(&app, list.file_stem(), format.extension(), &content, count)
     })
+    .await
 }
 
 // ── Likes ────────────────────────────────────────────────────────────────────
@@ -1109,9 +565,6 @@ pub async fn set_track_identification(
     Ok(())
 }
 
-/// Cover art of the track on air, chosen from the sources the user put in order.
-pub struct CoversState(pub Arc<Covers>);
-
 #[tauri::command]
 pub async fn get_cover_sources(db: State<'_, Database>) -> AppResult<Vec<CoverSource>> {
     with_db(&db, |db| Ok(covers::load_sources(db)?)).await
@@ -1148,69 +601,4 @@ pub async fn list_likes(
 ) -> AppResult<Vec<LikedTrack>> {
     let limit = limit.unwrap_or(200).min(1000);
     with_db(&db, move |db| Ok(db.list_likes(limit, query.as_deref())?)).await
-}
-
-#[cfg(test)]
-mod last_station_tests {
-    use super::*;
-
-    #[test]
-    fn last_station_survives_a_restart() {
-        let db = Database::open_in_memory().unwrap();
-        assert!(saved_station(&db).is_none());
-        let fip = OnAir {
-            id: "uuid-fip".into(),
-            name: Some("FIP".into()),
-            url: "https://example.org/fip.mp3".into(),
-        };
-        save_station(&db, &fip);
-        let back = saved_station(&db).unwrap();
-        assert_eq!((back.id, back.name, back.url), (fip.id, fip.name, fip.url));
-    }
-
-    #[test]
-    fn a_damaged_last_station_is_ignored() {
-        let db = Database::open_in_memory().unwrap();
-        db.set_str(SETTING_LAST_STATION, "{not json").unwrap();
-        assert!(saved_station(&db).is_none());
-    }
-}
-
-#[cfg(test)]
-mod blocking_tests {
-    use super::*;
-
-    /// One runtime thread: if the work ran on it, the timer below could not fire before the work
-    /// gives up waiting, and the work would be done first.
-    #[tokio::test(flavor = "current_thread")]
-    async fn blocking_work_leaves_the_runtime_free() {
-        let (release, released) = std::sync::mpsc::channel::<()>();
-        let work = tokio::spawn(blocking(move || {
-            Ok(released.recv_timeout(Duration::from_secs(5)).is_ok())
-        }));
-        tokio::time::sleep(Duration::from_millis(20)).await;
-        assert!(!work.is_finished());
-        release.send(()).unwrap();
-        assert!(
-            work.await.unwrap().unwrap(),
-            "the work was not released by the runtime"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_panic_in_blocking_work_is_an_error_not_a_crash() {
-        let result: AppResult<()> = blocking(|| panic!("broken")).await;
-        assert!(result.unwrap_err().to_string().contains("interrupted"));
-    }
-
-    #[tokio::test]
-    async fn database_work_sees_the_same_connection() {
-        let db = Database::open_in_memory().unwrap();
-        with_db(&db, |db| Ok(db.set_bool(SETTING_CLICK_COUNTING, false)?))
-            .await
-            .unwrap();
-        assert!(!db.get_bool(SETTING_CLICK_COUNTING, true).unwrap());
-        let read = with_db(&db, |db| Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)).await;
-        assert!(!read.unwrap());
-    }
 }

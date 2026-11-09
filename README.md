@@ -82,7 +82,9 @@ Detailed engine logs: `RUST_LOG=soundfolk_lib=debug npm run tauri dev`.
 | `src-tauri/src/audio/` | `mod.rs` facade + engine thread · `decoder.rs` network/decoding/stream test · `playlist.rs` m3u/pls · `icy.rs` metadata · `output.rs` cpal |
 | `src-tauri/src/catalog/` | `CatalogSource` + Radio-Browser client (online search, click counting) |
 | `src-tauri/src/db/mod.rs` | SQLite WAL: `favorites`, `listening_history`, `settings`, `personal_stations` |
-| `src-tauri/src/commands.rs` | Tauri commands (`play_stream`, `stop_stream`, `pause_stream`, `resume_stream`, `set_volume`, `get_player_state`, `search_stations`, favorites, personal stations, history, listen-counting setting) |
+| `src-tauri/src/commands.rs` | Tauri commands (`play_stream`, `stop_stream`, `pause_stream`, `resume_stream`, `get_player_state`, `search_stations`, favorites, personal stations, history, listen-counting setting): thin adapters |
+| `src-tauri/src/player.rs` | Station on air (`AudioState`), `start_station`, click counting, resolving a station by its id |
+| `src-tauri/src/state.rs` | Catalog, web titles and covers in Tauri's state; `blocking` / `with_db` for blocking work |
 | `src/lib/` | Svelte 5 UI (CSS Modules): player, search, favorites, personal stations, listen-counting notice; shared state in `player.svelte.ts` |
 
 Events emitted to the frontend:

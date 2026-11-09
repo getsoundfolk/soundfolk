@@ -19,10 +19,11 @@ use serde::{Deserialize, Serialize};
 use soundfolk_nowplaying::recipe::Match;
 
 use crate::catalog::{Health, Station};
-use crate::commands::{save_download, with_db, CatalogState, ExportedFile};
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
 use crate::db::Database;
 use crate::error::AppResult;
+use crate::files::{save_download, ExportedFile};
+use crate::state::{with_db, CatalogState};
 
 /// Where the lists are published. `v1` is the format: a change older apps can't read moves it.
 pub const DEFAULT_URL: &str = "https://getsoundfolk.github.io/soundfolk-stations/v1/lists.json";

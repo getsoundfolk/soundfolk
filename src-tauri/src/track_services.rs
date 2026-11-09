@@ -4,10 +4,18 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::db::Database;
+use crate::error::AppResult;
+
 /// Most custom sites one can add: the menu must stay short.
 pub const MAX_CUSTOM: usize = 10;
 const MAX_NAME: usize = 40;
 const PLACEHOLDER: &str = "{query}";
+
+/// Services listed under "Find this track on", by id. Unset: the frontend's defaults.
+const SETTING_TRACK_SERVICES: &str = "track_services";
+/// Sites the user added to that menu (JSON list of `CustomService`).
+const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CustomService {
@@ -75,6 +83,38 @@ pub fn validate(s: CustomService) -> Result<CustomService, String> {
         name: name.to_owned(),
         template: template.to_owned(),
     })
+}
+
+/// Ids of the services shown in a track's menu, or `None` if the user never chose.
+pub fn enabled_ids(db: &Database) -> AppResult<Option<Vec<String>>> {
+    Ok(db.get_list(SETTING_TRACK_SERVICES)?)
+}
+
+/// Saves the ids shown in the menu; ids that cannot be stored in the list are dropped.
+pub fn save_enabled_ids(db: &Database, ids: Vec<String>) -> AppResult<()> {
+    let ids: Vec<String> = ids
+        .into_iter()
+        .filter(|id| !id.is_empty() && !id.contains(','))
+        .collect();
+    Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?)
+}
+
+/// Sites the user added. A stored list that no longer passes the checks is dropped, not trusted.
+pub fn load_custom(db: &Database) -> AppResult<Vec<CustomService>> {
+    let Some(json) = db.get_str(SETTING_CUSTOM_TRACK_SERVICES)? else {
+        return Ok(Vec::new());
+    };
+    let stored: Vec<CustomService> = serde_json::from_str(&json).unwrap_or_default();
+    Ok(stored
+        .into_iter()
+        .filter_map(|s| validate(s).ok())
+        .collect())
+}
+
+/// Replaces the whole list, once checked (see [`validate_all`]).
+pub fn save_custom(db: &Database, services: &[CustomService]) -> AppResult<()> {
+    let json = serde_json::to_string(services).map_err(|e| e.to_string())?;
+    Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
 }
 
 #[cfg(test)]
