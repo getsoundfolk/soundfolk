@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 // A newer version of the app (desktop only, src-tauri/src/updates.rs): a dot on the settings gear,
 // and a line in Settings › About with its release page. Nothing during listening, nothing modal.
-import { listen } from '@tauri-apps/api/event';
 import { unsubscribed } from './errors.svelte';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { api, type Release } from './api';
+import { api, listen, type Release } from './api';
 
 class UpdatesStore {
   available = $state<Release | null>(null);

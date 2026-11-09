@@ -41,7 +41,7 @@ pub use stream_download::http::reqwest::Url;
 pub use decoder::probe as probe_stream;
 pub use loudness::{LevelMemory, StoredLevel};
 pub use playlist::resolve_stream_url;
-pub use web_source::{RecipeTest, TitleStatus, WebEvent, WebTitles};
+pub use web_source::{RecipeNotice, RecipeTest, TitleStatus, WebEvent, WebTitles};
 
 /// Common facade for all platforms (see `docs/04-audio-engine.md`).
 pub trait AudioEngine {
@@ -69,7 +69,7 @@ pub(crate) fn gain(position: f32) -> f32 {
 }
 
 /// State published to the frontend (`{ "status": "error", "message": "…" }`).
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(tag = "status", content = "message", rename_all = "snake_case")]
 pub enum PlayerState {
     Idle,
@@ -82,7 +82,7 @@ pub enum PlayerState {
 }
 
 /// What is on air: station name (`icy-name`) and current title.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
 pub struct NowPlaying {
     pub station: Option<String>,
     /// The title as shown: `Artist - Title` (ICY `StreamTitle`, or rebuilt from `track`).
@@ -97,7 +97,7 @@ pub struct NowPlaying {
 }
 
 /// Where the title comes from (see `docs/08-now-playing.md`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TitleSource {
     /// ICY `StreamTitle` in the stream.
@@ -110,7 +110,7 @@ pub enum TitleSource {
     Server,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct TrackInfo {
     pub artist: Option<String>,
     pub title: String,

@@ -20,7 +20,7 @@ pub(crate) fn numbered(base: &str) -> impl Iterator<Item = String> + '_ {
     })
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct ExportedFile {
     pub path: String,
     /// File name alone, for a short notice.

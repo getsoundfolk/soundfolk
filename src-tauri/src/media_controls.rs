@@ -32,25 +32,26 @@ use crate::db::{Database, Favorite};
 use crate::error::AppResult;
 use crate::player::{start_station, AudioState};
 
-/// Event emitted when the media controls switch station (payload: `StationChange`), so that the
-/// window shows the station on air.
-const STATION_EVENT: &str = "player:station";
+/// Event emitted when the media controls or a favorite's repair switch station (payload:
+/// `StationChange`), so that the window shows the station on air.
+pub(crate) const STATION_EVENT: &str = "player:station";
 
-#[derive(Debug, Clone, Serialize)]
-struct StationChange {
-    id: String,
-    name: String,
-    url: String,
-    genre: Option<String>,
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub(crate) struct StationChange {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub genre: Option<String>,
     /// The window must show the click-counting notice (once only).
-    show_click_notice: bool,
-    /// Favorites skipped on the way, because they did not broadcast.
-    skipped: Vec<Skipped>,
+    pub show_click_notice: bool,
+    /// Favorites skipped on the way, because they did not broadcast (none when the backend
+    /// retries the same station).
+    pub skipped: Vec<Skipped>,
 }
 
 /// A favorite skipped by Next / Previous.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-struct Skipped {
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub(crate) struct Skipped {
     name: String,
     /// Why, as the player said it.
     reason: String,

@@ -15,21 +15,19 @@
 
 use std::sync::{Mutex, MutexGuard};
 
-use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::audio::PlayerState;
 use crate::db::{Database, Favorite};
+use crate::media_controls::{StationChange, STATION_EVENT};
 use crate::player::{self, AudioState};
 use crate::state::CatalogState;
 
 /// Tells the window to read the favorites again (one of them has a new address).
-const FAVORITES_EVENT: &str = "favorites:changed";
-/// Tells the window which station is on air (same payload as the media controls send).
-const STATION_EVENT: &str = "player:station";
+pub(crate) const FAVORITES_EVENT: &str = "favorites:changed";
 const LOOKING_UP: &str = "Looking for the station's new address…";
 /// Tells the window that the favorite on air is no longer in the catalog (payload: its ID).
-const GONE_EVENT: &str = "favorite:gone";
+pub(crate) const GONE_EVENT: &str = "favorite:gone";
 pub(crate) const GONE: &str = "This station is no longer in the catalog.";
 
 /// The favorite being started, if the current playback is one (Tauri state).
@@ -62,15 +60,6 @@ enum Stage {
     LookingUp,
     /// Playing the catalog's new address, not heard yet.
     Retrying,
-}
-
-#[derive(Clone, Serialize)]
-struct StationChange {
-    id: String,
-    name: String,
-    url: String,
-    genre: Option<String>,
-    show_click_notice: bool,
 }
 
 impl FavoriteRepair {
@@ -250,6 +239,7 @@ fn retry(app: &AppHandle, watched: &Watched, url: String) -> Result<(), String> 
         url,
         genre: favorite.genre.clone(),
         show_click_notice: outcome.show_click_notice,
+        skipped: Vec::new(),
     };
     if let Err(e) = app.emit(STATION_EVENT, change) {
         tracing::warn!("failed to emit the new station: {e}");

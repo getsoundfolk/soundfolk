@@ -271,6 +271,7 @@ fn init(identifier: &str) {
 fn init(_identifier: &str) {}
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_track_notifications(db: State<'_, Database>) -> AppResult<bool> {
     with_db(&db, |db| {
         Ok(db.get_bool(SETTING_TRACK_NOTIFICATIONS, false)?)
@@ -279,6 +280,7 @@ pub async fn get_track_notifications(db: State<'_, Database>) -> AppResult<bool>
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn set_track_notifications(
     db: State<'_, Database>,
     notifications: State<'_, TrackNotifications>,

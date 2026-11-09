@@ -10,7 +10,7 @@ use crate::tracks::{self, ParsedTitle};
 /// Version of the title parser the stored `artist` / `title` / `track_key` columns come from.
 const SETTING_PARSER_VERSION: &str = "title_parser_version";
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct HistoryEntry {
     pub id: i64,
     pub station_id: String,
@@ -29,14 +29,14 @@ pub struct HistoryEntry {
 }
 
 /// Size of the history, for the settings.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct HistorySummary {
     pub count: i64,
     /// Oldest entry (`YYYY-MM-DD HH:MM:SS`, UTC), if any.
     pub since: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct LikedTrack {
     pub track_key: String,
     pub artist: Option<String>,

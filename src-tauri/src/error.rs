@@ -69,6 +69,28 @@ impl Serialize for AppError {
     }
 }
 
+/// `AppError` as the frontend receives it (the `Serialize` above), for the bindings.
+#[derive(Serialize, specta::Type)]
+#[specta(remote = AppError)]
+#[serde(rename = "AppError")]
+#[allow(dead_code)] // Only its type is used.
+struct Serialized {
+    kind: ErrorKind,
+    message: String,
+}
+
+/// [`AppError::kind`].
+#[derive(Serialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
+enum ErrorKind {
+    Database,
+    Network,
+    Catalog,
+    Io,
+    Other,
+}
+
 pub type AppResult<T> = Result<T, AppError>;
 
 #[cfg(test)]

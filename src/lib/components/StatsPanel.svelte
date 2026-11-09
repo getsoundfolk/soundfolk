@@ -28,7 +28,7 @@
   async function load(days: number | undefined) {
     const mine = ++requestId;
     try {
-      const next = await api.getStats(days);
+      const next = await api.getStats(days ?? null);
       if (mine !== requestId) return;
       stats = next;
       loadError = null;

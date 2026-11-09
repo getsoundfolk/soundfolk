@@ -4,7 +4,7 @@
 import { untrack } from 'svelte';
 import { history } from './history.svelte';
 import { displayTitle } from './trackLinks';
-import { player } from './player.svelte';
+import { NOTHING_ON_AIR, player } from './player.svelte';
 import { wheelSteps } from './wheel';
 import { stationNames } from './stationNames.svelte';
 
@@ -33,9 +33,7 @@ class OnAir {
     });
   }
 
-  private nowPlaying = $derived(
-    this.staleTitle ? { station: null, title: null } : player.nowPlaying,
-  );
+  private nowPlaying = $derived(this.staleTitle ? NOTHING_ON_AIR : player.nowPlaying);
 
   /** The station as named in the list: the stream's own `icy-name` is often a mount point
    *  ("fipworld-hifi.aac") or a placeholder. A name the user gave it comes first. */

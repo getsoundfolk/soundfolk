@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::{Database, HistoryEntry, LikedTrack};
 use crate::error::AppResult;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
     Csv,
@@ -26,7 +26,7 @@ impl Format {
 }
 
 /// What is exported: the whole listening history or the liked tracks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum List {
     History,

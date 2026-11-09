@@ -1,8 +1,7 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
-  import { listen } from '@tauri-apps/api/event';
   import { openUrl } from '@tauri-apps/plugin-opener';
-  import { api, type DonationLink } from '../api';
+  import { api, listen, type DonationLink } from '../api';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { lists } from '../lists.svelte';

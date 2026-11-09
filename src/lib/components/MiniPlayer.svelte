@@ -72,7 +72,7 @@
     void history.version;
     let current = true;
     api
-      .getListeningHistory(12)
+      .getListeningHistory(12, null)
       .then((entries) => {
         // The same track twice in a row (heard again after a stop) is one line here.
         if (current) recent = entries.filter((e, i) => e.track_key !== entries[i - 1]?.track_key);

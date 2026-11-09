@@ -29,7 +29,7 @@ include!(concat!(env!("OUT_DIR"), "/bundled_recipes.rs"));
 /// Name of the JSON Schema written next to local recipes (editor completion through Taplo).
 pub const SCHEMA_FILE: &str = "recipe.schema.json";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum Origin {
     /// Shipped with the app.

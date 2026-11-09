@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 // Shared player state (runes): a single subscription to the backend events.
-import { listen } from '@tauri-apps/api/event';
 import {
   api,
+  listen,
   type Cover,
   type Favorite,
   type NowPlaying,
@@ -10,7 +10,6 @@ import {
   type PlayerState,
   type RecipeNotice,
   type Skipped,
-  type StationChange,
   type TitleStatus,
 } from './api';
 import { errors } from './errors.svelte';
@@ -24,11 +23,21 @@ const KEEP_ERROR = true;
 /** Catalog draws one Surprise me may make before it gives up. */
 const SURPRISE_DRAWS = 3;
 
+/** No station, no title. */
+export const NOTHING_ON_AIR: NowPlaying = {
+  station: null,
+  title: null,
+  track: null,
+  next: null,
+  show: null,
+  source: null,
+};
+
 class PlayerStore {
   state = $state<PlayerState>({ status: 'idle' });
-  nowPlaying = $state<NowPlaying>({ station: null, title: null });
+  nowPlaying = $state<NowPlaying>(NOTHING_ON_AIR);
   /** Cover art of the track on air, chosen by the backend from the sources set in ⚙. */
-  cover = $state<Cover>({ title: null, url: null });
+  cover = $state<Cover>({ title: null, url: null, logo: false });
   current = $state<Playable | null>(null);
   volume = $state(0.8);
   /** Sound cut by the speaker button, M or the tray; the slider keeps its level to come back to.
@@ -59,26 +68,26 @@ class PlayerStore {
   async init(): Promise<() => void> {
     // Subscribed together; one that fails must not leak the others nor stop the loading below.
     const subscriptions = await Promise.allSettled([
-      listen<PlayerState>('player:state', (e) => {
+      listen('player:state', (e) => {
         this.state = e.payload;
         if (e.payload.status !== 'error') this.goneFavorite = null;
         for (const watch of [...this.stateWatchers]) watch();
       }),
-      listen<string>('favorite:gone', (e) => (this.goneFavorite = e.payload)),
-      listen<NowPlaying>('player:now-playing', (e) => (this.nowPlaying = e.payload)),
-      listen<Cover>('player:cover', (e) => (this.cover = e.payload)),
-      listen<boolean>('player:muted', (e) => (this.muted = e.payload)),
-      listen<TitleStatus>('player:title-status', (e) => (this.titleStatus = e.payload)),
-      listen<RecipeNotice>('recipes:notice', (e) => (this.recipeNotice = e.payload)),
+      listen('favorite:gone', (e) => (this.goneFavorite = e.payload)),
+      listen('player:now-playing', (e) => (this.nowPlaying = e.payload)),
+      listen('player:cover', (e) => (this.cover = e.payload)),
+      listen('player:muted', (e) => (this.muted = e.payload)),
+      listen('player:title-status', (e) => (this.titleStatus = e.payload)),
+      listen('recipes:notice', (e) => (this.recipeNotice = e.payload)),
       // A favorite that had moved now plays from its new address, saved by the backend.
       listen('favorites:changed', () =>
         this.run(async () => (this.favorites = await api.listFavorites())),
       ),
       // Station switched from the system media controls (next / previous favorite)
-      listen<StationChange>('player:station', (e) => {
+      listen('player:station', (e) => {
         const { show_click_notice, skipped, ...station } = e.payload;
         // The same station again is a retry at its new address: what was skipped still stands.
-        if (station.id !== this.current?.id) this.skipped = skipped ?? [];
+        if (station.id !== this.current?.id) this.skipped = skipped;
         this.current = station;
         if (show_click_notice) this.clickNotice = true;
       }),

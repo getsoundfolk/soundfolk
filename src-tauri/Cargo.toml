@@ -52,6 +52,10 @@ tauri-plugin-clipboard-manager = "2"
 url = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# The window's TypeScript bindings (`src/lib/bindings.ts`), generated from the commands and their
+# types: `cargo test bindings` writes them. Pinned: these are release candidates.
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+tauri-specta = { version = "=2.0.0-rc.26", features = ["typescript"] }
 # Station logos kept on disk, handed to the window inline (`data:` addresses)
 base64 = "0.22"
 thiserror = "2"
@@ -132,6 +136,8 @@ gtk = "0.18"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }
+# Writes the TypeScript bindings (`cargo test bindings`), with tauri-specta's exporter
+specta-typescript = "=0.0.13"
 
 # Dependencies (Tauri, GTK, WebKit…) without debug info: smaller and faster debug builds. Our own crates
 # keep it in full; panics and backtraces still name the dependencies' functions. To step into a

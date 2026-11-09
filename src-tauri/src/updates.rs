@@ -42,7 +42,7 @@ const FILES: Files = Files {
 };
 
 /// The latest release, as `latest.json` describes it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct Release {
     pub version: String,
     /// Its release page, where the packages are.
@@ -181,13 +181,14 @@ pub fn start(app: &AppHandle, updates: Arc<Updates>, cache_dir: Option<PathBuf>)
 }
 
 /// Whether the update check applies to this copy, and whether it is on.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, specta::Type)]
 pub struct UpdateCheck {
     pub supported: bool,
     pub enabled: bool,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_update_check(
     db: State<'_, Database>,
     updates: State<'_, Arc<Updates>>,
@@ -204,6 +205,7 @@ pub async fn get_update_check(
 
 /// Switched on, it checks at once if the last check is a day old.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_update_check(
     db: State<'_, Database>,
     updates: State<'_, Arc<Updates>>,
@@ -218,6 +220,7 @@ pub async fn set_update_check(
 
 /// The newer version to tell the listener about, if there is one.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_update(
     db: State<'_, Database>,
     updates: State<'_, Arc<Updates>>,
@@ -228,6 +231,7 @@ pub async fn get_update(
 
 /// No more notice for this version.
 #[tauri::command]
+#[specta::specta]
 pub async fn skip_update(db: State<'_, Database>, version: String) -> AppResult<()> {
     with_db(&db, move |db| Ok(db.set_str(SETTING_SKIPPED, &version)?)).await
 }

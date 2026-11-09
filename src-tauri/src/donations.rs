@@ -45,7 +45,7 @@ struct Entry {
 }
 
 /// A station's donation page, as the player shows it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct DonationLink {
     pub url: String,
     /// Where the money goes, shown next to the link: `helloasso.com`.
@@ -143,6 +143,7 @@ pub fn start(
 
 /// The donation page of the station being played or shown, if the list has one.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_donation_link(
     donations: tauri::State<'_, Arc<Donations>>,
     station_id: Option<String>,

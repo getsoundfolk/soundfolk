@@ -42,7 +42,7 @@ struct File {
 }
 
 /// One list, as published.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct CuratedList {
     pub id: String,
     pub title: String,
@@ -59,7 +59,7 @@ pub struct CuratedList {
 
 /// A station of a list: its Radio-Browser UUID, and the stream of that entry, which also
 /// recognises the other Radio-Browser copies of the station playing the same stream.
-#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize, specta::Type)]
 pub struct Item {
     pub uuid: String,
     #[serde(default)]
@@ -77,7 +77,7 @@ impl Item {
 }
 
 /// What the station sheet shows of a list the station is in.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub struct ListRef {
     pub id: String,
     pub title: String,
@@ -176,6 +176,7 @@ pub fn start(
 /// published since the last daily check (docs/16-sharing.md §3.3). At most once a minute, since
 /// links can come in bursts. Returns whether new lists arrived.
 #[tauri::command]
+#[specta::specta]
 pub async fn refresh_curated_lists(
     app: tauri::AppHandle,
     lists: tauri::State<'_, Arc<CuratedLists>>,
@@ -210,6 +211,7 @@ pub async fn refresh_curated_lists(
 
 /// Every list, in the published order (the app sorts them by title).
 #[tauri::command]
+#[specta::specta]
 pub async fn get_curated_lists(
     lists: tauri::State<'_, Arc<CuratedLists>>,
 ) -> AppResult<Vec<CuratedList>> {
@@ -218,6 +220,7 @@ pub async fn get_curated_lists(
 
 /// The lists the station being played or shown is in.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_lists_for_station(
     lists: tauri::State<'_, Arc<CuratedLists>>,
     station_id: Option<String>,
@@ -229,6 +232,7 @@ pub async fn get_lists_for_station(
 /// A list's stations from the catalog, in the curator's order, the ones the catalog's last check
 /// could not reach ranked last (shown with a warning).
 #[tauri::command]
+#[specta::specta]
 pub async fn get_curated_list_stations(
     lists: tauri::State<'_, Arc<CuratedLists>>,
     catalog: tauri::State<'_, CatalogState>,
@@ -240,6 +244,7 @@ pub async fn get_curated_list_stations(
 
 /// Saves a list as an M3U playlist in the Downloads folder, for another player.
 #[tauri::command]
+#[specta::specta]
 pub async fn export_curated_list(
     app: tauri::AppHandle,
     lists: tauri::State<'_, Arc<CuratedLists>>,
@@ -263,6 +268,7 @@ const FAVORITE_LISTS: &str = "favorite_lists";
 /// The ids of the lists the listener marked as favorites (14 §6.4). Only the id is kept: a list
 /// that left `lists.json` is simply not shown, and comes back if it is published again.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_favorite_lists(db: tauri::State<'_, Database>) -> AppResult<Vec<String>> {
     with_db(&db, |db| {
         Ok(db.get_list(FAVORITE_LISTS)?.unwrap_or_default())
@@ -272,6 +278,7 @@ pub async fn get_favorite_lists(db: tauri::State<'_, Database>) -> AppResult<Vec
 
 /// Marks or unmarks a list as a favorite; returns the favorite list ids.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_favorite_list(
     db: tauri::State<'_, Database>,
     id: String,
@@ -302,7 +309,7 @@ fn is_list_id(id: &str) -> bool {
 }
 
 /// The listener's stored lists that can be exported, like a curated list.
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize, specta::Type)]
 #[serde(rename_all = "snake_case")]
 pub enum MyList {
     Favorites,
@@ -311,6 +318,7 @@ pub enum MyList {
 
 /// Saves the favorites (stations only) or the personal stations as an M3U playlist.
 #[tauri::command]
+#[specta::specta]
 pub async fn export_my_list(
     app: tauri::AppHandle,
     db: tauri::State<'_, Database>,

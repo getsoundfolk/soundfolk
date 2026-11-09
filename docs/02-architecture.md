@@ -27,7 +27,9 @@ Soundfolk strictly decouples the user interface, the performance-critical logic 
 * **Runes** (`$state`, `$derived`) for fine-grained, modern reactivity. Shared player state lives in
   `src/lib/player.svelte.ts`.
 * **CSS Modules** for strict per-component style isolation (no heavy CSS framework).
-* All backend calls go through one typed client, `src/lib/api.ts`.
+* All backend calls go through one typed client, `src/lib/api.ts`. Its commands, their types and the
+  events' payloads come from `src/lib/bindings.ts`, generated from the Rust code by
+  [tauri-specta](https://github.com/specta-rs/tauri-specta) (`src-tauri/src/bindings.rs`).
 
 ### Backend (Rust & Tauri v2)
 * **Performance & safety:** memory management and intensive I/O without a garbage collector.
