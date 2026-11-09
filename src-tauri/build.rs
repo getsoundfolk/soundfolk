@@ -3,7 +3,28 @@ use std::path::Path;
 
 fn main() {
     bundle_recipes();
-    tauri_build::build()
+    windows_manifest();
+}
+
+/// tauri-build gives its manifest (Common Controls 6) to the app binary only. The test binary links
+/// the window code too since the bindings test builds the command list, and without that manifest
+/// Windows refuses to start it (STATUS_ENTRYPOINT_NOT_FOUND). So with MSVC the same manifest is
+/// passed to the linker for every target instead.
+fn windows_manifest() {
+    let msvc = std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc");
+    if !msvc {
+        tauri_build::build();
+        return;
+    }
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo");
+    let manifest = Path::new(&manifest_dir).join("windows-app-manifest.xml");
+    println!("cargo:rerun-if-changed={}", manifest.display());
+    println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+    println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+    let windows = tauri_build::WindowsAttributes::new_without_app_manifest();
+    tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+        .expect("tauri-build failed");
 }
 
 /// Embeds every `recipes/stations/*.toml` in the binary (`bundled_recipes.rs` in `OUT_DIR`):
