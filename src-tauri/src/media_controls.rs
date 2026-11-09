@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-//! System media controls (MPRIS on Linux, Now Playing on macOS): the desktop shows the station
+//! System media controls (MPRIS on Linux, Now Playing on macOS, the System Media Transport
+//! Controls on Windows): the desktop shows the station
 //! and the title on air, and its play / pause / stop buttons and the keyboard media keys drive the
 //! player. Next and
 //! previous switch between favorite stations.
@@ -8,9 +9,11 @@
 //! line, the MPRIS title, is the station and its second line, the MPRIS artist, is the track.
 //! The station is also the album, for desktops that show it, and its logo the picture.
 //!
-//! Linux and macOS only for now: Windows needs the window's HWND. Elsewhere [`SystemMedia`] does
-//! nothing. On macOS, MediaPlayer is driven from the main thread (see `native::SystemMedia::apply`). The tray menu drives the player through [`control`] too,
-//! so that it can never behave differently from the media keys.
+//! On macOS, MediaPlayer is driven from the main thread, on Windows from a thread of their own
+//! (see `native::SystemMedia::apply`). Windows ties the controls to a window: a hidden one of
+//! their own, since the main window comes and goes. Elsewhere [`SystemMedia`] does nothing. The
+//! tray menu drives the player through [`control`] too, so that it can never behave differently
+//! from the media keys.
 //!
 //! Next and previous skip a favorite that is proven not to broadcast before its first sound (the
 //! engine only gives up at once when the station is at fault, see `audio/failure.rs`): someone
@@ -175,13 +178,13 @@ pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerStat
     shown
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 pub use native::SystemMedia;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub struct SystemMedia;
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 impl SystemMedia {
     pub fn new(_app: tauri::AppHandle) -> Self {
         Self
@@ -200,8 +203,11 @@ impl SystemMedia {
 }
 
 /// What the desktop displays: the station as the title, the track on air as the artist.
-// Only the Linux and macOS backends show it; the tests run everywhere.
-#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+// Only the Linux, macOS and Windows backends show it; the tests run everywhere.
+#[cfg_attr(
+    not(any(target_os = "linux", target_os = "macos", target_os = "windows")),
+    allow(dead_code)
+)]
 #[derive(Debug, PartialEq)]
 struct Display {
     title: Option<String>,
@@ -213,7 +219,10 @@ struct Display {
 /// name the user gave it, shown instead. A title that is only the station name (sent by some radios
 /// between tracks) is not a track. The track is rebuilt as `Artist - Title`, without the station
 /// signature some radios append (found with the station's own name).
-#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "linux", target_os = "macos", target_os = "windows")),
+    allow(dead_code)
+)]
 fn display(now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>) -> Display {
     let station = station
         .or(now_playing.station.as_deref())
@@ -241,7 +250,7 @@ fn display(now_playing: &NowPlaying, station: Option<&str>, label: Option<&str>)
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 mod native {
     use std::sync::{Arc, Mutex};
 
@@ -251,51 +260,78 @@ mod native {
 
     use super::{control, display, Command, NowPlaying, PlayerState};
 
+    /// An update of the controls, run on their own thread (Windows).
+    #[cfg(target_os = "windows")]
+    type Job = Box<dyn FnOnce() + Send>;
+
     pub struct SystemMedia {
         /// `None` when the controls could not be created: the player works without them.
         controls: Option<Arc<Mutex<MediaControls>>>,
         /// To reach the main thread.
         #[cfg(target_os = "macos")]
         app: tauri::AppHandle,
+        /// The thread the controls are updated from, in the order of the calls. `None` if it could
+        /// not start: the caller's thread does it.
+        #[cfg(target_os = "windows")]
+        jobs: Option<std::sync::mpsc::Sender<Job>>,
     }
 
     impl SystemMedia {
-        /// On macOS, called from the main thread (Tauri's `setup`): MediaPlayer's remote commands
-        /// are registered there, and their handlers run there.
+        /// Called from the main thread (Tauri's `setup`). On macOS, MediaPlayer's remote commands
+        /// are registered there, and their handlers run there; on Windows, the hidden window the
+        /// controls are tied to is served by its event loop.
         pub fn new(app: tauri::AppHandle) -> Self {
+            #[cfg(target_os = "windows")]
+            let hwnd = windows::hidden_window();
+            #[cfg(not(target_os = "windows"))]
+            let hwnd = None;
             let config = PlatformConfig {
                 display_name: "Soundfolk",
                 dbus_name: "soundfolk",
-                hwnd: None,
+                hwnd,
             };
             let handler_app = app.clone();
-            let controls = MediaControls::new(config).and_then(|mut controls| {
-                // Called on the D-Bus thread (Linux) or the main thread (macOS): the engine may
-                // block for a while, so it is driven from a worker thread instead.
-                controls.attach(move |event| {
-                    let app = handler_app.clone();
-                    tauri::async_runtime::spawn_blocking(move || handle(&app, event));
-                })?;
-                Ok(controls)
-            });
+            // souvlaki panics on Windows without a window.
+            let controls = if cfg!(target_os = "windows") && hwnd.is_none() {
+                Err("no window to tie them to".to_owned())
+            } else {
+                MediaControls::new(config)
+                    .and_then(|mut controls| {
+                        // Called on the D-Bus thread (Linux), the main thread (macOS) or a thread
+                        // of the system's (Windows): the engine may block for a while, so it is
+                        // driven from a worker thread instead.
+                        controls.attach(move |event| {
+                            let app = handler_app.clone();
+                            tauri::async_runtime::spawn_blocking(move || handle(&app, event));
+                        })?;
+                        Ok(controls)
+                    })
+                    .map_err(|e| format!("{e:?}"))
+            };
             let controls = match controls {
                 Ok(controls) => Some(Arc::new(Mutex::new(controls))),
                 Err(e) => {
-                    tracing::warn!("system media controls unavailable: {e:?}");
+                    tracing::warn!("system media controls unavailable: {e}");
                     None
                 }
             };
+            #[cfg(target_os = "windows")]
+            let jobs = controls.as_ref().and_then(|_| windows::updater());
             Self {
                 controls,
                 #[cfg(target_os = "macos")]
                 app,
+                #[cfg(target_os = "windows")]
+                jobs,
             }
         }
 
         /// Runs `update` on the controls. On macOS it runs on the main thread, in the order of the
         /// calls: MediaPlayer expects it, and the main thread's run loop drains the Objective-C
         /// objects souvlaki leaves to the autorelease pool (a worker thread has none: they would
-        /// leak with every title).
+        /// leak with every title). On Windows it runs on the controls' own thread, in the order of
+        /// the calls too: souvlaki waits there for a cover file to open, which the caller (the main
+        /// thread, for a command from the window) must not.
         fn apply<F>(&self, what: &'static str, update: F)
         where
             F: FnOnce(&mut MediaControls) -> Result<(), souvlaki::Error> + Send + 'static,
@@ -313,7 +349,17 @@ mod native {
             if let Err(e) = self.app.run_on_main_thread(run) {
                 tracing::debug!("media controls: {what} not updated: {e}");
             }
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(target_os = "windows")]
+            match &self.jobs {
+                Some(jobs) => {
+                    // The thread is gone (it never stops): done here.
+                    if let Err(std::sync::mpsc::SendError(run)) = jobs.send(Box::new(run)) {
+                        run();
+                    }
+                }
+                None => run(),
+            }
+            #[cfg(target_os = "linux")]
             run();
         }
 
@@ -337,20 +383,40 @@ mod native {
             cover: Option<&str>,
         ) {
             let shown = display(now_playing, station, label);
+            #[cfg(target_os = "windows")]
+            let cover = cover.map(windows::cover_address);
+            #[cfg(not(target_os = "windows"))]
             let cover = cover.map(str::to_owned);
             self.apply("metadata", move |c| {
-                c.set_metadata(MediaMetadata {
-                    title: shown.title.as_deref(),
-                    artist: shown.artist.as_deref(),
-                    album: shown.album.as_deref(),
-                    cover_url: cover.as_deref(),
+                let metadata = |cover_url| MediaMetadata {
+                    title: field(&shown.title),
+                    artist: field(&shown.artist),
+                    album: field(&shown.album),
+                    cover_url,
                     ..Default::default()
+                };
+                // A picture that cannot be read (Windows opens the file there and then) must not
+                // keep the station and the track from showing.
+                c.set_metadata(metadata(cover.as_deref())).or_else(|e| {
+                    tracing::debug!("media controls: cover not shown: {e:?}");
+                    c.set_metadata(metadata(None))
                 })
             });
         }
     }
 
-    /// A live stream cannot seek: those events are ignored. macOS sends no Raise, Quit or Stop.
+    /// A field of the controls. Windows keeps a field it is not given: an empty one replaces the
+    /// previous track when the station sends none.
+    fn field(value: &Option<String>) -> Option<&str> {
+        if cfg!(target_os = "windows") {
+            Some(value.as_deref().unwrap_or(""))
+        } else {
+            value.as_deref()
+        }
+    }
+
+    /// A live stream cannot seek: those events are ignored. macOS sends no Raise, Quit or Stop,
+    /// Windows no Raise or Quit.
     fn handle(app: &tauri::AppHandle, event: MediaControlEvent) {
         let command = match event {
             MediaControlEvent::Raise => return crate::show_main_window(app),
@@ -365,12 +431,145 @@ mod native {
         };
         control(app, command);
     }
+
+    /// The System Media Transport Controls' needs: a window, a thread, and file paths as Windows
+    /// writes them.
+    #[cfg(target_os = "windows")]
+    mod windows {
+        use std::ffi::c_void;
+
+        use windows_sys::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+        use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, RegisterClassW, WNDCLASSW, WS_EX_TOOLWINDOW,
+            WS_OVERLAPPED,
+        };
+
+        use super::Job;
+
+        /// A window that is never shown, for the controls to be tied to: the main window is gone
+        /// once closed, and not there at all after a launch hidden in the notification area. Made
+        /// on the main thread, whose event loop serves it, for the life of the app.
+        pub(super) fn hidden_window() -> Option<*mut c_void> {
+            let class = wide("SoundfolkMediaControls");
+            let title = wide("Soundfolk");
+            // SAFETY: a null name asks for the running executable's own module, which needs no
+            // freeing.
+            let instance = unsafe { GetModuleHandleW(std::ptr::null()) };
+            let window_class = WNDCLASSW {
+                lpfnWndProc: Some(DefWindowProcW),
+                hInstance: instance,
+                lpszClassName: class.as_ptr(),
+                ..Default::default()
+            };
+            // SAFETY: `window_class` and the name it points to outlive the call, which copies
+            // them. Registered once: `new` is called once.
+            if unsafe { RegisterClassW(&window_class) } == 0 {
+                tracing::warn!(
+                    "media controls: window class not registered: {}",
+                    std::io::Error::last_os_error()
+                );
+                return None;
+            }
+            // SAFETY: the class was registered above with this module; the names outlive the
+            // call; no parent, menu or creation data. The window is never destroyed.
+            let hwnd = unsafe {
+                CreateWindowExW(
+                    WS_EX_TOOLWINDOW,
+                    class.as_ptr(),
+                    title.as_ptr(),
+                    WS_OVERLAPPED,
+                    0,
+                    0,
+                    0,
+                    0,
+                    std::ptr::null_mut(),
+                    std::ptr::null_mut(),
+                    instance,
+                    std::ptr::null(),
+                )
+            };
+            if hwnd.is_null() {
+                tracing::warn!(
+                    "media controls: no window: {}",
+                    std::io::Error::last_os_error()
+                );
+                return None;
+            }
+            Some(hwnd)
+        }
+
+        /// The thread that updates the controls, one job after the other.
+        pub(super) fn updater() -> Option<std::sync::mpsc::Sender<Job>> {
+            let (jobs, queue) = std::sync::mpsc::channel::<Job>();
+            let started = std::thread::Builder::new()
+                .name("media-controls".into())
+                .spawn(move || {
+                    // SAFETY: called once, first thing on this thread; the thread stays in the
+                    // multithreaded apartment for its whole life, so it never uninitializes.
+                    let joined =
+                        unsafe { CoInitializeEx(std::ptr::null(), COINIT_MULTITHREADED as u32) };
+                    if joined < 0 {
+                        tracing::debug!("media controls: COM not initialized ({joined:#x})");
+                    }
+                    for job in queue {
+                        job();
+                    }
+                });
+            match started {
+                Ok(_) => Some(jobs),
+                Err(e) => {
+                    tracing::warn!("media controls: no thread of their own: {e}");
+                    None
+                }
+            }
+        }
+
+        /// souvlaki opens a `file://` address as the path written after `file://`, as is:
+        /// `file:///C:/Users/…` (the usual form) would be `/C:/Users/…`, which Windows refuses.
+        pub(super) fn cover_address(cover: &str) -> String {
+            url::Url::parse(cover)
+                .ok()
+                .filter(|address| address.scheme() == "file")
+                .and_then(|address| address.to_file_path().ok())
+                .map_or_else(
+                    || cover.to_owned(),
+                    |path| format!("file://{}", path.display()),
+                )
+        }
+
+        /// A string as Windows takes it: UTF-16, ending with a zero.
+        fn wide(text: &str) -> Vec<u16> {
+            text.encode_utf16().chain(std::iter::once(0)).collect()
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use super::cover_address;
+
+            #[test]
+            fn file_addresses_become_windows_paths() {
+                assert_eq!(
+                    cover_address("file:///C:/Users/Ana%20B/AppData/soundfolk.png"),
+                    r"file://C:\Users\Ana B\AppData\soundfolk.png"
+                );
+                // A logo or a cover on the web is left as is
+                assert_eq!(
+                    cover_address("https://radio.test/logo.png"),
+                    "https://radio.test/logo.png"
+                );
+            }
+        }
+    }
 }
 
 /// What the desktop's media controls and the tray menu ask the player to do.
-// The tray only sends Toggle, Next and Previous: elsewhere than Linux and macOS nothing else is
-// built.
-#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+// The tray only sends Toggle, Next and Previous: elsewhere than Linux, macOS and Windows nothing
+// else is built.
+#[cfg_attr(
+    not(any(target_os = "linux", target_os = "macos", target_os = "windows")),
+    allow(dead_code)
+)]
 #[derive(Debug, Clone, Copy)]
 pub enum Command {
     Play,

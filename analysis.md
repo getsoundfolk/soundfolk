@@ -239,7 +239,8 @@ New small leftovers, all done in `b496321`:
 - [x] **5.13 Small consistency points.** Done in `a87fa9b`: one transaction for the two
   click-counting settings, a default for an unreadable web titles setting, `Database::favorite`,
   the `lists:updated` emit logged, the release page parsed. Not a fix: no media controls on
-  Windows (`SystemMedia` is an empty stub), a feature gap.
+  Windows (`SystemMedia` was an empty stub), a feature gap; filled since with the System Media
+  Transport Controls (souvlaki, on a hidden window of their own).
 
 ## Suggested order
 
