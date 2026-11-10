@@ -292,6 +292,7 @@ New small leftovers, all done in `b496321`:
 ## Suggested order
 
 1. ~~Security, user-visible bugs, database off the audio threads, sections 3, 4 and 5~~: done.
-2. `http` module (2.5): `body_at_most` and the public-only rule are its first pieces; one User-Agent
-   and shared clients are left.
-3. The rest of section 2, one module at a time; tauri-specta (2.7) on its own.
+2. ~~`http` module (2.5)~~: done.
+3. ~~The rest of section 2, one module at a time; tauri-specta (2.7) on its own~~: done.
+
+Every item of this audit has landed on `main` (2026-11-10). A new audit starts a new list.
