@@ -201,7 +201,7 @@
           <button
             class={styles.speaker}
             type="button"
-            aria-label={player.muted ? 'Unmute' : 'Mute'}
+            aria-label="Mute"
             aria-pressed={player.muted}
             title={player.muted ? 'Unmute' : 'Mute'}
             onclick={() => player.toggleMute()}

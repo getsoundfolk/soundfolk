@@ -207,7 +207,7 @@
           <button
             class={styles.artButton}
             type="button"
-            aria-label={player.muted ? 'Unmute' : 'Mute'}
+            aria-label="Mute"
             aria-pressed={player.muted}
             title={player.muted ? 'Unmute' : 'Mute'}
             onclick={() => player.toggleMute()}
@@ -284,8 +284,8 @@
           class={`${styles.control} ${styles.tab}`}
           type="button"
           aria-pressed={tab === 'recent'}
-          aria-label={tab === 'recent' ? 'Show the favorites' : 'Show the titles heard lately'}
-          title={tab === 'recent' ? 'Favorites' : 'Recently heard'}
+          aria-label="Recently heard"
+          title="Recently heard"
           onclick={() => (tab = tab === 'recent' ? 'favorites' : 'recent')}
           ><Icon name="history" /></button
         >

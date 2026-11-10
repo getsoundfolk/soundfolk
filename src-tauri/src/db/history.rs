@@ -792,6 +792,7 @@ mod tests {
         )
         .unwrap();
         let db = Database::init(conn).unwrap();
+        db.reparse_history_if_outdated().unwrap();
         db.log_track("a", Some("Radio A"), "new", true).unwrap();
         let history = db.recent_history(10, None).unwrap();
         assert_eq!(history[0].station_name.as_deref(), Some("Radio A"));

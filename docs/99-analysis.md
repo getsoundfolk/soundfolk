@@ -182,22 +182,22 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 
 ## 5. Minor
 
-- [ ] Missing partial index for open sessions: the heartbeat, start and stop run `WHERE ended_at
+- [x] Missing partial index for open sessions: the heartbeat, start and stop run `WHERE ended_at
   IS NULL` on `listening_sessions` every minute, a full scan that grows forever. Migration 8:
   `CREATE INDEX … ON listening_sessions(ended_at) WHERE ended_at IS NULL`.
-- [ ] `toggle_mute` reads, then locks again to write ([volume.rs](../src-tauri/src/volume.rs)):
+- [x] `toggle_mute` reads, then locks again to write ([volume.rs](../src-tauri/src/volume.rs)):
   two quick tray toggles can set the same value. Flip under one lock.
-- [ ] Startup work before the first window: `recipe_list::start` parses the cached list on the
+- [x] Startup work before the first window: `recipe_list::start` parses the cached list on the
   main thread, and a history re-parse runs in `Database::open` when the parser changes.
-- [ ] `aria-controls="panel-<tab>"` on all three tabs of `StationBrowser.svelte`, but only the
+- [x] `aria-controls="panel-<tab>"` on all three tabs of `StationBrowser.svelte`, but only the
   selected panel exists.
-- [ ] The mini player's list toggle combines `aria-pressed` with a label that flips ("Show the
+- [x] The mini player's list toggle combines `aria-pressed` with a label that flips ("Show the
   favorites, pressed"); keep one fixed label.
-- [ ] `OrderedSources.svelte` announces the position twice (handle label and live region).
-- [ ] Radii off the 07 §5 scale: `StatsPanel.module.css` (`4px`, twice), `SettingsPage.module.css`
+- [x] `OrderedSources.svelte` announces the position twice (handle label and live region).
+- [x] Radii off the 07 §5 scale: `StatsPanel.module.css` (`4px`, twice), `SettingsPage.module.css`
   (`0.25rem`).
-- [ ] docs/07 §3 allows weights 400/500 and a size scale; the players use 600 and `0.9375rem`.
-  One of the two should change.
+- [x] docs/07 §3 allows weights 400/500 and a size scale; the players use 600 and `0.9375rem`.
+  One of the two should change. §3 now names the players' exception, which §6 already described.
 
 ## 6. Tooling, CI and docs
 

@@ -230,7 +230,7 @@
           id={`tab-${t.id}`}
           aria-selected={tab === t.id}
           tabindex={tab === t.id ? 0 : -1}
-          aria-controls={`panel-${t.id}`}
+          aria-controls={tab === t.id ? `panel-${t.id}` : undefined}
           onclick={() => (tab = t.id)}
         >
           {t.label}

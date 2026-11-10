@@ -182,7 +182,9 @@ fn open_windows(app: &tauri::App) -> tauri::Result<()> {
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;
-    app.manage(Database::open(data_dir.join("soundfolk.db"))?);
+    let db = Database::open(data_dir.join("soundfolk.db"))?;
+    db.reparse_history_in_background();
+    app.manage(db);
     app.manage(windows::WindowGeometry::default());
     app.manage(share::OpenedLink::default());
     #[cfg(desktop)]

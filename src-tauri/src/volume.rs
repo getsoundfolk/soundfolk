@@ -129,28 +129,35 @@ pub fn set_level(app: &AppHandle, level: f32) -> AppResult<()> {
 
 /// Cuts the sound or brings it back, and tells the windows and the tray menu.
 pub fn mute(app: &AppHandle, muted: bool) -> AppResult<()> {
+    set_muted_with(app, |_| muted).map(|_| ())
+}
+
+/// Sets the mute to `choose(current)` under one lock, so that two quick toggles cannot both read
+/// the same value, then tells the windows and the tray menu. Returns the new mute.
+fn set_muted_with(app: &AppHandle, choose: impl FnOnce(bool) -> bool) -> AppResult<bool> {
     let (Some(sound), Some(audio)) = (app.try_state::<Sound>(), app.try_state::<AudioState>())
     else {
-        return Ok(());
+        return Ok(false);
     };
-    {
+    let muted = {
         let mut s = sound.lock();
+        let muted = choose(s.muted);
         s.muted = muted;
         audio
             .engine()
             .set_volume(if muted { 0.0 } else { s.level.unwrap_or(1.0) })?;
-    }
+        muted
+    };
     if let Err(e) = app.emit(events::MUTED, muted) {
         tracing::warn!("mute not sent to the windows: {e}");
     }
     crate::tray::show_muted(app, muted);
-    Ok(())
+    Ok(muted)
 }
 
 /// The tray's Mute / Unmute.
 pub fn toggle_mute(app: &AppHandle) {
-    let muted = app.try_state::<Sound>().is_some_and(|s| s.muted());
-    if let Err(e) = mute(app, !muted) {
+    if let Err(e) = set_muted_with(app, |muted| !muted) {
         tracing::warn!("mute not toggled: {e}");
     }
 }

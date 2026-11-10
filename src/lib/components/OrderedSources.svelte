@@ -72,7 +72,7 @@
         <button
           class={styles.handle}
           type="button"
-          aria-label={`Move ${item.name}, position ${index + 1} of ${shown.length}`}
+          aria-label={`Move ${item.name}`}
           title="Drag, or use ↑ ↓, to reorder"
           {...order.handle(item.id)}><Icon name="grip" /></button
         >

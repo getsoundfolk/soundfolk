@@ -51,9 +51,11 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * **System font stack** (`system-ui`, `-apple-system`, `Segoe UI`): the app looks native on each desktop and ships
   no font.
 * **Two weights:** 400 for text, 500 for emphasis (names, headings, the selected item). No bold, no uppercase
-  tracked labels.
-* **A short size scale** in `rem`: `0.6875`, `0.75`, `0.8125`, `0.875`, `1`, `1.125`, `1.25`. `0.8125rem` and
-  `0.75rem` carry most of the interface; reach for a new size only if none of these fits.
+  tracked labels. One exception: the players' leading line (the station, the compact mini player's title) is
+  semibold, 600, so that it leads over the track title under it (§6).
+* **A short size scale** in `rem`: `0.6875`, `0.75`, `0.8125`, `0.875`, `1`, `1.125`, `1.25`, plus `0.9375` for the
+  players only (the track title, the mini player's station). `0.8125rem` and `0.75rem` carry most of the
+  interface; reach for a new size only if none of these fits.
 * **Tabular figures** everywhere (`font-variant-numeric: tabular-nums` on `:root`), so counts, durations and
   bitrates line up.
 

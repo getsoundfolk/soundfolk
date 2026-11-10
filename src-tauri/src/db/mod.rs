@@ -198,9 +198,25 @@ impl Database {
         let db = Self {
             conn: Arc::new(Mutex::new(conn)),
         };
-        db.reparse_history_if_outdated()?;
         db.close_abandoned_sessions()?;
         Ok(db)
+    }
+
+    /// Re-parses the history on a thread of its own when the title parser changed, rather than
+    /// before the first window: on a long history it takes a while. Queries meanwhile wait for
+    /// the connection, as they would for any other write.
+    pub fn reparse_history_in_background(&self) {
+        let db = self.clone();
+        let spawned = std::thread::Builder::new()
+            .name("history-reparse".into())
+            .spawn(move || {
+                if let Err(e) = db.reparse_history_if_outdated() {
+                    tracing::warn!("history not re-parsed: {e}");
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("history not re-parsed: {e}");
+        }
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -438,6 +454,7 @@ const MIGRATIONS: &[Migration] = &[
     station_names,
     favorite_positions,
     personal_station_origin,
+    open_session_index,
 ];
 
 /// Schema version of this build (`user_version` is a 32-bit integer in SQLite).
@@ -544,6 +561,15 @@ fn favorite_positions(conn: &Connection) -> rusqlite::Result<()> {
 /// stream stays off the local network (docs/16-sharing.md §6.2); NULL for one typed by hand.
 fn personal_station_origin(conn: &Connection) -> rusqlite::Result<()> {
     add_column(conn, "personal_stations", "origin TEXT")
+}
+
+/// Version 8: a partial index on the open session. The heartbeat, start and stop look it up with
+/// `ended_at IS NULL` every minute, which scanned the whole table, growing with every session.
+fn open_session_index(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_open ON listening_sessions (ended_at)
+         WHERE ended_at IS NULL;",
+    )
 }
 
 /// `ALTER TABLE … ADD COLUMN` unless the column already exists (`column` = name and type).
@@ -687,6 +713,7 @@ pub(super) mod tests {
         )
         .unwrap();
         let db = Database::init(conn).unwrap();
+        db.reparse_history_if_outdated().unwrap();
         let conn = db.conn();
         assert_eq!(user_version(&conn), LATEST);
         let (title, key): (String, Option<String>) = conn
@@ -706,6 +733,21 @@ pub(super) mod tests {
             )
             .unwrap();
         assert!(indexed);
+    }
+
+    #[test]
+    fn open_session_is_found_through_its_index() {
+        let db = Database::open_in_memory().unwrap();
+        let conn = db.conn();
+        let plan: String = conn
+            .query_row(
+                "EXPLAIN QUERY PLAN UPDATE listening_sessions SET last_seen_at = CURRENT_TIMESTAMP
+                 WHERE ended_at IS NULL",
+                [],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("idx_sessions_open"), "{plan}");
     }
 
     #[test]

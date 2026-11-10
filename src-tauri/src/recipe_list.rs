@@ -39,12 +39,17 @@ const ETAG_FILE: &str = FILES.etag;
 /// Loads the cached list, then keeps it up to date in the background.
 pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
     let Some(dir) = cache_dir else { return };
-    if let Some(recipes) = read_cached(&dir) {
-        tracing::info!("shared recipes: {} from the cache", recipes.len());
-        web.recipes().set_shared(recipes);
-    }
     let url = std::env::var("SOUNDFOLK_RECIPES_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     tauri::async_runtime::spawn(async move {
+        // Parsed off the main thread, so that the first window does not wait for it
+        let cached = {
+            let dir = dir.clone();
+            tauri::async_runtime::spawn_blocking(move || read_cached(&dir)).await
+        };
+        if let Ok(Some(recipes)) = cached {
+            tracing::info!("shared recipes: {} from the cache", recipes.len());
+            web.recipes().set_shared(recipes);
+        }
         let client = match crate::http::client() {
             Ok(client) => client,
             Err(e) => return tracing::warn!("shared recipes unavailable: {e}"),
