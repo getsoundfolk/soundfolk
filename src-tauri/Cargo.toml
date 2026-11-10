@@ -12,7 +12,7 @@ members = ["crates/nowplaying"]
 # Shared by every crate. `version` is the app's only version: Tauri reads it for the bundles
 # and the About page, the release workflow (release.yml) checks the tag against it.
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 license = "MPL-2.0"
 rust-version = "1.95"
