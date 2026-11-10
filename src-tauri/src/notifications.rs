@@ -158,7 +158,7 @@ struct Shower {
 impl Shower {
     fn show(self, pending: Pending, picture: Option<PathBuf>) {
         // Showing waits for the desktop (D-Bus on Linux): not on the audio thread.
-        tauri::async_runtime::spawn_blocking(move || {
+        crate::state::spawn_blocking(move || {
             let mut last = self.last.lock().unwrap_or_else(|p| p.into_inner());
             let picture = picture.as_deref().and_then(|p| p.to_str());
             let shown = imp::show(

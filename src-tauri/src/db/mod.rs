@@ -220,6 +220,7 @@ impl Database {
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
+        crate::state::check_database_use();
         // A panic during a query does not corrupt SQLite: we take the connection back.
         self.conn
             .lock()

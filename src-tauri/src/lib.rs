@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
+// Tests may build their own HTTP clients and blocking tasks (local servers, no debug check needed):
+// `clippy.toml` refuses them only in the app.
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
 mod audio;
 mod bindings;
 mod catalog;

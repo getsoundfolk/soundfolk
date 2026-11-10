@@ -76,6 +76,7 @@ class OnAir {
 
   /** An image that failed to load: hidden rather than shown broken. */
   brokenCover = $state<string | null>(null);
+  coverFailed = (url: string) => (this.brokenCover = url);
   /** Cover art of the track on air (only while it is still the title it was found for), or the
    *  station's logo (inline, kept on disk by the backend). */
   cover = $derived.by(() => {
@@ -107,7 +108,8 @@ class OnAir {
   );
 }
 
-export const onAir = new OnAir();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const onAir: Readonly<OnAir> = new OnAir();
 
 let wheelCarry = 0;
 let saveTimer: ReturnType<typeof setTimeout> | undefined;

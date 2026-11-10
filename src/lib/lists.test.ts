@@ -7,11 +7,14 @@ const list = (id: string, title: string, description: string, curators: string[]
   ({ id, title, description, curators, items: [] }) satisfies CuratedList;
 
 describe('lists.matching', () => {
-  lists.all = [
-    list('a', 'Jazz Clubs', 'Late nights in Paris', ['Ann Lee']),
-    list('b', 'Morning Jazz', 'Coffee and piano', ['Bob']),
-    list('c', 'Électro', 'Beats from Lyon', ['Ann Lee']),
-  ];
+  // Read-only for the app; a test sets the lists without the backend.
+  Object.assign(lists, {
+    all: [
+      list('a', 'Jazz Clubs', 'Late nights in Paris', ['Ann Lee']),
+      list('b', 'Morning Jazz', 'Coffee and piano', ['Bob']),
+      list('c', 'Électro', 'Beats from Lyon', ['Ann Lee']),
+    ],
+  });
   const ids = (text: string) => lists.matching(text).map((l) => l.id);
 
   it('finds a word in the title, the description or a curator, whatever the case', () => {

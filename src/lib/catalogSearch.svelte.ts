@@ -22,6 +22,9 @@ class CatalogSearch {
   // Text of the results shown, or null before the first search and after a failure (retried).
   private searched: string | null = null;
 
+  /** The text typed; [`follow`] searches it. */
+  setText = (text: string) => (this.text = text);
+
   /**
    * Searches the text typed, once typing pauses; for an `$effect`, which it gives the cleanup.
    * The same text is not searched again; without text, nothing is shown.
@@ -71,4 +74,5 @@ class CatalogSearch {
   }
 }
 
-export const catalogSearch = new CatalogSearch();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const catalogSearch: Readonly<CatalogSearch> = new CatalogSearch();

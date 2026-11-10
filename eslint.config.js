@@ -29,6 +29,17 @@ export default ts.config(
     rules: {
       // `_name` marks an argument kept on purpose.
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // A failure is logged or shown (errors.report). One that does not matter says why, in an
+      // `eslint-disable-next-line` comment (docs/99-analysis.md §2.4).
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name='catch'] > :function[params.length=0].arguments",
+          message:
+            'Swallowed error: report it, or say why it does not matter in an eslint-disable comment.',
+        },
+      ],
     },
   },
 );

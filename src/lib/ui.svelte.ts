@@ -50,4 +50,5 @@ class UiStore {
   };
 }
 
-export const ui = new UiStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const ui: Readonly<UiStore> = new UiStore();

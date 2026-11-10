@@ -55,6 +55,7 @@
       .then((link) => {
         if (current) donation = link;
       })
+      // eslint-disable-next-line no-restricted-syntax -- no donation link known: the button is not shown
       .catch(() => {});
     return () => {
       current = false;
@@ -106,7 +107,7 @@
           height="112"
           alt=""
           referrerpolicy="no-referrer"
-          onerror={() => (onAir.brokenCover = cover)}
+          onerror={() => cover && onAir.coverFailed(cover)}
         />
       {:else}
         <Waves />

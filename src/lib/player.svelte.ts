@@ -286,4 +286,5 @@ class PlayerStore {
   }
 }
 
-export const player = new PlayerStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const player: Readonly<PlayerStore> = new PlayerStore();

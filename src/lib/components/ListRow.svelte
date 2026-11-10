@@ -31,6 +31,7 @@
       .then((found) => {
         if (current) stations = found;
       })
+      // eslint-disable-next-line no-restricted-syntax -- the row says the stations could not be loaded
       .catch(() => {
         if (current) failed = true;
       });

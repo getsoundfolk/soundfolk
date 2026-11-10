@@ -125,7 +125,7 @@ pub fn close(app: &AppHandle) {
     // Called on the main thread: saved from a blocking thread.
     if let Some(value) = position_of(&window) {
         let app = app.clone();
-        tauri::async_runtime::spawn_blocking(move || save_position_value(&app, &value));
+        crate::state::spawn_blocking(move || save_position_value(&app, &value));
     }
     OPEN.store(false, Ordering::Relaxed);
     // Destroyed rather than closed: closing asks first, and that request is turned into a return
@@ -206,7 +206,7 @@ fn save_position_value(app: &AppHandle, value: &str) {
 /// [`open`] from any thread, a failure logged (the tray's menu).
 pub fn show(app: &AppHandle) {
     let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::state::spawn_blocking(move || {
         let remembered = Remembered::read(&app);
         let handle = app.clone();
         let opened = app.run_on_main_thread(move || {
@@ -227,7 +227,7 @@ pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
     // Windows are built on the main thread: the answer comes back from there, so that a failure
     // reaches the button rather than only the log.
     let reader = app.clone();
-    let remembered = tauri::async_runtime::spawn_blocking(move || Remembered::read(&reader))
+    let remembered = crate::state::spawn_blocking(move || Remembered::read(&reader))
         .await
         .map_err(|e| e.to_string())?;
     let (tx, rx) = tokio::sync::oneshot::channel();

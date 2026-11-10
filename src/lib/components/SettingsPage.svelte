@@ -107,6 +107,7 @@
     } catch (e) {
       errors.report('settings', e);
     }
+    // eslint-disable-next-line no-restricted-syntax -- the version is shown as —
     version = await getVersion().catch(() => null);
   });
 

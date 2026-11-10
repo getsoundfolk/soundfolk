@@ -30,6 +30,10 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// A client builder with the app's User-Agent.
 pub fn builder() -> ClientBuilder {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "where every client of the app starts"
+    )]
     Client::builder().user_agent(USER_AGENT)
 }
 

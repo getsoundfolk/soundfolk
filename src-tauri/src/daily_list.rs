@@ -118,7 +118,7 @@ pub async fn refresh<T: Send + 'static>(
 async fn blocking<R: Send + 'static>(
     work: impl FnOnce() -> R + Send + 'static,
 ) -> Result<R, String> {
-    tokio::task::spawn_blocking(work)
+    crate::state::spawn_blocking(work)
         .await
         .map_err(|e| format!("list not processed: {e}"))
 }

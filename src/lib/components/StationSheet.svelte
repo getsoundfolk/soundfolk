@@ -73,6 +73,7 @@
       .then((found) => {
         if (current) fetched = found;
       })
+      // eslint-disable-next-line no-restricted-syntax -- the sheet shows the player's station, without the catalog details
       .catch(() => {});
     return () => {
       current = false;
@@ -90,6 +91,7 @@
       .then((logo) => {
         if (current) chosenLogo = logo;
       })
+      // eslint-disable-next-line no-restricted-syntax -- shown as no image chosen
       .catch(() => {});
     return () => {
       current = false;
@@ -105,6 +107,7 @@
       .then((refs) => {
         if (ui.sheetStation === asked) catalogLists = refs;
       })
+      // eslint-disable-next-line no-restricted-syntax -- the lists the station is in are an extra: none shown
       .catch(() => {});
   });
 
@@ -115,6 +118,7 @@
       api
         .getLevelAdjustment()
         .then((db) => (level = db))
+        // eslint-disable-next-line no-restricted-syntax -- null hides the level line until the next read
         .catch(() => (level = null));
     read();
     const timer = setInterval(read, 2000);
@@ -190,8 +194,7 @@
   onclose={() => {
     // Seen in the sheet: not shown again in the window.
     player.dismissRecipeNotice();
-    // The sender and track of a link belong to the visit it opened.
-    share.note = null;
+    share.forgetNote();
     ui.closeStation();
     // Opened and closed with the mouse: no focus ring left on the button it came back to.
     if (byPointer && document.activeElement instanceof HTMLElement) document.activeElement.blur();

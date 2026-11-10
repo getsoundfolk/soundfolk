@@ -47,6 +47,7 @@
     api
       .getLocalRecipes()
       .then((r) => (localRecipes = r))
+      // eslint-disable-next-line no-restricted-syntax -- shown as no local recipes; a saved recipe reports its own errors
       .catch(() => (localRecipes = null));
   });
 

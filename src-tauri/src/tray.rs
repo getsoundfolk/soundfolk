@@ -121,7 +121,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
         "quit" => return app.exit(0),
         "mute" => {
             let app = app.clone();
-            tauri::async_runtime::spawn_blocking(move || crate::volume::toggle_mute(&app));
+            crate::state::spawn_blocking(move || crate::volume::toggle_mute(&app));
             return;
         }
         "play_pause" => Command::Toggle,
@@ -131,7 +131,7 @@ fn handle_menu(app: &AppHandle, id: &str) {
     };
     // The engine may block for a while: not on the thread that delivers the menu events
     let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || control(&app, command));
+    crate::state::spawn_blocking(move || control(&app, command));
 }
 
 #[cfg(target_os = "linux")]

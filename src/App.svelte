@@ -36,7 +36,8 @@
       listsReady.then((off) => off());
       shareReady.then((off) => off());
       updatesReady.then((off) => off());
-      focus.then((off) => off()).catch(() => {}); // never subscribed: nothing to undo
+      // eslint-disable-next-line no-restricted-syntax -- never subscribed: nothing to undo
+      focus.then((off) => off()).catch(() => {});
     };
   });
 

@@ -438,7 +438,7 @@ pub async fn add_personal_station(
     let stream = audio::resolve_stream_url(url, from_link).await?;
     let handle = tokio::runtime::Handle::current();
     let probed = stream.clone();
-    tokio::task::spawn_blocking(move || audio::probe_stream(&probed, &handle, from_link))
+    crate::state::spawn_blocking(move || audio::probe_stream(&probed, &handle, from_link))
         .await
         .map_err(|e| format!("Stream test interrupted: {e}"))??;
 

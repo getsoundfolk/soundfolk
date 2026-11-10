@@ -82,4 +82,5 @@ class TrackServicesStore {
   }
 }
 
-export const trackServices = new TrackServicesStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const trackServices: Readonly<TrackServicesStore> = new TrackServicesStore();

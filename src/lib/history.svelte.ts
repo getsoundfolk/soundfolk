@@ -67,4 +67,5 @@ class HistoryStore {
   }
 }
 
-export const history = new HistoryStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const history: Readonly<HistoryStore> = new HistoryStore();

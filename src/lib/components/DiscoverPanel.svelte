@@ -47,7 +47,7 @@
     e.preventDefault();
     if (await share.openText(pasted)) return;
     // Another web address: searched like any text.
-    search.text = pasted.trim();
+    search.setText(pasted.trim());
   }
 
   const isActive = (id: string) => player.current?.id === id;
@@ -60,7 +60,7 @@
     bind:this={searchField}
     placeholder="Search stations and lists"
     aria-label="Search stations and lists"
-    bind:value={search.text}
+    bind:value={() => search.text, search.setText}
     onpaste={pasteLink}
     spellcheck="false"
     autocomplete="off"

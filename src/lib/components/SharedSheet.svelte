@@ -43,6 +43,7 @@
         .then((found) => {
           if (share.received === shown) inCatalog = found;
         })
+        // eslint-disable-next-line no-restricted-syntax -- only a hint that the station is also in the catalog
         .catch(() => {});
     } else if (shown?.kind === 'personal_list') {
       // `null`: gone from the catalog. A failed read is not that: it is shown as an error.

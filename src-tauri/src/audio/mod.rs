@@ -214,6 +214,35 @@ impl Controls {
     }
 }
 
+/// A lock of [`Status`]: debug builds refuse the database while it is held
+/// ([`crate::state::check_database_use`]).
+struct StatusGuard<'a, T> {
+    guard: MutexGuard<'a, T>,
+    _held: crate::state::PlayerLockHeld,
+}
+
+impl<'a, T> StatusGuard<'a, T> {
+    fn new(guard: MutexGuard<'a, T>) -> Self {
+        Self {
+            guard,
+            _held: crate::state::PlayerLockHeld::mark(),
+        }
+    }
+}
+
+impl<T> std::ops::Deref for StatusGuard<'_, T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.guard
+    }
+}
+
+impl<T> std::ops::DerefMut for StatusGuard<'_, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.guard
+    }
+}
+
 /// Current state + listener. Notifications are emitted while holding the lock so that
 /// events arrive in the order the state changed.
 struct Status {
@@ -224,12 +253,12 @@ struct Status {
 }
 
 impl Status {
-    fn lock(&self) -> MutexGuard<'_, PlayerState> {
-        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    fn lock(&self) -> StatusGuard<'_, PlayerState> {
+        StatusGuard::new(self.state.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
-    fn now_playing(&self) -> MutexGuard<'_, NowPlaying> {
-        self.now_playing.lock().unwrap_or_else(|p| p.into_inner())
+    fn now_playing(&self) -> StatusGuard<'_, NowPlaying> {
+        StatusGuard::new(self.now_playing.lock().unwrap_or_else(|p| p.into_inner()))
     }
 
     /// Clears the title (new playback or stop).
@@ -1228,7 +1257,7 @@ mod tests {
         assert_ne!(stream.path(), "/groovesalad.pls");
 
         let handle = tokio::runtime::Handle::current();
-        let info = tokio::task::spawn_blocking(move || probe_stream(&stream, &handle, false))
+        let info = crate::state::spawn_blocking(move || probe_stream(&stream, &handle, false))
             .await
             .unwrap()
             .unwrap();
@@ -1242,7 +1271,7 @@ mod tests {
         for url in ["https://example.com/", "http://127.0.0.1:9/"] {
             let url: Url = url.parse().unwrap();
             let h = handle.clone();
-            let result = tokio::task::spawn_blocking(move || probe_stream(&url, &h, false))
+            let result = crate::state::spawn_blocking(move || probe_stream(&url, &h, false))
                 .await
                 .unwrap();
             assert!(result.is_err(), "{result:?}");

@@ -17,7 +17,7 @@ class UpdatesStore {
 
   /** Asks again (after a download, or the check switched on or off). */
   load = async () => {
-    // On mobile the command does not exist: no notice.
+    // eslint-disable-next-line no-restricted-syntax -- on mobile the command does not exist: no notice
     this.available = await api.getUpdate().catch(() => null);
   };
 
@@ -32,4 +32,5 @@ class UpdatesStore {
   };
 }
 
-export const updates = new UpdatesStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const updates: Readonly<UpdatesStore> = new UpdatesStore();

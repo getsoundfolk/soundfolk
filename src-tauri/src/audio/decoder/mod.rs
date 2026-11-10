@@ -208,7 +208,7 @@ fn stream_client(public_only: bool) -> Result<&'static Client, String> {
         // Request ICY metadata; a server that does not support it simply ignores the header.
         let mut headers = HeaderMap::new();
         headers.insert("Icy-MetaData", HeaderValue::from_static("1"));
-        let builder = reqwest::Client::builder()
+        let builder = http::builder()
             .user_agent(http::STREAM_USER_AGENT)
             .default_headers(headers)
             // The stream is read as raw bytes (ICY blocks, range requests): never compressed.

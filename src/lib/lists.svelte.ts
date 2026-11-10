@@ -67,7 +67,7 @@ class ListsStore {
     let found = this.stationsCache.get(id);
     if (!found) {
       found = api.getCuratedListStations(id);
-      // A failure is not kept: the next visit asks again.
+      // eslint-disable-next-line no-restricted-syntax -- the caller gets the failure; here it is only not kept
       found.catch(() => this.stationsCache.delete(id));
       this.stationsCache.set(id, found);
     }
@@ -103,4 +103,5 @@ class ListsStore {
   }
 }
 
-export const lists = new ListsStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const lists: Readonly<ListsStore> = new ListsStore();

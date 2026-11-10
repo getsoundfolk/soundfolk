@@ -64,6 +64,7 @@ class ShareStore {
   }
 
   private async takeOpened() {
+    // eslint-disable-next-line no-restricted-syntax -- reads the app's own state: no link to open
     const url = await api.takeOpenedLink().catch(() => null);
     if (url) await this.openText(url);
   }
@@ -93,6 +94,8 @@ class ShareStore {
   }
 
   closeReceived = () => (this.received = null);
+  /** The sender and track of a link belong to the visit it opened: forgotten when it ends. */
+  forgetNote = () => (this.note = null);
 
   /** Opens what a link carries: a station's sheet, a list's screen, or the shared sheet. */
   async open(link: SharedLink) {
@@ -111,6 +114,7 @@ class ShareStore {
         case 'list': {
           // Published since the app's daily download: fetch the lists once more (§3.3).
           if (!lists.get(link.id)) {
+            // eslint-disable-next-line no-restricted-syntax -- offline: the lists already downloaded are used, a list still missing is said gone
             await api.refreshCuratedLists().catch(() => false);
             await lists.reload();
           }
@@ -155,4 +159,5 @@ class ShareStore {
   };
 }
 
-export const share = new ShareStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const share: Readonly<ShareStore> = new ShareStore();

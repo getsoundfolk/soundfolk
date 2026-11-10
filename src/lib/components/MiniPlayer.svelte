@@ -39,9 +39,9 @@
   // Zoom never applies to this window: CSS pixels are the logical size set by the backend.
   let width = $state(window.innerWidth);
   const compact = $derived(width < 440);
-  // A resize that failed leaves the window, so the layout, as it was.
+  // eslint-disable-next-line no-restricted-syntax -- a resize that failed leaves the window, so the layout, as it was
   const setCompact = (on: boolean) => api.setMiniCompact(on).catch(() => {});
-  // The command takes this very window down: its answer lands nowhere.
+  // eslint-disable-next-line no-restricted-syntax -- the command takes this very window down: its answer lands nowhere
   const back = () => api.closeMiniPlayer().catch(() => {});
 
   const cover = $derived(onAir.cover);
@@ -126,7 +126,7 @@
           alt=""
           data-logo={onAir.isLogo}
           referrerpolicy="no-referrer"
-          onerror={() => (onAir.brokenCover = cover)}
+          onerror={() => cover && onAir.coverFailed(cover)}
         />
       {:else}
         <Waves />

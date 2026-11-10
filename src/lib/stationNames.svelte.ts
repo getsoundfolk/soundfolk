@@ -34,4 +34,5 @@ class StationNamesStore {
   }
 }
 
-export const stationNames = new StationNamesStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const stationNames: Readonly<StationNamesStore> = new StationNamesStore();

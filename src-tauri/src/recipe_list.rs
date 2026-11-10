@@ -44,7 +44,7 @@ pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
         // Parsed off the main thread, so that the first window does not wait for it
         let cached = {
             let dir = dir.clone();
-            tauri::async_runtime::spawn_blocking(move || read_cached(&dir)).await
+            crate::state::spawn_blocking(move || read_cached(&dir)).await
         };
         if let Ok(Some(recipes)) = cached {
             tracing::info!("shared recipes: {} from the cache", recipes.len());

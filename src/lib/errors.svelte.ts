@@ -21,7 +21,8 @@ class ErrorStore {
   clear = (area: ErrorArea) => (this[area] = null);
 }
 
-export const errors = new ErrorStore();
+// Read-only outside the class: its fields change only through its methods (docs/99 §2.5).
+export const errors: Readonly<ErrorStore> = new ErrorStore();
 
 /** For `listen(…).catch(unsubscribed)`: an event the window could not subscribe to is shown as a
  *  player error (what it updates would silently go stale), and there is nothing to unsubscribe. */

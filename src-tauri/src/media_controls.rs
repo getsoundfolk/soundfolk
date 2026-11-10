@@ -171,7 +171,7 @@ pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerStat
     tracing::info!(station = %next.station_id, "favorite not broadcasting: skipping to the next one");
     // Starting a station waits for the sound output, and the engine may be locked by the caller.
     let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    crate::state::spawn_blocking(move || {
         if let Err(e) = play_favorite(&app, next, skipped) {
             tracing::warn!("cannot skip to the next favorite: {e}");
         }
@@ -303,7 +303,7 @@ mod native {
                         // driven from a worker thread instead.
                         controls.attach(move |event| {
                             let app = handler_app.clone();
-                            tauri::async_runtime::spawn_blocking(move || handle(&app, event));
+                            crate::state::spawn_blocking(move || handle(&app, event));
                         })?;
                         Ok(controls)
                     })

@@ -1,0 +1,13 @@
+# Clippy settings of the workspace (the lints themselves are in Cargo.toml).
+#
+# Methods the app must not call directly: each has a helper that keeps a rule of the audits
+# (docs/99-analysis.md). Tests may call them (`lib.rs` allows it under `cfg(test)`); the helpers
+# themselves say why with `#[expect(clippy::disallowed_methods, reason = …)]`.
+disallowed-methods = [
+    { path = "reqwest::Client::new", reason = "use http::client(), or http::public_client() for an address written by others" },
+    { path = "reqwest::Client::builder", reason = "start from http::builder(), which sets the User-Agent" },
+    { path = "reqwest::ClientBuilder::new", reason = "start from http::builder(), which sets the User-Agent" },
+    { path = "reqwest::get", reason = "use http::client(), or http::public_client() for an address written by others" },
+    { path = "tokio::task::spawn_blocking", reason = "use state::blocking, state::with_db or state::spawn_blocking: the debug check of the database needs them" },
+    { path = "tauri::async_runtime::spawn_blocking", reason = "use state::blocking, state::with_db or state::spawn_blocking: the debug check of the database needs them" },
+]

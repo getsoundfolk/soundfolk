@@ -159,7 +159,7 @@ pub(crate) fn on_state(app: &AppHandle, state: PlayerState) -> PlayerState {
             // This runs under the player's lock, often on the decoder thread: the database, which
             // an export can hold for a while, is written from elsewhere.
             let app = app.clone();
-            tauri::async_runtime::spawn_blocking(move || save_new_address(&app, &watched));
+            crate::state::spawn_blocking(move || save_new_address(&app, &watched));
             state
         }
         _ => state,
@@ -176,7 +176,7 @@ fn look_up(app: AppHandle, watched: Watched, error: String) {
             Ok(Some(station)) if station.url != watched.url && station.is_supported() => {
                 // Starting a station waits for the sound output: off the async runtime.
                 let (retry_app, retry_watched) = (app.clone(), watched.clone());
-                let retried = tauri::async_runtime::spawn_blocking(move || {
+                let retried = crate::state::spawn_blocking(move || {
                     retry(&retry_app, &retry_watched, station.url)
                 })
                 .await

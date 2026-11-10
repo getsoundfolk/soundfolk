@@ -160,7 +160,7 @@ impl LogoCache {
     pub async fn fetch(&self, id: &str, url: &str) -> Result<Logo, String> {
         let (bytes, ext, media_type) = self.download(url, MAX_BYTES).await?;
         let (cache, id) = (self.clone(), id.to_owned());
-        tokio::task::spawn_blocking(move || {
+        crate::state::spawn_blocking(move || {
             let file = cache.store(&id, ext, &bytes);
             logo_of(&bytes, media_type, file)
         })

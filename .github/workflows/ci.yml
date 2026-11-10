@@ -4,7 +4,7 @@
 #   - Rust: formatting (cargo fmt), lints (clippy, warnings fail), tests, unused dependencies;
 #     lints and tests again on Windows and macOS;
 #   - front end: formatting (Prettier), lints (ESLint), types (svelte-check), build;
-#   - repository: spelling (typos), SPDX lines, workflows (actionlint, zizmor).
+#   - repository: spelling (typos), SPDX lines, file sizes, workflows (actionlint, zizmor).
 # Dependencies (advisories, licenses, duplicates) are checked by deps.yml, the DCO by dco.yml.
 name: CI
 
@@ -191,6 +191,9 @@ jobs:
 
       - name: SPDX lines
         run: .github/scripts/check-spdx.sh
+
+      - name: File sizes
+        run: .github/scripts/check-file-sizes.sh
 
       # install-action has no actionlint manifest, and actionlint is no crate
       # for its cargo-binstall fallback: the release archive, as for typos.

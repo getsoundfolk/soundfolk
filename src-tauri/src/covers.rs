@@ -424,7 +424,7 @@ impl Covers {
     /// a while, so it runs on a blocking thread instead of a runtime worker.
     fn resolve_later(self: &Arc<Self>) {
         let this = self.clone();
-        tauri::async_runtime::spawn_blocking(move || this.resolve(false));
+        crate::state::spawn_blocking(move || this.resolve(false));
     }
 
     /// The cover sources, read from the database the first time.
@@ -561,14 +561,12 @@ impl Covers {
                 Ok((bytes, ext, _)) => {
                     // Directory listing and writes: off the runtime.
                     let app = this.app.clone();
-                    tauri::async_runtime::spawn_blocking(move || {
-                        notification_file(&app, &bytes, ext)
-                    })
-                    .await
-                    .unwrap_or_else(|e| {
-                        tracing::debug!("cover not written for the notification: {e}");
-                        None
-                    })
+                    crate::state::spawn_blocking(move || notification_file(&app, &bytes, ext))
+                        .await
+                        .unwrap_or_else(|e| {
+                            tracing::debug!("cover not written for the notification: {e}");
+                            None
+                        })
                 }
                 Err(e) => {
                     tracing::debug!("cover not downloaded for the notification: {e}");
