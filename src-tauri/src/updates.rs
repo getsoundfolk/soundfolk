@@ -146,7 +146,7 @@ pub fn start(app: &AppHandle, updates: Arc<Updates>, cache_dir: Option<PathBuf>)
     let url = std::env::var("SOUNDFOLK_UPDATE_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let client = match daily_list::client() {
+        let client = match crate::http::client() {
             Ok(client) => client,
             Err(e) => return tracing::warn!("update check unavailable: {e}"),
         };
@@ -160,7 +160,7 @@ pub fn start(app: &AppHandle, updates: Arc<Updates>, cache_dir: Option<PathBuf>)
                     false
                 });
             if enabled && daily_list::is_due(&dir, FILES) {
-                match daily_list::refresh(&client, &url, &dir, FILES, parse).await {
+                match daily_list::refresh(client, &url, &dir, FILES, parse).await {
                     Ok(Some(release)) => {
                         tracing::info!("latest release: {}", release.version);
                         updates.set(release);

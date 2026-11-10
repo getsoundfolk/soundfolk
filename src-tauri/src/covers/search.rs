@@ -8,17 +8,12 @@
 
 use std::time::Duration;
 
+use reqwest::{Client, Url};
 use serde::de::DeserializeOwned;
-use stream_download::http::reqwest::{Client, Url};
 
 use crate::tracks::{self, ParsedTitle};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-const USER_AGENT: &str = concat!(
-    "Soundfolk/",
-    env!("CARGO_PKG_VERSION"),
-    " ( https://github.com/getsoundfolk/soundfolk )"
-);
 /// Words that mark a version other than the studio one, in a track or album title.
 const OTHER_VERSIONS: [&str; 9] = [
     "live",
@@ -43,12 +38,10 @@ const COMPILATIONS: [&str; 6] = [
 
 /// The HTTP client of a catalog (`name` is for the log).
 pub fn client(name: &str) -> Option<Client> {
-    Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(REQUEST_TIMEOUT)
-        .build()
+    crate::http::client()
         .inspect_err(|e| tracing::warn!("no HTTP client for {name}: {e}"))
         .ok()
+        .cloned()
 }
 
 /// Bigger than this, a catalog's answer to a track search is not one.
@@ -58,6 +51,7 @@ const MAX_ANSWER: usize = 2 * 1024 * 1024;
 pub async fn get_json<T: DeserializeOwned>(client: &Client, url: Url) -> Result<T, String> {
     let response = client
         .get(url)
+        .timeout(REQUEST_TIMEOUT)
         .send()
         .await
         .and_then(|r| r.error_for_status())

@@ -15,8 +15,8 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use reqwest::{self, Client, Url};
 use serde::Deserialize;
-use stream_download::http::reqwest::{self, Client, Url};
 use tokio::sync::OnceCell;
 
 use super::dedup::dedup;
@@ -29,7 +29,6 @@ use super::{
 const ALL_MIRRORS: &str = "all.api.radio-browser.info";
 /// Stands in when DNS gives nothing.
 const FALLBACK_SERVER: &str = "https://de1.api.radio-browser.info/";
-const USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"));
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_ATTEMPTS: usize = 3;
 /// Largest answer read: a page holds at most `MAX_LIMIT` (100) stations, a few hundred KiB.
@@ -84,9 +83,7 @@ impl Mirrors {
 }
 
 fn client(pinned: Option<SocketAddr>) -> Result<Client, CatalogError> {
-    let mut builder = Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(REQUEST_TIMEOUT);
+    let mut builder = crate::http::builder().timeout(REQUEST_TIMEOUT);
     if let Some(addr) = pinned {
         builder = builder.resolve(ALL_MIRRORS, addr);
     }

@@ -15,7 +15,7 @@ use std::error::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use stream_download::http::reqwest::{self, ClientBuilder, Url};
+use reqwest::{ClientBuilder, Url};
 
 /// What the listener reads when a stream is refused.
 pub const LOCAL_NETWORK: &str =

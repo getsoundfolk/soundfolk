@@ -25,8 +25,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
-use stream_download::http::reqwest::Url;
 use tauri::{Emitter, Manager};
 
 use crate::audio::NowPlaying;
@@ -244,9 +244,7 @@ pub fn app_icon_file(app: &tauri::AppHandle) -> Option<String> {
             return None;
         }
     }
-    stream_download::http::reqwest::Url::from_file_path(&path)
-        .ok()
-        .map(String::from)
+    reqwest::Url::from_file_path(&path).ok().map(String::from)
 }
 
 impl Covers {

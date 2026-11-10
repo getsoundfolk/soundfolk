@@ -9,8 +9,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use reqwest::{Client, StatusCode, Url};
 use serde_json::Value;
-use stream_download::http::reqwest::{Client, StatusCode, Url};
 use tauri::Manager;
 use tokio::sync::Notify;
 
@@ -23,11 +23,6 @@ pub const SETTING_IDENTIFY: &str = "identify_tracks";
 
 const API: &str = "https://musicbrainz.org/ws/2/";
 const COVER_ART_ARCHIVE: &str = "https://coverartarchive.org/";
-const USER_AGENT: &str = concat!(
-    "Soundfolk/",
-    env!("CARGO_PKG_VERSION"),
-    " ( https://github.com/getsoundfolk/soundfolk )"
-);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 /// The API allows one request per second on average.
 const REQUEST_INTERVAL: Duration = Duration::from_millis(1100);
@@ -85,11 +80,7 @@ pub struct MusicBrainz {
 
 impl MusicBrainz {
     pub fn new() -> Result<Self, LookupError> {
-        let client = Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(REQUEST_TIMEOUT)
-            .build()
-            .map_err(|e| LookupError::Network(e.to_string()))?;
+        let client = crate::http::client().map_err(LookupError::Network)?.clone();
         Ok(Self {
             client,
             last_request: tokio::sync::Mutex::new(None),
@@ -116,6 +107,7 @@ impl MusicBrainz {
         let response = self
             .client
             .get(url)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await
             .map_err(|e| LookupError::Network(e.to_string()))?;
@@ -184,6 +176,7 @@ impl MusicBrainz {
         let response = self
             .client
             .get(url)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await
             .map_err(|e| LookupError::Network(e.to_string()))?;

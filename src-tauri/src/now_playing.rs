@@ -19,16 +19,16 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use reqwest::{header, Client, Url};
 use serde::Serialize;
 use soundfolk_nowplaying::adapters::{self, Adapter, Probe};
 use soundfolk_nowplaying::check;
 use soundfolk_nowplaying::clock::Offset;
 use soundfolk_nowplaying::tracker::{OnAir, Policy, Scheduled, Tracker};
 use soundfolk_nowplaying::{extract, RawTrack, SignedDuration, Snapshot, Start, Timestamp};
-use stream_download::http::reqwest::{header, Client, Url};
 use tokio::sync::watch;
 
 use crate::audio::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
@@ -163,7 +163,6 @@ pub struct WebTitles {
     servers: Mutex<HashMap<String, Option<Adapter>>>,
     /// Streams whose AzuraCast API turned out not to describe them: not read again for details.
     no_details: Mutex<std::collections::HashSet<String>>,
-    client: OnceLock<Option<Client>>,
     sessions: AtomicU64,
     current: Mutex<Option<Session>>,
     status: Mutex<TitleStatus>,
@@ -188,7 +187,6 @@ impl WebTitles {
             offsets: Mutex::default(),
             servers: Mutex::default(),
             no_details: Mutex::default(),
-            client: OnceLock::new(),
             sessions: AtomicU64::new(0),
             current: Mutex::default(),
             status: Mutex::default(),
@@ -356,21 +354,10 @@ impl WebTitles {
         report
     }
 
-    fn client(&self) -> Option<&Client> {
-        self.client
-            .get_or_init(|| {
-                Client::builder()
-                    .user_agent(concat!(
-                        "Soundfolk/",
-                        env!("CARGO_PKG_VERSION"),
-                        " (+https://github.com/getsoundfolk/soundfolk)"
-                    ))
-                    .timeout(REQUEST_TIMEOUT)
-                    .build()
-                    .inspect_err(|e| tracing::warn!("web titles unavailable: {e}"))
-                    .ok()
-            })
-            .as_ref()
+    fn client(&self) -> Option<&'static Client> {
+        crate::http::client()
+            .inspect_err(|e| tracing::warn!("web titles unavailable: {e}"))
+            .ok()
     }
 
     /// The recipe that applies to the session, before anything is read.
@@ -874,7 +861,12 @@ fn read(source: &Source, stream: &str, page: &str) -> Result<Snapshot, String> {
 
 /// The page and its HTTP `Date` (the site's clock, used to resolve local times).
 async fn fetch(client: &Client, url: &str) -> Result<(String, Option<Timestamp>), String> {
-    let mut response = client.get(url).send().await.map_err(|e| e.to_string())?;
+    let mut response = client
+        .get(url)
+        .timeout(REQUEST_TIMEOUT)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
         return Err(format!("HTTP {}", response.status()));
     }

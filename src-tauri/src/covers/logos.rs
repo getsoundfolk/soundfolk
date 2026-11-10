@@ -9,9 +9,9 @@ use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
 use base64::Engine;
-use stream_download::http::reqwest::{Client, Url};
+use reqwest::{Client, Url};
 
-use crate::audio::public_net;
+use crate::http::public_net;
 
 /// Bigger than this, a favicon is not a logo worth keeping.
 const MAX_BYTES: usize = 1024 * 1024;
@@ -23,12 +23,6 @@ const FORGOTTEN_AFTER: Duration = Duration::from_secs(3 * 30 * 24 * 3600);
 /// A half-written download this old was cut short.
 const PARTIAL_AFTER: Duration = Duration::from_secs(3600);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
-/// Some image hosts (Wikimedia, where many logos live) ask clients to name themselves.
-const USER_AGENT: &str = concat!(
-    "Soundfolk/",
-    env!("CARGO_PKG_VERSION"),
-    " ( https://github.com/getsoundfolk/soundfolk )"
-);
 
 /// Image formats kept, as found by their first bytes: (extension, media type).
 const FORMATS: [(&str, &str); 7] = [
@@ -133,13 +127,10 @@ impl LogoCache {
     pub fn new(dir: Option<PathBuf>) -> Self {
         // Favicons come from Radio-Browser and covers from station pages: both stay on the public
         // Internet, as catalog streams do (docs/16-sharing.md §6.2).
-        let builder = Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(REQUEST_TIMEOUT);
-        let client = public_net::restrict(builder)
-            .build()
+        let client = crate::http::public_client()
             .inspect_err(|e| tracing::warn!("no HTTP client for station logos: {e}"))
-            .ok();
+            .ok()
+            .cloned();
         if let Some(dir) = dir.clone() {
             let pruned = std::thread::Builder::new()
                 .name("logo-pruner".into())
@@ -201,6 +192,7 @@ impl LogoCache {
         let client = self.client.as_ref().ok_or("no HTTP client")?;
         let response = client
             .get(url)
+            .timeout(REQUEST_TIMEOUT)
             .send()
             .await
             .and_then(|r| r.error_for_status())

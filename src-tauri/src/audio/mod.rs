@@ -24,7 +24,6 @@ mod loudness;
 mod network;
 mod output;
 mod playlist;
-pub(crate) mod public_net;
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
@@ -36,7 +35,7 @@ use serde::Serialize;
 
 use crate::now_playing::WebTitles;
 use crate::tracks;
-pub use stream_download::http::reqwest::Url;
+pub use reqwest::Url;
 
 pub use decoder::probe as probe_stream;
 pub use loudness::{LevelMemory, StoredLevel};

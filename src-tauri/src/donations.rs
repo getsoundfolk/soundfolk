@@ -119,14 +119,14 @@ pub fn start(
     }
     let url = std::env::var("SOUNDFOLK_STATIONS_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     tauri::async_runtime::spawn(async move {
-        let client = match daily_list::client() {
+        let client = match crate::http::client() {
             Ok(client) => client,
             Err(e) => return tracing::warn!("donation links unavailable: {e}"),
         };
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
             if daily_list::is_due(&dir, FILES) {
-                match daily_list::refresh(&client, &url, &dir, FILES, parse).await {
+                match daily_list::refresh(client, &url, &dir, FILES, parse).await {
                     Ok(Some(entries)) => {
                         tracing::info!("donation links: {} downloaded", entries.len());
                         donations.set(entries);

@@ -4,8 +4,8 @@
 //! its artwork, served by Apple's image CDN. No account or key; about 20 requests a minute.
 //! The result is chosen as for every catalog (see [`super::search`]).
 
+use reqwest::{Client, Url};
 use serde::Deserialize;
-use stream_download::http::reqwest::{Client, Url};
 
 use super::search::{self, Candidate};
 use crate::tracks::{self, ParsedTitle};

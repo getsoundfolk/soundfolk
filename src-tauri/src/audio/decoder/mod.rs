@@ -23,13 +23,13 @@ mod watchdog;
 
 use std::io;
 use std::num::NonZeroUsize;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::Duration;
 
+use reqwest::header::{HeaderMap, HeaderValue};
+use reqwest::{Client, Url};
 use rtrb::Producer;
-use stream_download::http::reqwest::header::{HeaderMap, HeaderValue};
-use stream_download::http::reqwest::{Client, Url};
 use stream_download::http::HttpStream;
 use stream_download::storage::bounded::BoundedStorageProvider;
 use stream_download::storage::memory::MemoryStorageProvider;
@@ -49,8 +49,8 @@ use super::icy::{IcyReader, TitleCallback};
 use super::loudness::StationLevel;
 use super::network::NetState;
 use super::output::OutputFormat;
-use super::public_net;
 use super::{Cancel, Reporter, ScopedHook};
+use crate::http::{self, public_net};
 
 /// Bytes to receive before starting to read. Just enough to detect the format: Icecast
 /// servers send ~30 KB in a burst on connect, then only at playback pace,
@@ -136,10 +136,10 @@ pub fn probe(
     if public_only {
         public_net::check(url)?;
     }
-    let client = build_client(public_only)?;
+    let client = stream_client(public_only)?;
     let cancel = Arc::new(Cancel::default());
     let mut opened = match open_stream(
-        &client,
+        client,
         url,
         runtime,
         &cancel,
@@ -200,26 +200,27 @@ struct OpenedStream {
     _cancel_hook: ScopedHook,
 }
 
-fn build_client(public_only: bool) -> Result<Client, String> {
-    // Request ICY metadata; a server that does not support it simply ignores the header.
-    let mut headers = HeaderMap::new();
-    headers.insert("Icy-MetaData", HeaderValue::from_static("1"));
-
-    let builder = Client::builder();
-    let builder = if public_only {
-        public_net::restrict(builder)
-    } else {
-        builder
+/// The client streams are read with, built once for each value of `public_only`.
+fn stream_client(public_only: bool) -> Result<&'static Client, String> {
+    static OPEN: OnceLock<Result<Client, String>> = OnceLock::new();
+    static PUBLIC: OnceLock<Result<Client, String>> = OnceLock::new();
+    let build = move || {
+        // Request ICY metadata; a server that does not support it simply ignores the header.
+        let mut headers = HeaderMap::new();
+        headers.insert("Icy-MetaData", HeaderValue::from_static("1"));
+        let builder = http::builder()
+            .default_headers(headers)
+            // The stream is read as raw bytes (ICY blocks, range requests): never compressed.
+            .no_gzip()
+            .connect_timeout(CONNECT_TIMEOUT)
+            .read_timeout(READ_TIMEOUT);
+        if public_only {
+            public_net::restrict(builder)
+        } else {
+            builder
+        }
     };
-    builder
-        .default_headers(headers)
-        .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
-        // The stream is read as raw bytes (ICY blocks, range requests): never compressed.
-        .no_gzip()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(READ_TIMEOUT)
-        .build()
-        .map_err(|e| format!("HTTP client unavailable: {e}"))
+    http::cached(if public_only { &PUBLIC } else { &OPEN }, build)
 }
 
 /// Connection, network buffer, ICY metadata stripping, format detection, decoder creation.

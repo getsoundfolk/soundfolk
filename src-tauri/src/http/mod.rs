@@ -1,7 +1,64 @@
 // SPDX-License-Identifier: MPL-2.0
-//! What HTTP reads share.
+//! What every HTTP request of the app shares: one User-Agent, clients built once, the
+//! public-only rule ([`public_net`]) and a cap on response bodies ([`body_at_most`]).
+//!
+//! The shared clients have a [`TIMEOUT`] by default; a request that must answer sooner sets its
+//! own (`RequestBuilder::timeout`). Clients that need something else (the stream decoder's
+//! headers, a pinned Radio-Browser mirror) start from [`builder`] so they keep the User-Agent.
 
-use stream_download::http::reqwest::Response;
+pub mod public_net;
+
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use reqwest::{Client, ClientBuilder, Response};
+
+/// How the app names itself to every server: some (Wikimedia, MusicBrainz) ask for a way to
+/// reach its authors.
+pub const USER_AGENT: &str = concat!(
+    "Soundfolk/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/getsoundfolk/soundfolk)"
+);
+/// A request of a shared client that sets no timeout of its own gives up after this.
+pub const TIMEOUT: Duration = Duration::from_secs(30);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// A client builder with the app's User-Agent.
+pub fn builder() -> ClientBuilder {
+    Client::builder().user_agent(USER_AGENT)
+}
+
+/// Builds a client once; later calls get the same one (or the same error).
+pub fn cached(
+    cell: &'static OnceLock<Result<Client, String>>,
+    build: impl FnOnce() -> ClientBuilder,
+) -> Result<&'static Client, String> {
+    cell.get_or_init(|| {
+        build()
+            .build()
+            .map_err(|e| format!("HTTP client unavailable: {e}"))
+    })
+    .as_ref()
+    .map_err(Clone::clone)
+}
+
+fn shared() -> ClientBuilder {
+    builder().connect_timeout(CONNECT_TIMEOUT).timeout(TIMEOUT)
+}
+
+/// The client for the app's own services and APIs (lists, catalogs, recipe pages).
+pub fn client() -> Result<&'static Client, String> {
+    static CLIENT: OnceLock<Result<Client, String>> = OnceLock::new();
+    cached(&CLIENT, shared)
+}
+
+/// The client for addresses written by others (logos, covers, catalog playlists): it only
+/// reaches the public Internet. Requests must still [`public_net::check`] their first address.
+pub fn public_client() -> Result<&'static Client, String> {
+    static CLIENT: OnceLock<Result<Client, String>> = OnceLock::new();
+    cached(&CLIENT, || public_net::restrict(shared()))
+}
 
 /// Reads a response body of at most `max` bytes, stopping as soon as it is over: a server
 /// announcing a size too big is refused before anything is read, and one that sends without
@@ -23,7 +80,6 @@ pub(crate) async fn body_at_most(mut response: Response, max: usize) -> Result<V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use stream_download::http::reqwest::Client;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     /// Serves one response, raw, on a local port; its address.

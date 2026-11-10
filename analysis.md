@@ -106,13 +106,20 @@ All still open on 2026-11-08, and most got bigger.
   tests). In `audio/mod.rs`, an `EngineCtx` (controls, status, web titles, levels, runtime)
   carries `run`, `start_session` (now 2 parameters) and `reopen_lost_output` (2); the runtime
   is built by `network_runtime`.
-- [ ] **2.5 A shared `http` module.** 9 `Client::builder()` in app code (radio_browser,
+- [x] **2.5 A shared `http` module.** 9 `Client::builder()` in app code (radio_browser,
   musicbrainz, now_playing, failure, playlist, decoder, covers/search, covers/logos, daily_list),
   3 User-Agent spellings (`Soundfolk/x`, `Soundfolk/x ( https://… )`, `Soundfolk/x (+https://…)`)
   plus recipe-check's own. Clients are rebuilt per decoder session, per probe, per Internet
   check, per playlist and per `refresh_curated_lists`; `daily_list::client()` is built 5 times.
   17 imports of `stream_download::http::reqwest` although `reqwest` is a direct dependency. The
   module should also own the public-only rule (5.2) and the body size cap (5.10).
+  Done: [http/](src-tauri/src/http/mod.rs) holds one User-Agent
+  (`Soundfolk/x (+https://github.com/getsoundfolk/soundfolk)`), `builder()`, two clients built
+  once (`client()`, and `public_client()` with the public-only rule) with a 30 s default timeout
+  that each request shortens as it needs, `cached()` for the others (the decoder's two stream
+  clients, the Internet check), `body_at_most`, and `public_net` (moved from `audio/`).
+  Radio-Browser keeps one client per pinned mirror, from `builder()`. Every import is `reqwest`.
+  recipe-check, in its own crate, keeps its own User-Agent.
 - [ ] **2.6 Scattered conventions** (worse):
   - 17 `SETTING_*` constants in 9 files → a typed settings module;
   - event names defined in 7 Rust files (`volume.rs` uses a bare `"player:muted"`) and 5 TS files;

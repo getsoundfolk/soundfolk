@@ -13,9 +13,10 @@
 use std::error::Error as _;
 use std::future::Future;
 use std::io;
+use std::sync::OnceLock;
 use std::time::Duration;
 
-use stream_download::http::reqwest::{self, Client};
+use reqwest::{self, Client};
 use stream_download::http::HttpStreamError;
 
 use tokio::sync::watch;
@@ -206,12 +207,12 @@ impl Failure {
 
 /// Whether Internet works, apart from the station: at most a few seconds.
 async fn internet_reachable() -> bool {
-    let Ok(client) = Client::builder()
-        .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
-        .timeout(INTERNET_CHECK_TIMEOUT)
-        .redirect(reqwest::redirect::Policy::none())
-        .build()
-    else {
+    static CLIENT: OnceLock<Result<Client, String>> = OnceLock::new();
+    let Ok(client) = crate::http::cached(&CLIENT, || {
+        crate::http::builder()
+            .timeout(INTERNET_CHECK_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none())
+    }) else {
         return true; // cannot tell: blame nobody, the station's own error is shown
     };
     let (a, b) = tokio::join!(

@@ -5,8 +5,8 @@
 use std::time::{Duration, Instant};
 
 use super::super::failure::{self, Failure};
-use super::super::public_net;
-use super::{build_client, play_once, End, Job};
+use super::{play_once, stream_client, End, Job};
+use crate::http::public_net;
 
 /// Longest wait between two attempts while the network is up.
 const MAX_BACKOFF: Duration = Duration::from_secs(30);
@@ -25,7 +25,7 @@ pub(super) fn run(mut job: Job) {
     {
         return job.reporter.failed(message);
     }
-    let client = match build_client(job.public_only) {
+    let client = match stream_client(job.public_only) {
         Ok(client) => client,
         Err(message) => return job.reporter.failed(message),
     };
@@ -37,7 +37,7 @@ pub(super) fn run(mut job: Job) {
 
     loop {
         let mut played = false;
-        let end = play_once(&mut job, &client, &mut played);
+        let end = play_once(&mut job, client, &mut played);
         ever_played |= played;
         if played {
             attempts = 0;

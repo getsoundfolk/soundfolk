@@ -15,9 +15,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use reqwest::Client;
 use soundfolk_nowplaying::check::load_compiled;
 use soundfolk_nowplaying::recipe::Recipe;
-use stream_download::http::reqwest::Client;
 
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
 use crate::now_playing::WebTitles;
@@ -45,14 +45,14 @@ pub fn start(web: Arc<WebTitles>, cache_dir: Option<PathBuf>) {
     }
     let url = std::env::var("SOUNDFOLK_RECIPES_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     tauri::async_runtime::spawn(async move {
-        let client = match daily_list::client() {
+        let client = match crate::http::client() {
             Ok(client) => client,
             Err(e) => return tracing::warn!("shared recipes unavailable: {e}"),
         };
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
             if web.is_enabled() && is_due(&dir) {
-                match refresh(&client, &url, &dir).await {
+                match refresh(client, &url, &dir).await {
                     Ok(Some(recipes)) => {
                         tracing::info!("shared recipes: {} downloaded", recipes.len());
                         web.recipes().set_shared(recipes);

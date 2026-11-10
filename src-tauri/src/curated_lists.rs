@@ -150,14 +150,14 @@ pub fn start(
     }
     let url = std::env::var("SOUNDFOLK_LISTS_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
     tauri::async_runtime::spawn(async move {
-        let client = match daily_list::client() {
+        let client = match crate::http::client() {
             Ok(client) => client,
             Err(e) => return tracing::warn!("curated lists unavailable: {e}"),
         };
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
             if daily_list::is_due(&dir, FILES) {
-                match daily_list::refresh(&client, &url, &dir, FILES, parse).await {
+                match daily_list::refresh(client, &url, &dir, FILES, parse).await {
                     Ok(Some(fresh)) => {
                         tracing::info!("curated lists: {} downloaded", fresh.len());
                         lists.set(fresh);
@@ -196,8 +196,8 @@ pub async fn refresh_curated_lists(
         .map_err(|e| e.to_string())?
         .join("stations");
     let url = std::env::var("SOUNDFOLK_LISTS_URL").unwrap_or_else(|_| DEFAULT_URL.to_owned());
-    let client = daily_list::client()?;
-    match daily_list::refresh(&client, &url, &dir, FILES, parse).await? {
+    let client = crate::http::client()?;
+    match daily_list::refresh(client, &url, &dir, FILES, parse).await? {
         Some(fresh) => {
             lists.set(fresh);
             if let Err(e) = app.emit(crate::LISTS_EVENT, ()) {

@@ -7,7 +7,9 @@
 
 use std::time::Duration;
 
-use stream_download::http::reqwest::{Client, Url};
+use reqwest::Url;
+
+use crate::http::{self, public_net};
 
 /// A legitimate playlist is tiny; beyond this we stop reading the body.
 const MAX_PLAYLIST_BYTES: usize = 64 * 1024;
@@ -19,26 +21,20 @@ const TIMEOUT: Duration = Duration::from_secs(10);
 /// `public_only`: every address followed must be public (`public_net`): the first, the
 /// redirects and the playlists' entries.
 pub async fn resolve_stream_url(url: Url, public_only: bool) -> Result<Url, String> {
-    let builder = Client::builder();
-    let builder = if public_only {
-        super::public_net::restrict(builder)
+    let client = if public_only {
+        http::public_client()?
     } else {
-        builder
+        http::client()?
     };
-    let client = builder
-        .user_agent(concat!("Soundfolk/", env!("CARGO_PKG_VERSION")))
-        .connect_timeout(TIMEOUT)
-        .timeout(TIMEOUT)
-        .build()
-        .map_err(|e| format!("HTTP client unavailable: {e}"))?;
 
     let mut current = url;
     for _ in 0..MAX_DEPTH {
         if public_only {
-            super::public_net::check(&current)?;
+            public_net::check(&current)?;
         }
         let mut response = client
             .get(current.clone())
+            .timeout(TIMEOUT)
             .send()
             .await
             .and_then(|r| r.error_for_status())

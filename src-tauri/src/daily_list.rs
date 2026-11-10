@@ -9,7 +9,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use stream_download::http::reqwest::{header, Client, StatusCode};
+use reqwest::{header, Client, StatusCode};
 
 /// How old the cached list may get before it is downloaded again.
 pub const MAX_AGE: Duration = Duration::from_secs(24 * 3600);
@@ -17,7 +17,6 @@ pub const MAX_AGE: Duration = Duration::from_secs(24 * 3600);
 pub const CHECK_EVERY: Duration = Duration::from_secs(3600);
 /// First check after startup: lets the first station start without competing for the network.
 pub const FIRST_CHECK: Duration = Duration::from_secs(10);
-const TIMEOUT: Duration = Duration::from_secs(30);
 /// A larger answer is not one of our lists.
 const MAX_SIZE: usize = 8 * 1024 * 1024;
 
@@ -27,19 +26,6 @@ const MAX_SIZE: usize = 8 * 1024 * 1024;
 pub struct Files {
     pub list: &'static str,
     pub etag: &'static str,
-}
-
-/// The HTTP client the lists are downloaded with.
-pub fn client() -> Result<Client, String> {
-    Client::builder()
-        .user_agent(concat!(
-            "Soundfolk/",
-            env!("CARGO_PKG_VERSION"),
-            " (+https://github.com/getsoundfolk/soundfolk)"
-        ))
-        .timeout(TIMEOUT)
-        .build()
-        .map_err(|e| e.to_string())
 }
 
 /// The cached list, if there is one and it parses.
