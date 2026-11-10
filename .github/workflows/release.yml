@@ -7,7 +7,7 @@
 # They are published together, by a last job that runs only once every build has succeeded:
 #   - every night from main, to the rolling "nightly" pre-release
 #     (skipped when main hasn't moved since the last nightly);
-#   - on every `v*` tag, to the GitHub Release of that tag.
+#   - on every `v*` tag, to the GitHub Release of that tag, once ci.yml has passed for its commit.
 # Each package gets a signed build provenance attestation
 # (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
 # The Windows installer is not code-signed yet: SmartScreen warns before running it.
@@ -33,6 +33,9 @@ jobs:
   version:
     name: Decide the version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read # read the CI runs of the tagged commit
     outputs:
       skip: ${{ steps.version.outputs.skip }}
       version: ${{ steps.version.outputs.version }}
@@ -59,6 +62,33 @@ jobs:
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             if [ "$GITHUB_REF_NAME" != "v$base" ]; then
               echo "::error::tag $GITHUB_REF_NAME does not match version $base in src-tauri/Cargo.toml"
+              exit 1
+            fi
+            # A release only ships a commit that passed ci.yml (pushed to main, or a pull request
+            # with that head). The tag is often pushed with the commit: wait for its run, up to
+            # an hour.
+            runs="repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&per_page=100"
+            passed=false
+            for _ in $(seq 60); do
+              # "<runs that succeeded> <runs not finished>"; a failed call is retried.
+              counts=$(gh api "$runs" --jq '.workflow_runs
+                | "\(map(select(.conclusion == "success")) | length) \(map(select(.status != "completed")) | length)"' \
+                || echo "0 1")
+              read -r succeeded running <<< "$counts"
+              if [ "$succeeded" -gt 0 ]; then
+                echo "CI passed for $sha"
+                passed=true
+                break
+              fi
+              if [ "$running" -eq 0 ]; then
+                echo "::error::no successful CI run for $sha: release refused"
+                exit 1
+              fi
+              echo "CI still running for $sha, waiting"
+              sleep 60
+            done
+            if [ "$passed" != true ]; then
+              echo "::error::CI for $sha did not finish within an hour"
               exit 1
             fi
             echo "version=$base" >> "$GITHUB_OUTPUT"
@@ -100,7 +130,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
-            libasound2-dev libssl-dev patchelf
+            libasound2-dev patchelf
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -146,7 +176,8 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           npm ci
-          npm run tauri -- build --bundles deb,appimage --config "{\"version\": \"$VERSION\"}"
+          # `-- --locked` goes to cargo: it fails rather than update Cargo.lock.
+          npm run tauri -- build --bundles deb,appimage --config "{\"version\": \"$VERSION\"}" -- --locked
           mkdir -p out
           cp src-tauri/target/release/bundle/deb/*.deb src-tauri/target/release/bundle/appimage/*.AppImage out/
           ls -l out
@@ -203,7 +234,7 @@ jobs:
           npm ci
           # NSIS comes with the bundler. WebView2 ships with Windows 10 and 11; where it is
           # missing, the installer downloads it (Tauri's default `downloadBootstrapper`).
-          npm run tauri -- build --bundles nsis --config "{\"version\": \"$VERSION\"}"
+          npm run tauri -- build --bundles nsis --config "{\"version\": \"$VERSION\"}" -- --locked
           mkdir -p out
           cp src-tauri/target/release/bundle/nsis/*-setup.exe out/
           ls -l out
@@ -252,7 +283,7 @@ jobs:
           # tauri.conf.json): without a signature Apple Silicon reports a downloaded app as damaged.
           # The disk image script skips its Finder window layout on CI (the CI variable).
           npm run tauri -- build --target universal-apple-darwin --bundles dmg \
-            --config "{\"version\": \"$VERSION\"}"
+            --config "{\"version\": \"$VERSION\"}" -- --locked
           bundle=src-tauri/target/universal-apple-darwin/release/bundle
           mkdir -p out
           cp "$bundle"/dmg/*.dmg out/

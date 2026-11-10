@@ -3,22 +3,27 @@
 ## 1. Data strategy
 * **Catalog:** the global station catalog comes from **Radio-Browser** and is queried online through `CatalogSource`.
   There is no full local mirror: without a network no radio can be played, so offline catalog search has no value.
-* **Local persistence (SQLite):** the user's favorites, listening history, personal stations and settings, with 0 ms
-  responsiveness.
+* **Local persistence (SQLite):** the user's favorites, listening history, likes, personal stations and settings, and
+  what the app learned from them (MusicBrainz matches, covers, station loudness), with 0 ms responsiveness.
 * **Station IDs:** `station_id` (favorites, history) is the Radio-Browser UUID for a catalog station, or
   `user:<hex>` for a personal station.
 
 ## 2. Local tables (`rusqlite`, WAL mode)
 
+The schema is versioned (`PRAGMA user_version`): `db/mod.rs` holds the version 1 schema, frozen, and a list of
+migrations that only grows, each run in its own transaction. The tables below are as they stand after the last
+migration. `station_reports`, created by version 1, was dropped by version 4: nothing ever wrote to it.
+
 ### `favorites`
-Stations pinned by the user.
+Stations pinned by the user. `position` is the order the listener gives them, 0 first (version 6).
 ```sql
 CREATE TABLE IF NOT EXISTS favorites (
     station_id TEXT PRIMARY KEY,
     name       TEXT NOT NULL,
     stream_url TEXT NOT NULL,
     genre      TEXT,
-    added_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    added_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    position   INTEGER NOT NULL DEFAULT 0
 );
 ```
 
@@ -110,8 +115,43 @@ CREATE TABLE IF NOT EXISTS albums (
 );
 ```
 
+### `covers`
+Cover art found online for a track, keyed like `likes`; `url` is `NULL` when none was found. Each track is looked up
+once, and again after a while when nothing was found (`covers.rs`).
+```sql
+CREATE TABLE IF NOT EXISTS covers (
+    track_key    TEXT PRIMARY KEY,
+    url          TEXT,
+    looked_up_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### `station_loudness`
+The loudness of each station heard, learned by Constant volume, keyed by the Radio-Browser UUID, else the stream URL.
+Cleared with the history. See [11-loudness.md](11-loudness.md).
+```sql
+CREATE TABLE IF NOT EXISTS station_loudness (
+    station_key   TEXT PRIMARY KEY,
+    loudness_lufs REAL NOT NULL,
+    peak_dbfs     REAL NOT NULL,
+    measured_s    REAL NOT NULL,
+    updated_at    INTEGER NOT NULL
+);
+```
+
+### `station_names`
+The names the listener gives stations (version 5). Shown over the name stored with each history row, like and
+session, which stays the name the station had then: the title parser relies on it.
+```sql
+CREATE TABLE IF NOT EXISTS station_names (
+    station_id TEXT PRIMARY KEY,
+    name       TEXT NOT NULL
+);
+```
+
 ### `settings`
-Key/value settings (e.g. `click_counting`, `click_notice_seen`).
+Key/value settings (e.g. `click_counting`, `click_notice_seen`); every key, with its type and default, is in
+`db/settings.rs`.
 ```sql
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
@@ -121,13 +161,15 @@ CREATE TABLE IF NOT EXISTS settings (
 
 ### `personal_stations`
 Stations added by hand. Local, never sent anywhere, except when the listener shares one ([16-sharing.md](16-sharing.md)
-§6.6).
+§6.6). `origin` is `'link'` for a station received in a share link, whose stream stays off the local network
+(16 §6.2), and `NULL` for one typed by hand (version 7).
 ```sql
 CREATE TABLE IF NOT EXISTS personal_stations (
     station_id TEXT PRIMARY KEY DEFAULT ('user:' || lower(hex(randomblob(8)))),
     name       TEXT NOT NULL,
     stream_url TEXT NOT NULL UNIQUE,
     genre      TEXT,
-    added_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    added_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+    origin     TEXT
 );
 ```

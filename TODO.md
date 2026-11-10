@@ -77,12 +77,11 @@ listening stats must be crossed with the sessions.
 - [ ] Scrobbling to ListenBrainz (user token pasted in ⚙, no OAuth), then Last.fm. A like becomes a "love". Only
   submit a track after ~half of it or 4 min on the same station (a title is announced, not necessarily heard; use
   the sessions). Off by default, with a text saying what leaves the device.
-- [ ] Volume normalisation across stations (loudness differs a lot, switching station jumps the level). No ReplayGain
-  on streams: a per-station gain learned while listening and stored in the DB, or a slow AGC on EBU R128 loudness in
-  the engine.
+- [x] Volume normalisation across stations: Constant volume, a per-station EBU R128 loudness learned while listening
+  and stored in the DB (`docs/11-loudness.md`).
 - [x] Track notifications while in the background (setting in ⚙, off by default).
-- [ ] Share a station or a list with a friend: a link carrying it in its fragment, a static page on
-  `getsoundfolk.github.io`, `soundfolk://` on desktop, paste into the search (`docs/16-sharing.md` §9).
+- [x] Share a station or a list with a friend: a link carrying it in its fragment, a static page on
+  `getsoundfolk.github.io`, `soundfolk://` on desktop, paste into the search (`docs/16-sharing.md`).
 
 **Smaller**
 - [ ] Make the tray optional; check GNOME without the AppIndicator extension (closing may hide the window with no
@@ -120,10 +119,11 @@ listening stats must be crossed with the sessions.
 - [x] Logarithmic volume curve: the gain is the cube of the slider position (`audio::gain`).
 - [x] Keyboard shortcuts: Space play / pause, M mute, Ctrl+F / Ctrl+K search, arrows to move between stations
   (main window only; the mini player has none yet).
-- [ ] Album art for the track on air (Cover Art Archive, for MusicBrainz-matched tracks), in the player and MPRIS;
-  station logo otherwise.
+- [x] Album art for the track on air, in the player: from the station, Deezer, iTunes or the Cover Art Archive, in
+  the order set in ⚙; station logo otherwise (`covers.rs`). The media controls (MPRIS) show the station's logo.
 - [x] Export the history (CSV / JSON).
-- [ ] Search filters by codec and bitrate (country and tag already exist).
+- Search filters by codec and bitrate: not done on purpose. Technical details belong to the station sheet
+  (`docs/06-ui-principles.md` §5); quality shows as an *HD* badge instead (`docs/09-search-filters.md` §3.2).
 - [x] Follow the system light / dark theme: Settings › Appearance, System / Light / Dark (`src/lib/theme.ts`).
 - [x] Mini player (`mini.rs`, `MiniPlayer.svelte`): an always-on-top window that stands in for the main one
   (which closes: one web view at a time). Full (560 × 180: cover, track, volume, ♥, favorites or recent titles,

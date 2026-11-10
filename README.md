@@ -1,4 +1,4 @@
-# Soundfolk — Linux MVP
+# Soundfolk
 
 > Find and play any web radio. Know what’s playing, keep track of what you heard.
 
@@ -62,7 +62,9 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev
   librsvg2-dev libasound2-dev build-essential pkg-config
 ```
 
-Plus Rust (stable ≥ 1.95) and Node ≥ 20. `libasound2-dev` is required by `cpal` (ALSA; under
+Plus Rust (stable ≥ 1.95) and Node 22.13 or later (22, 24 or 26+: what Vite, Vitest and ESLint
+require; `engines` in `package.json`). On Windows and macOS, see Tauri's
+[prerequisites](https://v2.tauri.app/start/prerequisites/). `libasound2-dev` is required by `cpal` (ALSA; under
 PipeWire/PulseAudio, the `pipewire-alsa` / `pulseaudio-alsa` compatibility layer is enough).
 
 ### Run
@@ -79,24 +81,20 @@ Detailed engine logs: `RUST_LOG=soundfolk_lib=debug npm run tauri dev`.
 
 | Path | Role |
 |---|---|
-| `src-tauri/src/audio/` | `mod.rs` facade + engine thread · `decoder/` network/decoding/stream test, retries, watchdog, conversion · `playlist.rs` m3u/pls · `icy.rs` metadata · `output.rs` cpal |
-| `src-tauri/src/catalog/` | `CatalogSource` + Radio-Browser client (online search, click counting) |
-| `src-tauri/src/db/mod.rs` | SQLite WAL: `favorites`, `listening_history`, `settings`, `personal_stations` |
-| `src-tauri/src/commands.rs` | Tauri commands (`play_stream`, `stop_stream`, `pause_stream`, `resume_stream`, `get_player_state`, `search_stations`, favorites, personal stations, history, listen-counting setting): thin adapters |
-| `src-tauri/src/player.rs` | Station on air (`AudioState`), `start_station`, click counting, resolving a station by its id |
-| `src-tauri/src/state.rs` | Catalog, web titles and covers in Tauri's state; `blocking` / `with_db` for blocking work |
-| `src/lib/` | Svelte 5 UI (CSS Modules): player, search, favorites, personal stations, listen-counting notice; shared state in `player.svelte.ts` |
+| `src-tauri/src/` | Rust back end: audio engine (`audio/`), catalog (`catalog/`), SQLite (`db/`), Tauri commands (`commands.rs`) |
+| `src-tauri/crates/nowplaying/` | Network-free engine reading the title on air from a station's web page, for streams without metadata |
+| `src-tauri/recipes/` | The stations' recipes for that engine, their test pages and `recipe.schema.json` |
+| `src/` | Svelte 5 front end (CSS Modules); `src/lib/bindings.ts` is generated from the Rust code |
+| `docs/` | Specifications, one file per topic |
 
-Events emitted to the frontend:
-- `player:state` → `{ status: "idle" | "connecting" | "playing" | "paused" }` or `{ status: "error", message }`.
-- `player:now-playing` → `{ station, title }` (ICY metadata; each title is also logged in `listening_history`).
+The layers and how they talk are described in [docs/02-architecture.md](docs/02-architecture.md), the
+tables in [docs/03-database.md](docs/03-database.md), and the events sent to the front end, with their
+payloads, in [`src-tauri/src/events.rs`](src-tauri/src/events.rs).
 
-## Known MVP limitations
+## Known limitations
 
 - **HLS (`.m3u8`) is not supported**: HLS stations (roughly 14 % of the most popular ones) are left out of the search results.
-- No current title for streams without `icy-metaint` (e.g. Ogg, whose comments are inside the stream).
-- An Ogg logical stream change mid-stream causes a reconnection (short silence).
-- The catalog is queried online (Radio-Browser API, a single active mirror for now).
+- The catalog is queried online (Radio-Browser API): no search without a network.
 - Desktop only: the mobile engine (`AVPlayer` / `ExoPlayer`) will come behind the same `AudioEngine` trait.
 
 ## Privacy

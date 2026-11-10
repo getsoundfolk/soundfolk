@@ -201,24 +201,24 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 
 ## 6. Tooling, CI and docs
 
-- [ ] **6.1 ✔ A release tag does not wait for CI.** `release.yml` builds and publishes on a `v*`
+- [x] **6.1 ✔ A release tag does not wait for CI.** `release.yml` builds and publishes on a `v*`
   tag without checking that `ci.yml` passed for that commit, and runs no tests itself. Proposal:
   the `version` job fails unless the commit's CI run succeeded (`gh api …/check-runs`), or the
   release calls `ci.yml` through `workflow_call`.
-- [ ] **6.2 Release builds without `--locked`:** the three `npm run tauri -- build` commands let
+- [x] **6.2 Release builds without `--locked`:** the three `npm run tauri -- build` commands let
   cargo re-resolve, against the workflow's own comment ("what ships must come from the lockfiles
   alone"). Add `-- --locked`.
-- [ ] **6.3 Node version:** README says Node ≥ 20; vitest, vite and ESLint need 22.12+. Say so,
+- [x] **6.3 Node version:** README says Node ≥ 20; vitest, vite and ESLint need 22.12+. Say so,
   and add `"engines"` to `package.json`.
-- [ ] **6.4 README describes an older app:** titled "Linux MVP" though Windows and macOS ship; 4
+- [x] **6.4 README describes an older app:** titled "Linux MVP" though Windows and macOS ship; 4
   tables of 13, 2 events of 13, `player:state` without `reconnecting`; "no title for Ogg
   streams" although Vorbis comments are read now. Proposal: link to docs/02 and `events.rs`
   rather than repeat them.
-- [ ] **6.5 docs/03-database.md** describes 9 of the 13 tables (`covers`, `station_loudness`,
+- [x] **6.5 docs/03-database.md** describes 9 of the 13 tables (`covers`, `station_loudness`,
   `station_names`, `station_reports` missing, or only described elsewhere).
-- [ ] **6.6 TODO.md** still lists volume normalisation, sharing and album art as open (all done),
+- [x] **6.6 TODO.md** still lists volume normalisation, sharing and album art as open (all done),
   and search filters by codec and bitrate, which 06 §5 decided against.
-- [ ] Small points: `CONTRIBUTING.md` says actionlint and zizmor run "when a workflow changes" (they
+- [x] Small points: `CONTRIBUTING.md` says actionlint and zizmor run "when a workflow changes" (they
   run on every PR); `libssl-dev` installed in CI and release though TLS is rustls; no PR template
   reminding `git commit -s` and `cargo test bindings`.
 
@@ -238,6 +238,6 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 
 1. ~~Off the `Status` lock and the runtime: 1.1, 1.4, 2.1, 2.2, with the tests of 4.1~~: done.
 2. ~~Sessions and network: 1.2, 1.3, 1.6, 1.9, then 1.5~~: done.
-3. Release safety: 6.1, 6.2.
+3. ~~Release safety: 6.1, 6.2~~: done.
 4. Front-end bugs and leftovers: ~~1.7, 1.8~~ (done), 2.4, 2.5, 2.8, 2.9.
-5. Docs (6.3–6.6), then section 3 one module at a time.
+5. ~~Docs (6.3–6.6)~~ (done), then section 3 one module at a time.

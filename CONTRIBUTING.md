@@ -92,7 +92,7 @@ New source files start with `SPDX-License-Identifier: MPL-2.0` (as a comment);
 
 The CI also runs [typos](https://github.com/crate-ci/typos) (spelling, rules in `_typos.toml`),
 [cargo-machete](https://github.com/bnjbvr/cargo-machete) (unused crates), and
-[actionlint](https://github.com/rhysd/actionlint) and [zizmor](https://docs.zizmor.sh) when a workflow changes.
+[actionlint](https://github.com/rhysd/actionlint) and [zizmor](https://docs.zizmor.sh) (workflows).
 Dependencies (advisories, licenses, duplicates) are checked by [`deps.yml`](.github/workflows/deps.yml), with
 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) (`cd src-tauri && cargo deny check`).
 
