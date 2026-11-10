@@ -10,7 +10,7 @@
   import { player } from '../player.svelte';
   import { share } from '../share.svelte';
   import { stationNames } from '../stationNames.svelte';
-  import { playableOf, warningOf } from '../stations';
+  import { isCatalogId, playableOf, warningOf } from '../stations';
   import { ui } from '../ui.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import Icon from './Icon.svelte';
@@ -61,7 +61,7 @@
   // Opened from the player: the same details as from a list, once the catalog answers.
   $effect(() => {
     const id = player.current?.id;
-    if (!ui.stationOpen || ui.sheetStation || !id || !UUID.test(id) || fetched?.id === id) return;
+    if (!ui.stationOpen || ui.sheetStation || !isCatalogId(id) || fetched?.id === id) return;
     let current = true;
     api
       .getStation(id)
@@ -98,9 +98,6 @@
     const timer = setInterval(read, 2000);
     return () => clearInterval(timer);
   });
-
-  /** A Radio-Browser station uuid: other ids (personal stations…) have no page there. */
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   /** Codecs that sound as good as MP3 at about half the bitrate. */
   const EFFICIENT = /aac|opus|ogg|vorbis/i;
@@ -349,7 +346,7 @@
           <div>
             <dt>Catalog id</dt>
             <dd class={styles.mono}>
-              {#if UUID.test(catalog.id)}
+              {#if isCatalogId(catalog.id)}
                 <!-- The station's page on Radio-Browser: its history of changes, clicks and checks. -->
                 <button
                   class={styles.link}

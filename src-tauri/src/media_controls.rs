@@ -50,6 +50,8 @@ pub(crate) struct StationChange {
 /// A favorite skipped by Next / Previous.
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub(crate) struct Skipped {
+    /// Each favorite is skipped once per Next / Previous; two may have the same name.
+    station_id: String,
     name: String,
     /// Why, as the player said it.
     reason: String,
@@ -115,7 +117,11 @@ impl Zapping {
             .strip_prefix("The station is not broadcasting: ")
             .unwrap_or(message)
             .to_owned();
-        self.skipped.push(Skipped { name, reason });
+        self.skipped.push(Skipped {
+            station_id: self.station_id.clone(),
+            name,
+            reason,
+        });
         self.station_id = next.station_id.clone();
         self.tried += 1;
         Skip::To(next, self.skipped.clone())
@@ -771,6 +777,7 @@ mod tests {
         assert_eq!(
             skipped,
             [Skipped {
+                station_id: "a".into(),
                 name: "A".into(),
                 reason: "the stream is not on air (HTTP 404)".into(),
             }]

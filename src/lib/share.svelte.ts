@@ -13,16 +13,16 @@ import {
   type SharedLink,
 } from './api';
 import { lists } from './lists.svelte';
+import { isCatalogId } from './stations';
 import { ui } from './ui.svelte';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** What may be a share link, before asking the backend: a web or `soundfolk://` address, or a
  *  bare station UUID. */
 const LIKE_A_LINK = /^\s*(?:(?:https?|soundfolk):\/\/\S+|[0-9a-f]{8}-[0-9a-f-]{27})\s*$/i;
 
 /** What a station shares as: a catalog station by its UUID, any other by its name and stream. */
 export const sharedOf = (s: Playable): Shared =>
-  UUID.test(s.id)
+  isCatalogId(s.id)
     ? { kind: 'station', id: s.id.toLowerCase() }
     : { kind: 'personal_station', name: s.name, url: s.url };
 

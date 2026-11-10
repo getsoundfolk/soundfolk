@@ -153,7 +153,6 @@ pub(crate) fn start_station(
         url: url.clone(),
     };
     save_station(&db, &on_air);
-    *audio.station.lock().unwrap_or_else(|p| p.into_inner()) = Some(on_air);
     app.state::<CoversState>().0.set_station(station.id.clone());
     let play = audio.plays.fetch_add(1, Ordering::SeqCst) + 1;
     crate::favorite_repair::watch(app, station_id.as_deref(), &url);
@@ -181,7 +180,15 @@ pub(crate) fn start_station(
     app.state::<WebTitlesState>().0.reload_recipes();
     // The engine lock orders the request against the other commands; the answer is awaited
     // without it, so the volume or the player state never wait for a sound output to open.
-    let reply = audio.engine().play(&url, station)?;
+    let reply = {
+        let mut engine = audio.engine();
+        // Named on air in one step with the request, which silences the station playing: a title
+        // it still reports is never logged under the new one (the listening history reads this).
+        // Locked after the engine: the listeners take the player's state, then this.
+        let mut on_air_now = audio.station.lock().unwrap_or_else(|p| p.into_inner());
+        *on_air_now = Some(on_air);
+        engine.play(&url, station)
+    }?;
     reply.wait()?;
     Ok(PlayOutcome { show_click_notice })
 }
@@ -241,9 +248,10 @@ pub(crate) fn catalog_ref(station_id: Option<String>) -> StationRef {
     }
 }
 
-/// Catalog stations have a UUID; personal stations (`user:…`) are never reported.
+/// Catalog stations have a UUID; personal stations (`user:…`), and a station played without an id
+/// (its stream address stands in), are never reported.
 pub(crate) fn is_catalog_id(id: &str) -> bool {
-    !id.starts_with("user:") && id.len() == 36
+    crate::catalog::radio_browser::is_uuid(id)
 }
 
 /// What the player needs to play a station, whatever its origin.
@@ -323,6 +331,14 @@ pub(crate) async fn resolve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_uuid_is_a_catalog_id() {
+        assert!(is_catalog_id("ab30ca84-c228-4f57-8cac-816c69ef651d"));
+        assert!(!is_catalog_id("user:ab30ca84-c228-4f57-8cac-816c69e"));
+        // A station played from the history without an id: its stream address, 36 characters.
+        assert!(!is_catalog_id("http://192.168.1.20:8000/stream1.mp3"));
+    }
 
     #[test]
     fn last_station_survives_a_restart() {

@@ -47,7 +47,7 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
   favorite with `db.favorite`, as `watch` now does); Next / Previous read the favorites and the
   names the user gave them when pressed, and the skip decides from that copy, with no database
   in the listener.
-- [ ] **1.2 ✔ After a terminal error, the web titles keep coming.** `decoder/retry.rs` ends with
+- [x] **1.2 ✔ After a terminal error, the web titles keep coming.** `decoder/retry.rs` ends with
   `reporter.failed(...)`, which publishes `Error` but does not cancel the session; the `Session`
   lives until the next command ([audio/mod.rs](../src-tauri/src/audio/mod.rs) `EngineCtx::run`).
   The web title task ([now_playing.rs](../src-tauri/src/now_playing.rs) `run`/`follow`) therefore
@@ -58,13 +58,17 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
   the output); a test that nothing is published after `failed`. Related, smaller:
   `start_session` spawns the web task before `decoder::spawn(...)?` and does not cancel it if
   the decoder thread fails to start.
-- [ ] **1.3 ✔ Web title probes can reach the local network.** `WebTitles::client` uses
+  Done: `Reporter::failed` publishes the error, then cancels the session; the engine then lets the
+  sound output go. A decoder that fails to start cancels the web task.
+- [x] **1.3 ✔ Web title probes can reach the local network.** `WebTitles::client` uses
   `http::client()`, not `public_client()`, for `find_server`, `follow` and `icy_details`. The
   probe URLs (`/status-json.xsl`, `/stats`, `/7.html`, `/api/nowplaying`) come from the stream
   address, which anyone can write in Radio-Browser, and the client follows redirects anywhere: a
   catalog entry answering `302 → http://192.168.1.1/…` makes the app GET the listener's router,
   which docs/16 §6.2 forbids. Proposal: `public_client()` and `public_net::check` when the
   session is `public_only`, as the decoder does; the same for recipe URLs from the downloaded list.
+  Done: the title task of a `public_only` session uses `public_client()` and checks each address
+  (`SessionClient`), recipe pages included.
 - [x] **1.4 Database work on Tokio workers** (brings back 5.4):
   - `Covers::resolve` ([covers.rs](../src-tauri/src/covers.rs)) reads the cover sources and
     `cached_cover` synchronously, from the logo task, the end of the lookup task and the async
@@ -82,29 +86,36 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
   thread, and its position saved from a blocking thread when it closes; the export reads the
   history 2,000 entries at a time (`Database::history_before`), the lock let go between pages.
   The likes, a short list, are still read at once.
-- [ ] **1.5 ✔ `is_catalog_id` checks only the length** ([player.rs](../src-tauri/src/player.rs):
+- [x] **1.5 ✔ `is_catalog_id` checks only the length** ([player.rs](../src-tauri/src/player.rs):
   `!starts_with("user:") && len == 36`). A station played from the history without an id uses its
   URL as id; a 36-character URL is then taken for a Radio-Browser UUID: a click is sent for it, it
   is looked up as a recipe station, and a personal LAN station gets `public_only` and is refused.
   The front end answers the same question four ways (`share.svelte.ts` and `StationSheet.svelte`
   with a regex, `api.ts` by length, `StationBrowser.svelte` by prefix). Proposal: the catalog's
   `is_uuid` in Rust, one tested `isCatalogId` in `stations.ts`.
-- [ ] **1.6 A title of the old station can be logged under the new one.** `start_station` sets
+  Done, both. `StationBrowser.svelte` still tests `user:`: there it asks whether a favorite is a
+  personal station, another question.
+- [x] **1.6 A title of the old station can be logged under the new one.** `start_station` sets
   `on_air` before `engine.play`, and the old session is cancelled only when the engine thread takes
   the command; [listening.rs](../src-tauri/src/listening.rs) reads `on_air` when a title arrives.
   A title of station A arriving in that window is logged and shown as B's. Proposal: the station
   id carried by the session's `Reporter` and sent with each event.
-- [ ] **1.7 ✔ The History menu shows a success toast after a failure.** `HistoryPanel.svelte`
+  Done otherwise: `play()` silences the session playing at once (its cancel flag is shared with
+  the engine thread), and `start_station` names the new station on air in the same step, under
+  the engine lock. Nothing the old station reports afterwards is published, so nothing is logged
+  under the new one.
+- [x] **1.7 ✔ The History menu shows a success toast after a failure.** `HistoryPanel.svelte`
   wraps `player.toggleFavorite` in `act(…, 'Station added to favorites')`, but `toggleFavorite`
   never rejects: `run()` catches the error and reports it to the player area. Proposal: `run`
-  returns whether it succeeded, and the toast shows only then.
-- [ ] **1.8 Skipped favorites keyed by name.** `PlayerControls.svelte` keys the skipped list by
+  returns whether it succeeded, and the toast shows only then. Done.
+- [x] **1.8 Skipped favorites keyed by name.** `PlayerControls.svelte` keys the skipped list by
   `name`, and `Skipped` has no id: a catalog FIP and a personal FIP skipped in a row make a
-  duplicate key (`each_key_duplicate`). Proposal: `station_id` in `Skipped`.
-- [ ] **1.9 `public_net::is_public` misses ranges:** NAT64 `64:ff9b::/96` with a private IPv4
+  duplicate key (`each_key_duplicate`). Proposal: `station_id` in `Skipped`. Done.
+- [x] **1.9 `public_net::is_public` misses ranges:** NAT64 `64:ff9b::/96` with a private IPv4
   inside (live on IPv6-only networks), 6to4 `2002::/16`, site-local `fec0::/10`; `192.0.0.0/24`,
   `198.18.0.0/15`, `240.0.0.0/4`. [public_net.rs](../src-tauri/src/http/public_net.rs). Proposal:
-  extend the match and its tests.
+  extend the match and its tests. Done, with documentation ranges too; NAT64 and 6to4 addresses
+  are as public as the IPv4 address inside.
 
 ## 2. Good practices
 
@@ -156,9 +167,10 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 
 ## 4. Tests
 
-- [ ] **4.1 Back end:**
-  - [ ] nothing is published after `failed` (1.2);
-  - [ ] the station of a late title (1.6);
+- [x] **4.1 Back end:**
+  - [x] nothing is published after `failed` (1.2);
+  - [x] the station of a late title (1.6): `play()` silences the session playing before the
+    request leaves; the order in `start_station` itself is not tested;
   - [x] the favorite's new address replaces the old one only in a favorite still there; a skipped
     favorite named as the user knows it, from the copy taken when Next was pressed (1.1);
   - [x] the export read by pages is the whole history (1.4); a playback starts from the level
@@ -225,7 +237,7 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 ## Suggested order
 
 1. ~~Off the `Status` lock and the runtime: 1.1, 1.4, 2.1, 2.2, with the tests of 4.1~~: done.
-2. Sessions and network: 1.2, 1.3, 1.6, 1.9, then 1.5.
+2. ~~Sessions and network: 1.2, 1.3, 1.6, 1.9, then 1.5~~: done.
 3. Release safety: 6.1, 6.2.
-4. Front-end bugs and leftovers: 1.7, 1.8, 2.4, 2.5, 2.8, 2.9.
+4. Front-end bugs and leftovers: ~~1.7, 1.8~~ (done), 2.4, 2.5, 2.8, 2.9.
 5. Docs (6.3–6.6), then section 3 one module at a time.

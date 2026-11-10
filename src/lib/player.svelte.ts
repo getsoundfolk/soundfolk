@@ -223,8 +223,9 @@ class PlayerStore {
     await this.run(() => api.saveVolume(this.volume), KEEP_ERROR);
   }
 
-  async toggleFavorite(station: Playable) {
-    await this.run(async () => {
+  /** Whether it was done: a failure is shown in the player. */
+  async toggleFavorite(station: Playable): Promise<boolean> {
+    return this.run(async () => {
       if (this.isFavorite(station.id)) {
         await api.removeFavorite(station.id);
       } else {
@@ -266,12 +267,14 @@ class PlayerStore {
   /** Runs a player command, its failure shown in the player. A new command clears the last
    *  error, except sound adjustments (`KEEP_ERROR`): a volume step fixes nothing, and the
    *  slider and the wheel would erase a message before it is read. */
-  private async run(action: () => Promise<unknown>, keepError = false) {
+  private async run(action: () => Promise<unknown>, keepError = false): Promise<boolean> {
     if (!keepError) errors.clear('player');
     try {
       await action();
+      return true;
     } catch (e) {
       errors.report('player', e);
+      return false;
     }
   }
 }

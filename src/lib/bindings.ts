@@ -546,6 +546,8 @@ export type SharedRecipe = {
 
 /**  A favorite skipped by Next / Previous. */
 export type Skipped = {
+	/**  Each favorite is skipped once per Next / Previous; two may have the same name. */
+	station_id: string,
 	name: string,
 	/**  Why, as the player said it. */
 	reason: string,

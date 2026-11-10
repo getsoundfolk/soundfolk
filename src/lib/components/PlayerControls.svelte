@@ -228,7 +228,7 @@
     </div>
   </div>
 
-  {#each player.skipped as { name, reason } (name)}
+  {#each player.skipped as { station_id, name, reason } (station_id)}
     <p class={styles.skipped}>Skipped {name}: {reason}</p>
   {/each}
 

@@ -2,6 +2,11 @@
 // Catalog stations as the rows and the player show them.
 import type { Favorite, PersonalStation, Playable, Station } from './api';
 
+/** A Radio-Browser station UUID. Other ids (personal stations, `user:…`, or the stream address of a
+ *  station played without an id) are not in the catalog. Same rule as the backend's `is_uuid`. */
+export const isCatalogId = (id: string | null | undefined): id is string =>
+  !!id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
 export const playableOf = (s: Station): Playable => ({
   id: s.id,
   name: s.name,

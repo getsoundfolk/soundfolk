@@ -170,12 +170,14 @@
   }
 
   /** Runs a menu action: closes the menu, reports a failure. */
+  /** `action` may answer `false`: it failed and showed why elsewhere (the player), so `done` is
+   *  not said. */
   async function act(action: () => Promise<unknown>, done?: string) {
     closeMenu(true);
     errors.clear('history');
     try {
-      await action();
-      if (done) notify(done);
+      const outcome = await action();
+      if (done && outcome !== false) notify(done);
     } catch (e) {
       errors.report('history', e);
     }

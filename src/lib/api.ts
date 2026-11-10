@@ -4,6 +4,7 @@
 // only the front end needs.
 import { listen as listenTauri, type EventCallback, type UnlistenFn } from '@tauri-apps/api/event';
 import { commands, type AppError, type EventPayloads, type ResolvedStation } from './bindings';
+import { isCatalogId } from './stations';
 
 export { commands as api };
 export type {
@@ -55,7 +56,7 @@ export const RECIPES_REPOSITORY = 'https://github.com/getsoundfolk/soundfolk-rec
 
 /** The "Request a station" issue form, filled in with what is known about the station. */
 export function recipeRequestLink(station: Playable): string {
-  const catalog = station.id && !station.id.startsWith('user:') && station.id.length === 36;
+  const catalog = isCatalogId(station.id);
   const params = new URLSearchParams({
     template: 'station.yml',
     title: `Station: ${station.name}`,

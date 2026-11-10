@@ -435,8 +435,11 @@ impl Reporter {
         });
     }
 
+    /// The playback is given up: the error is the session's last word. Nothing it still reports
+    /// (a web title, typically) is published after it, and the engine closes the sound output.
     pub(crate) fn failed(&self, message: String) {
         self.publish(PlayerState::Error(message));
+        self.cancel.cancel();
     }
 
     pub(crate) fn station(&self, name: Option<String>) {
@@ -593,7 +596,12 @@ pub struct DesktopAudioEngine {
     controls: Arc<Controls>,
     status: Arc<Status>,
     levels: Levels,
+    current: CurrentSession,
 }
+
+/// The cancel flag of the session playing, shared with the engine thread: [`AudioEngine::play`]
+/// silences it before the request reaches that thread.
+type CurrentSession = Arc<Mutex<Option<Arc<Cancel>>>>;
 
 /// Where station levels are remembered, set once by the application.
 type Levels = Arc<OnceLock<Arc<dyn LevelMemory>>>;
@@ -615,7 +623,13 @@ impl DesktopAudioEngine {
         let (commands, rx) = mpsc::channel();
         let levels = Levels::default();
 
-        let (c, s, l) = (controls.clone(), status.clone(), levels.clone());
+        let current = CurrentSession::default();
+        let (c, s, l, now) = (
+            controls.clone(),
+            status.clone(),
+            levels.clone(),
+            current.clone(),
+        );
         thread::Builder::new()
             .name("audio-engine".into())
             .spawn(move || {
@@ -627,6 +641,7 @@ impl DesktopAudioEngine {
                     status: s,
                     web,
                     levels: l,
+                    current: now,
                     runtime: runtime.handle().clone(),
                 }
                 .run(rx);
@@ -638,6 +653,7 @@ impl DesktopAudioEngine {
             controls,
             status,
             levels,
+            current,
         }
     }
 
@@ -710,6 +726,16 @@ impl AudioEngine for DesktopAudioEngine {
             return Err(format!("Unsupported protocol: {}", url.scheme()));
         }
 
+        // Silenced now rather than when the engine thread takes the request: whoever starts the
+        // station then names it, and nothing the old one still reports can be taken for it.
+        if let Some(session) = self
+            .current
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
+            session.cancel();
+        }
         let (reply, wait) = mpsc::channel();
         self.commands
             .send(Command::Play {
@@ -777,6 +803,7 @@ struct EngineCtx {
     status: Arc<Status>,
     web: Arc<WebTitles>,
     levels: Levels,
+    current: CurrentSession,
     runtime: tokio::runtime::Handle,
 }
 
@@ -795,6 +822,13 @@ impl EngineCtx {
             let command = match next {
                 Ok(command) => command,
                 Err(RecvTimeoutError::Timeout) => {
+                    // Given up (`Reporter::failed`): the sound output is let go.
+                    if session.as_ref().is_some_and(|s| s.cancel.is_cancelled()) {
+                        session = None;
+                        playback = None;
+                        self.controls.set_station_gain(f32::NAN);
+                        continue;
+                    }
                     self.reopen_lost_output(&mut session, &mut playback);
                     continue;
                 }
@@ -896,6 +930,7 @@ impl EngineCtx {
         self.controls
             .set_station_gain(level.leveler.gain_db() as f32);
         let cancel = Arc::new(Cancel::default());
+        *self.current.lock().unwrap_or_else(|p| p.into_inner()) = Some(cancel.clone());
         let reporter = Reporter {
             status: self.status.clone(),
             controls: self.controls.clone(),
@@ -925,7 +960,11 @@ impl EngineCtx {
             // The network is watched while the decoder holds this (until the playback stops).
             net: network::subscribe(),
         })
-        .map_err(|e| format!("Failed to start the decoder: {e}"))?;
+        .map_err(|e| {
+            // The web title task is already on its way: it stops with the session.
+            cancel.cancel();
+            format!("Failed to start the decoder: {e}")
+        })?;
 
         Ok(Session { cancel, output })
     }
@@ -985,10 +1024,14 @@ mod tests {
                 now_playing_listener: Arc::new(|_| {}),
             }),
             levels: Levels::default(),
+            current: CurrentSession::default(),
         };
         assert!(engine
             .play("ftp://example.org/live", StationRef::default())
             .is_err());
+        // The session playing is silenced at once, before the engine thread takes the request.
+        let playing = Arc::new(Cancel::default());
+        *engine.current.lock().unwrap() = Some(playing.clone());
 
         let pending = engine
             .play(" https://example.org/live ", StationRef::default())
@@ -997,6 +1040,7 @@ mod tests {
             panic!("no play command sent");
         };
         assert_eq!(url.as_str(), "https://example.org/live");
+        assert!(playing.is_cancelled());
         reply.send(Ok(())).unwrap();
         assert_eq!(pending.wait(), Ok(()));
     }
@@ -1086,6 +1130,51 @@ mod tests {
         assert_eq!(
             *seen.lock().unwrap(),
             vec![PlayerState::Reconnecting("Reconnecting…".into())]
+        );
+    }
+
+    /// A playback given up says nothing more: a web title still on its way is not published.
+    #[test]
+    fn a_failed_session_publishes_nothing_after_its_error() {
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let titles = Arc::new(Mutex::new(Vec::new()));
+        let (state_sink, title_sink) = (states.clone(), titles.clone());
+        let status = Arc::new(Status {
+            state: Mutex::new(PlayerState::Idle),
+            listener: Arc::new(move |s| state_sink.lock().unwrap().push(s)),
+            now_playing: Mutex::new(NowPlaying::default()),
+            now_playing_listener: Arc::new(move |np| title_sink.lock().unwrap().push(np)),
+        });
+        let cancel = Arc::new(Cancel::default());
+        let reporter = Reporter {
+            status,
+            controls: Arc::new(Controls::new()),
+            cancel: cancel.clone(),
+            stream: Arc::new(StreamMeta::default()),
+        };
+        let on_air = |artist: Option<&str>, title: &str| soundfolk_nowplaying::tracker::OnAir {
+            current: soundfolk_nowplaying::Track {
+                artist: artist.map(str::to_owned),
+                title: title.to_owned(),
+                started_at: None,
+                duration: None,
+                cover: None,
+            },
+            next: None,
+            show: None,
+        };
+
+        reporter.web_title(&on_air(Some("Air"), "Sexy Boy"), TitleSource::Recipe);
+        reporter.failed("The station stopped broadcasting: HTTP 404".into());
+        assert!(cancel.is_cancelled(), "the session goes on after its error");
+        reporter.web_title(&on_air(None, "Nobody heard this"), TitleSource::Recipe);
+        reporter.audible();
+        assert_eq!(titles.lock().unwrap().len(), 1);
+        assert_eq!(
+            *states.lock().unwrap(),
+            [PlayerState::Error(
+                "The station stopped broadcasting: HTTP 404".into()
+            )]
         );
     }
 

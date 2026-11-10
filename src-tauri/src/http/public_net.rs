@@ -28,29 +28,54 @@ const MAX_REDIRECTS: usize = 10;
 pub fn is_public(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(a) => {
-            let [first, second, ..] = a.octets();
+            let [first, second, third, _] = a.octets();
             !(a.is_loopback()
                 || a.is_private()
                 || a.is_link_local()
                 || a.is_unspecified()
-                || a.is_broadcast()
                 || a.is_multicast()
+                || a.is_documentation()
                 || first == 0
                 // Shared address space (carrier-grade NAT), 100.64.0.0/10.
-                || (first == 100 && (64..128).contains(&second)))
+                || (first == 100 && (64..128).contains(&second))
+                // Protocol assignments, 192.0.0.0/24.
+                || (first == 192 && second == 0 && third == 0)
+                // Benchmarking, 198.18.0.0/15.
+                || (first == 198 && (second & 0xfe) == 18)
+                // Reserved, 240.0.0.0/4, broadcast included.
+                || first >= 240)
         }
         IpAddr::V6(a) => {
             if let Some(v4) = a.to_ipv4_mapped() {
                 return is_public(IpAddr::V4(v4));
             }
-            let first = a.segments()[0];
+            let segments = a.segments();
+            let embedded = |high: u16, low: u16| {
+                let [a, b] = high.to_be_bytes();
+                let [c, d] = low.to_be_bytes();
+                IpAddr::V4(std::net::Ipv4Addr::new(a, b, c, d))
+            };
+            // An IPv4 address reached through a gateway: as public as that address. NAT64
+            // (64:ff9b::/96, live on IPv6-only networks), 6to4 (2002::/16).
+            if segments[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+                return is_public(embedded(segments[6], segments[7]));
+            }
+            if segments[0] == 0x2002 {
+                return is_public(embedded(segments[1], segments[2]));
+            }
+            let first = segments[0];
             !(a.is_loopback()
                 || a.is_unspecified()
                 || a.is_multicast()
                 // Unique local, fc00::/7.
                 || (first & 0xfe00) == 0xfc00
-                // Link-local, fe80::/10.
-                || (first & 0xffc0) == 0xfe80)
+                // Link-local, fe80::/10, and the former site-local, fec0::/10.
+                || (first & 0xffc0) == 0xfe80
+                || (first & 0xffc0) == 0xfec0
+                // Local-use NAT64, 64:ff9b:1::/48.
+                || segments[..2] == [0x64, 0xff9b]
+                // Documentation, 2001:db8::/32.
+                || segments[..2] == [0x2001, 0xdb8])
         }
     }
 }
@@ -147,6 +172,10 @@ mod tests {
             "http://51.75.1.2:8000/live",
             "http://[2001:4860:4860::8888]/live",
             "http://100.128.0.1/live",
+            // A public IPv4 address through NAT64 or 6to4.
+            "http://[64:ff9b::3398:b10]/live",
+            "http://[2002:3398:b10::1]/live",
+            "http://198.20.0.1/live",
         ] {
             assert!(checked(url), "{url}");
         }
@@ -167,6 +196,18 @@ mod tests {
             "http://[fd12:3456::1]/",
             "http://[fe80::1]/",
             "http://[::ffff:192.168.1.1]/",
+            "http://[64:ff9b::c0a8:101]/",
+            "http://[64:ff9b:1::1]/",
+            "http://[2002:c0a8:101::1]/",
+            "http://[2002:7f00:1::1]/",
+            "http://[fec0::1]/",
+            "http://[2001:db8::1]/",
+            "http://192.0.0.8/",
+            "http://198.18.0.1/",
+            "http://198.19.255.1/",
+            "http://192.0.2.1/",
+            "http://240.0.0.1/",
+            "http://255.255.255.255/",
             "http://router/",
             "http://nas.local:8000/",
             "http://printer.home.arpa/",

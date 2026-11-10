@@ -32,6 +32,7 @@ use soundfolk_nowplaying::{extract, RawTrack, SignedDuration, Snapshot, Start, T
 use tokio::sync::watch;
 
 use crate::audio::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
+use crate::http::public_net;
 use crate::recipes::{Change, Entry, Origin, Recipes};
 
 /// Network and audio buffers between the broadcast and what the listener hears (the output
@@ -360,6 +361,25 @@ impl WebTitles {
             .ok()
     }
 
+    /// The client of a playback's title task. A station kept off the local network (a catalog
+    /// one, or one received in a link) keeps its title requests there too: the servers probed
+    /// are found from its stream address, which anyone can write in the catalog.
+    fn session_client(&self, session: &Session) -> Option<SessionClient> {
+        let public_only = session.station.public_only;
+        let client = if public_only {
+            crate::http::public_client()
+        } else {
+            crate::http::client()
+        };
+        let client = client
+            .inspect_err(|e| tracing::warn!("web titles unavailable: {e}"))
+            .ok()?;
+        Some(SessionClient {
+            client,
+            public_only,
+        })
+    }
+
     /// The recipe that applies to the session, before anything is read.
     fn expected(&self, session: &Session) -> TitleStatus {
         let set = self.recipes.current();
@@ -456,7 +476,7 @@ impl WebTitles {
     }
 
     async fn run(self: Arc<Self>, session: Session, reporter: Reporter, cancel: Arc<Cancel>) {
-        let Some(client) = self.client().cloned() else {
+        let Some(client) = self.session_client(&session) else {
             return;
         };
         let mut server: Option<Option<Adapter>> = None;
@@ -523,7 +543,7 @@ impl WebTitles {
     async fn follow(
         &self,
         session: &Session,
-        client: &Client,
+        client: &SessionClient,
         source: Source,
         generation: u64,
         reporter: &Reporter,
@@ -616,7 +636,7 @@ impl WebTitles {
 
             if now >= next_fetch {
                 lock(&self.last_fetch).insert(url.clone(), now);
-                let snapshot = match fetch(client, &url).await {
+                let snapshot = match client.fetch(&url).await {
                     Ok((page, date)) => read(&source, stream, &page).map(|s| (s, date)),
                     Err(e) => Err(format!("could not read {url}: {e}")),
                 };
@@ -668,7 +688,7 @@ impl WebTitles {
     async fn icy_details(
         &self,
         session: &Session,
-        client: &Client,
+        client: &SessionClient,
         reporter: &Reporter,
         cancel: &Cancel,
     ) {
@@ -706,7 +726,7 @@ impl WebTitles {
             if let (true, Some((heard, at, left))) = (due, target.as_mut()) {
                 lock(&self.last_fetch).insert(url.clone(), now);
                 *left -= 1;
-                let page = match fetch(client, &url).await {
+                let page = match client.fetch(&url).await {
                     Ok((page, _)) => page,
                     Err(e) => {
                         tracing::debug!(%url, "track details unavailable: {e}");
@@ -762,7 +782,7 @@ impl WebTitles {
     /// The streaming server's status adapter, once the stream turned out not to announce titles.
     async fn find_server(
         &self,
-        client: &Client,
+        client: &SessionClient,
         stream: &Url,
         reporter: &Reporter,
         cancel: &Cancel,
@@ -806,7 +826,7 @@ impl WebTitles {
                 continue;
             };
             // A matching URL is not proof: the document must have the adapter's shape.
-            if let Ok((page, _)) = fetch(client, &probe.url).await
+            if let Ok((page, _)) = client.fetch(&probe.url).await
                 && adapter.read(stream.as_str(), &page).is_ok()
             {
                 found = Some(adapter);
@@ -857,6 +877,23 @@ fn read(source: &Source, stream: &str, page: &str) -> Result<Snapshot, String> {
         Source::Server(adapter) => adapter.read(stream, page),
     }
     .map_err(|e| e.to_string())
+}
+
+/// The HTTP client of a playback's title task, and the address rule it keeps.
+struct SessionClient {
+    client: &'static Client,
+    /// Only public addresses: the client checks names once resolved, and redirects; an IP in the
+    /// address is never resolved, so [`SessionClient::fetch`] checks it.
+    public_only: bool,
+}
+
+impl SessionClient {
+    async fn fetch(&self, url: &str) -> Result<(String, Option<Timestamp>), String> {
+        if self.public_only {
+            public_net::check(&Url::parse(url).map_err(|e| e.to_string())?)?;
+        }
+        fetch(self.client, url).await
+    }
 }
 
 /// The page and its HTTP `Date` (the site's clock, used to resolve local times).
@@ -1118,6 +1155,24 @@ mod tests {
             Duration::from_secs(2)
         );
         assert_eq!(until(now + SignedDuration::from_hours(1), now), CLOCK_CHECK);
+    }
+
+    #[tokio::test]
+    async fn a_public_only_station_keeps_its_title_requests_off_the_local_network() {
+        let page = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok".to_vec();
+        let url = serve(page.clone()).await;
+        let public = SessionClient {
+            client: crate::http::public_client().unwrap(),
+            public_only: true,
+        };
+        assert!(public.fetch(&url).await.is_err(), "{url} reached");
+        // A personal station may well be on the local network.
+        let url = serve(page).await;
+        let any = SessionClient {
+            client: crate::http::client().unwrap(),
+            public_only: false,
+        };
+        assert_eq!(any.fetch(&url).await.unwrap().0, "ok");
     }
 
     /// Serves one raw HTTP response on a local port; its address.

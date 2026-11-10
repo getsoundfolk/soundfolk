@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { hostOf, pickRandom } from './stations';
+import { hostOf, isCatalogId, pickRandom } from './stations';
 
 describe('pickRandom', () => {
   it('never picks the excluded one while there are others', () => {
@@ -10,6 +10,18 @@ describe('pickRandom', () => {
   it('picks the excluded one when it is the only one, and nothing from nothing', () => {
     expect(pickRandom([2], (n) => n === 2)).toBe(2);
     expect(pickRandom([], () => false)).toBeNull();
+  });
+});
+
+describe('isCatalogId', () => {
+  it('takes only a Radio-Browser UUID', () => {
+    expect(isCatalogId('ab30ca84-c228-4f57-8cac-816c69ef651d')).toBe(true);
+    expect(isCatalogId('AB30CA84-C228-4F57-8CAC-816C69EF651D')).toBe(true);
+    expect(isCatalogId('user:3f2a')).toBe(false);
+    // A stream address of 36 characters is not a UUID.
+    expect(isCatalogId('http://radio.example/stream-128k.mp3')).toBe(false);
+    expect(isCatalogId('')).toBe(false);
+    expect(isCatalogId(null)).toBe(false);
   });
 });
 
