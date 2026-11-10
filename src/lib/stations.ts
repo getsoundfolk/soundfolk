@@ -70,3 +70,6 @@ export function pickRandom<T>(pool: T[], exclude: (t: T) => boolean): T | null {
   const from = others.length ? others : pool;
   return from[Math.floor(Math.random() * from.length)] ?? null;
 }
+
+/** "1 station", "3 stations". */
+export const stationCount = (n: number) => `${n} ${n === 1 ? 'station' : 'stations'}`;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { hostOf, isCatalogId, pickRandom, quality } from './stations';
+import { hostOf, isCatalogId, pickRandom, quality, stationCount } from './stations';
 
 describe('pickRandom', () => {
   it('never picks the excluded one while there are others', () => {
@@ -56,5 +56,13 @@ describe('quality', () => {
     expect(quality({ codec: null, bitrate: 128 })).toBe('Good quality — 128 kbit/s');
     expect(quality({ codec: '  ', bitrate: 0 })).toBeNull();
     expect(quality({ codec: null, bitrate: 0 })).toBeNull();
+  });
+});
+
+describe('stationCount', () => {
+  it('says station for one only', () => {
+    expect(stationCount(0)).toBe('0 stations');
+    expect(stationCount(1)).toBe('1 station');
+    expect(stationCount(12)).toBe('12 stations');
   });
 });

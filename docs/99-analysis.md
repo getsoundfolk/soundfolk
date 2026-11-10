@@ -167,13 +167,21 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 
 ## 3. Architecture
 
-- [ ] **3.1 Large modules.** `now_playing.rs` (1,260 lines): page fetching and charset decoding
+- [x] **3.1 Large modules.** `now_playing.rs` (1,260 lines): page fetching and charset decoding
   (~120 lines) belong in `http` or a `page.rs`. `audio/mod.rs` (~920 lines of code, ~870 of
   tests): `Cancel`/`ScopedHook` and `Reporter`/`StreamMeta` can each be a file.
-- [ ] **3.2 Large components.** `StationBrowser.svelte` (494 lines) holds the tab bar, the search,
+  Done: [http/page.rs](../src-tauri/src/http/page.rs) reads a page in its charset with the
+  site's clock; [audio/cancel.rs](../src-tauri/src/audio/cancel.rs) and
+  [audio/reporter.rs](../src-tauri/src/audio/reporter.rs), each with its tests. The test server
+  of the `http` tests is shared (`http::serve`).
+- [x] **3.2 Large components.** `StationBrowser.svelte` (494 lines) holds the tab bar, the search,
   favorites with reordering, My stations and the M3U export: a `ListenPanel` and a
   `DiscoverPanel`. `HistoryPanel.svelte` (461 lines) holds the list, the menu with its focus
   handling, the export and the toast: a `TrackMenu`.
+  Done: `StationBrowser.svelte` keeps the tabs and the personal stations both panels use;
+  `ListenPanel.svelte`, `DiscoverPanel.svelte` and `TrackMenu.svelte` (its styles with it). The
+  search moved to `catalogSearch.svelte.ts`, so leaving Discover keeps the text and the results
+  as before. The menu listens to the window only while it is open.
 
 ## 4. Tests
 
@@ -251,4 +259,4 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 2. ~~Sessions and network: 1.2, 1.3, 1.6, 1.9, then 1.5~~: done.
 3. ~~Release safety: 6.1, 6.2~~: done.
 4. Front-end bugs and leftovers: ~~1.7, 1.8~~ (done), 2.4, 2.5, 2.8, 2.9.
-5. ~~Docs (6.3–6.6)~~ (done), then section 3 one module at a time.
+5. ~~Docs (6.3–6.6), then section 3 one module at a time~~: done.

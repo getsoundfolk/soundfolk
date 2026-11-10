@@ -59,7 +59,7 @@ large feature.
 * Excludes stations whose tags contain `news`, `talk`, `sport`, `sports`, `podcast`, `politics`… The list lives in
   the client, like the genres of 08 §3.1.
 * Radio-Browser's API cannot exclude a tag: the filter runs client-side on each page of results.
-  [`StationBrowser.svelte`](../src/lib/components/StationBrowser.svelte) already drops some stations from a page and
+  [`catalogSearch.svelte.ts`](../src/lib/catalogSearch.svelte.ts) already drops some stations from a page and
   counts the offset on the catalog's entries, so pagination already copes with it.
 * Its wording must not promise more than it does: stations without tags stay, and a generalist FM station tagged
   `pop` stays too, hosts and ads included.

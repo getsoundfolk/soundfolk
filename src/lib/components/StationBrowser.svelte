@@ -1,29 +1,16 @@
 <!-- SPDX-License-Identifier: MPL-2.0 -->
 <script lang="ts">
   import { onMount, tick, untrack } from 'svelte';
-  import { api, errorMessage, type PersonalStation, type Playable, type Station } from '../api';
+  import { api, type PersonalStation } from '../api';
   import { rovingKeydown } from '../a11y';
   import { errors } from '../errors.svelte';
   import { lists } from '../lists.svelte';
   import { player } from '../player.svelte';
-  import { Reorder } from '../reorder.svelte';
-  import {
-    hostOf,
-    pickRandom,
-    playableOf,
-    playableOfSaved,
-    shortMeta,
-    warningOf,
-  } from '../stations';
-  import { stationNames } from '../stationNames.svelte';
-  import { share } from '../share.svelte';
   import { ui } from '../ui.svelte';
-  import AddStationForm from './AddStationForm.svelte';
-  import ErrorBanner from './ErrorBanner.svelte';
+  import DiscoverPanel from './DiscoverPanel.svelte';
   import HistoryPanel from './HistoryPanel.svelte';
-  import ListRow from './ListRow.svelte';
+  import ListenPanel from './ListenPanel.svelte';
   import ListScreen from './ListScreen.svelte';
-  import StationRow from './StationRow.svelte';
   import Icon from './Icon.svelte';
   import styles from './StationBrowser.module.css';
   import { updates } from '../updates.svelte';
@@ -36,7 +23,6 @@
     { id: 'discover', label: 'Discover' },
     { id: 'history', label: 'History' },
   ];
-  const PAGE = 30;
 
   let tab = $state<Tab>('listen');
 
@@ -60,73 +46,8 @@
     tick().then(() => searchField?.select());
   });
 
-  // ── Search (online catalog) ──────────────────────────────────────────
-  let text = $state('');
-  let results = $state<Station[]>([]);
-  let loading = $state(false);
-  let searchError = $state<string | null>(null);
-  // Offset of the next page, or null when the catalog has no more results.
-  let nextOffset = $state<number | null>(null);
-  const hasMore = $derived(nextOffset !== null);
-  // Id of the latest request: an older response is ignored.
-  let requestId = 0;
-
-  async function search(reset: boolean) {
-    const mine = ++requestId;
-    loading = true;
-    searchError = null;
-    try {
-      const page = await api.searchStations({
-        text: text.trim() || undefined,
-        limit: PAGE,
-        // The offset counts the catalog's own entries, not the stations shown (some are filtered out).
-        offset: reset ? 0 : (nextOffset ?? 0),
-      });
-      if (mine !== requestId) return;
-      results = reset ? page.stations : [...results, ...page.stations];
-      nextOffset = page.next_offset;
-    } catch (e) {
-      if (mine === requestId) {
-        searchError = errorMessage(e);
-        searched = null;
-      }
-    } finally {
-      if (mine === requestId) loading = false;
-    }
-  }
-
-  // Text of the results shown, or null before the first search and after a failure (retried).
-  let searched: string | null = null;
-
-  // Debounced search: wait for a pause in typing so the API is not hit on every keystroke.
-  // The catalog is only queried once text is typed in Discover, and not again for the same text;
-  // without text, Discover shows its rows.
-  $effect(() => {
-    if (tab !== 'discover') return;
-    const query = text.trim();
-    if (query === searched) return;
-    if (query === '') {
-      ++requestId;
-      searched = '';
-      results = [];
-      nextOffset = null;
-      loading = false;
-      searchError = null;
-      return;
-    }
-    const timer = setTimeout(() => {
-      searched = query;
-      search(true);
-    }, 300);
-    return () => clearTimeout(timer);
-  });
-
-  // Typing: the matching lists first, as one row, then the stations (14 §7 D).
-  const matchingLists = $derived(lists.matching(text));
-
-  // ── Personal stations ──────────────────────────────────────────────────────────
+  // Personal stations, shown in Listen and searched in Discover.
   let personal = $state<PersonalStation[]>([]);
-  let adding = $state(false);
   const loadPersonal = async () => {
     try {
       personal = await api.listPersonalStations();
@@ -140,69 +61,6 @@
     if (ui.personalChanged) loadPersonal();
   });
 
-  /** A share link pasted into the search opens what it carries instead of searching (16 §3.1). */
-  async function pasteLink(e: ClipboardEvent) {
-    const pasted = e.clipboardData?.getData('text/plain') ?? '';
-    if (!share.mayBeLink(pasted)) return;
-    e.preventDefault();
-    if (await share.openText(pasted)) return;
-    // Another web address: searched like any text.
-    text = pasted.trim();
-  }
-
-  async function removePersonal(station: PersonalStation) {
-    errors.clear('stations');
-    try {
-      await api.removePersonalStation(station.station_id);
-      if (player.isFavorite(station.station_id))
-        await player.toggleFavorite(playableOfSaved(station));
-      await loadPersonal();
-    } catch (e) {
-      errors.report('stations', e);
-    }
-  }
-
-  const matchingPersonal = $derived(
-    text.trim() === ''
-      ? []
-      : personal.filter((p) =>
-          [p.name, stationNames.shown(p.station_id, p.name)].some((n) =>
-            n.toLowerCase().includes(text.trim().toLowerCase()),
-          ),
-        ),
-  );
-
-  // ── Favorites and My stations as lists: Surprise me, Export M3U (14 §6.4) ─────────────
-  let listNotice = $state<string | null>(null);
-  let listError = $state<string | null>(null);
-
-  function surpriseFrom(pool: Playable[]) {
-    const pick = pickRandom(pool, (p) => p.id === player.current?.id);
-    if (pick) player.play(pick);
-  }
-
-  async function exportMine(list: 'favorites' | 'my_stations') {
-    listNotice = null;
-    listError = null;
-    try {
-      const file = await api.exportMyList(list);
-      listNotice = `${file.count} ${file.count === 1 ? 'station' : 'stations'} saved to Downloads: ${file.file_name}`;
-    } catch (e) {
-      listError = errorMessage(e);
-    }
-  }
-
-  // Favorites in the listener's order: drag a row's handle to move it.
-  const favoriteOrder = new Reorder(
-    () => player.favorites.map((f) => f.station_id),
-    (id) => {
-      const f = player.favorites.find((f) => f.station_id === id);
-      return f ? stationNames.shown(f.station_id, f.name) : id;
-    },
-    (ids) => player.reorderFavorites(ids),
-  );
-  const shownFavorites = $derived(favoriteOrder.shown(player.favorites, (f) => f.station_id));
-
   // Back from the settings: focus returns to the gear that opened them.
   let gear: HTMLButtonElement | undefined = $state();
   let wasOpen = false;
@@ -212,8 +70,6 @@
     wasOpen = open;
   });
 
-  const stationsLabel = (n: number) => `${n} ${n === 1 ? 'station' : 'stations'}`;
-  const isActive = (id: string) => player.current?.id === id;
   const favoriteCount = $derived(player.favorites.length + lists.favorites.length);
 </script>
 
@@ -269,226 +125,15 @@
     {:else if tab === 'listen' && openedList && listTab === 'listen'}
       <ListScreen list={openedList} back="Listen" />
     {:else if tab === 'listen'}
-      {#if listNotice}<p class={styles.notice} role="status">{listNotice}</p>{/if}
-      {#if listError}<p class={styles.error} role="alert">{listError}</p>{/if}
-
-      <section class={styles.section} aria-labelledby="favorites-title">
-        <header class={styles.sectionHeader}>
-          <h2 class={styles.sectionTitle} id="favorites-title">Favorites</h2>
-          {#if player.favorites.length}
-            <button
-              class={styles.link}
-              type="button"
-              onclick={() => surpriseFrom(player.favorites.map(playableOfSaved))}
-              >Surprise me</button
-            >
-            <button class={styles.link} type="button" onclick={() => exportMine('favorites')}
-              >Export M3U</button
-            >
-          {/if}
-        </header>
-        {#if favoriteCount === 0}
-          <p class={styles.hint}>
-            Star a station or a list to keep it here.
-            <button class={styles.link} type="button" onclick={() => (tab = 'discover')}
-              >Discover stations</button
-            >
-          </p>
-        {/if}
-        {#if lists.favorites.length}
-          <ul class={styles.cards}>
-            {#each lists.favorites as l (l.id)}
-              <li class={styles.card}>
-                <button class={styles.cardOpen} type="button" onclick={() => ui.openList(l.id)}>
-                  <span class={styles.cardTitle}>{l.title}</span>
-                  <span class={styles.cardMeta}
-                    >List by {l.curators.map((c) => `@${c}`).join(', ')} · {stationsLabel(
-                      l.items.length,
-                    )}</span
-                  >
-                </button>
-                <button
-                  class={styles.star}
-                  type="button"
-                  aria-pressed="true"
-                  aria-label={`Remove ${l.title} from favorites`}
-                  title="Remove from favorites"
-                  onclick={() =>
-                    lists.toggleFavorite(l.id).catch((e) => errors.report('player', e))}
-                  ><Icon name="star" filled /></button
-                >
-              </li>
-            {/each}
-          </ul>
-        {/if}
-        {#if player.favorites.length}
-          <ul class={styles.list} {@attach favoriteOrder.attach}>
-            {#each shownFavorites as f (f.station_id)}
-              <StationRow
-                name={stationNames.shown(f.station_id, f.name)}
-                meta={f.station_id.startsWith('user:') ? (f.genre ?? '') : ''}
-                personal={f.station_id.startsWith('user:')}
-                active={isActive(f.station_id)}
-                favorite
-                onplay={() => player.play(playableOfSaved(f))}
-                onfavorite={() => player.toggleFavorite(playableOfSaved(f))}
-                handle={player.favorites.length > 1
-                  ? favoriteOrder.handle(f.station_id)
-                  : undefined}
-                dragged={favoriteOrder.draggedId === f.station_id}
-              />
-            {/each}
-          </ul>
-          <p class={styles.live} aria-live="polite">{favoriteOrder.announcement}</p>
-        {/if}
-      </section>
-
-      <section class={styles.section} aria-labelledby="mine-title">
-        <header class={styles.sectionHeader}>
-          <h2 class={styles.sectionTitle} id="mine-title">My stations</h2>
-          {#if personal.length}
-            <button
-              class={styles.link}
-              type="button"
-              onclick={() => surpriseFrom(personal.map(playableOfSaved))}>Surprise me</button
-            >
-            <button class={styles.link} type="button" onclick={() => exportMine('my_stations')}
-              >Export M3U</button
-            >
-          {/if}
-          <button
-            class={styles.link}
-            type="button"
-            aria-expanded={adding}
-            onclick={() => (adding = !adding)}
-            >{#if !adding}<Icon name="plus" size={14} />{/if}{adding
-              ? 'Cancel'
-              : 'Add a station'}</button
-          >
-        </header>
-        <ErrorBanner area="stations" />
-        {#if adding}
-          <AddStationForm
-            onadded={() => {
-              adding = false;
-              loadPersonal();
-            }}
-          />
-        {/if}
-        {#if personal.length === 0 && !adding}
-          <p class={styles.hint}>
-            Stations you add by their stream address. They stay on this device.
-          </p>
-        {:else}
-          <ul class={styles.list}>
-            {#each personal as p (p.station_id)}
-              <StationRow
-                name={stationNames.shown(p.station_id, p.name)}
-                meta={p.genre ?? hostOf(p.stream_url)}
-                personal
-                active={isActive(p.station_id)}
-                favorite={player.isFavorite(p.station_id)}
-                onplay={() => player.play(playableOfSaved(p))}
-                onfavorite={() => player.toggleFavorite(playableOfSaved(p))}
-                onremove={() => removePersonal(p)}
-              />
-            {/each}
-          </ul>
-        {/if}
-      </section>
+      <ListenPanel
+        {personal}
+        onpersonalchanged={loadPersonal}
+        ondiscover={() => (tab = 'discover')}
+      />
     {:else if openedList && listTab === 'discover'}
       <ListScreen list={openedList} back="Discover" />
     {:else}
-      <div class={styles.searchRow}>
-        <input
-          class={styles.search}
-          type="search"
-          bind:this={searchField}
-          placeholder="Search stations and lists"
-          aria-label="Search stations and lists"
-          bind:value={text}
-          onpaste={pasteLink}
-          spellcheck="false"
-          autocomplete="off"
-        />
-        <button
-          class={styles.surprise}
-          type="button"
-          disabled={player.surprising}
-          title={player.surprising ? 'Finding a station…' : 'Play a random station'}
-          onclick={() => player.surprise()}><Icon name="shuffle" size={16} />Surprise me</button
-        >
-      </div>
-
-      {#if text.trim() === ''}
-        {#each lists.all as l (l.id)}
-          <ListRow list={l} />
-        {:else}
-          <p class={styles.empty}>
-            No lists yet. They are downloaded once a day from soundfolk-stations; type a name to
-            search the stations.
-          </p>
-        {/each}
-      {:else}
-        {#if matchingLists.length}
-          <h2 class={styles.resultsTitle}>Lists</h2>
-          <ul class={styles.cardStrip} aria-label="Matching lists">
-            {#each matchingLists as l (l.id)}
-              <li class={styles.card}>
-                <button class={styles.cardOpen} type="button" onclick={() => ui.openList(l.id)}>
-                  <span class={styles.cardTitle}>{l.title}</span>
-                  <span class={styles.cardMeta}>List · {stationsLabel(l.items.length)}</span>
-                </button>
-              </li>
-            {/each}
-          </ul>
-          <h2 class={styles.resultsTitle}>Stations</h2>
-        {/if}
-
-        <ul class={styles.list}>
-          {#each matchingPersonal as p (p.station_id)}
-            <StationRow
-              name={stationNames.shown(p.station_id, p.name)}
-              personal
-              active={isActive(p.station_id)}
-              favorite={player.isFavorite(p.station_id)}
-              onplay={() => player.play(playableOfSaved(p))}
-              onfavorite={() => player.toggleFavorite(playableOfSaved(p))}
-            />
-          {/each}
-          {#each results as s (s.id)}
-            <StationRow
-              name={stationNames.shown(s.id, s.name)}
-              meta={shortMeta(s)}
-              warning={warningOf(s)}
-              active={isActive(s.id)}
-              favorite={player.isFavorite(s.id)}
-              onplay={() => player.play(playableOf(s))}
-              onfavorite={() => player.toggleFavorite(playableOf(s))}
-              oninfo={() => ui.showStation(s)}
-            />
-          {/each}
-        </ul>
-
-        {#if searchError}
-          <p class={styles.error} role="alert">{searchError}</p>
-        {:else if loading && results.length === 0}
-          <p class={styles.empty}>Searching…</p>
-        {:else if !loading && results.length === 0 && matchingPersonal.length === 0}
-          <p class={styles.empty}>No stations found.</p>
-        {/if}
-
-        {#if hasMore && !searchError}
-          <button
-            class={styles.more}
-            type="button"
-            disabled={loading}
-            aria-busy={loading}
-            title={loading ? 'Loading…' : undefined}
-            onclick={() => search(false)}>Show more</button
-          >
-        {/if}
-      {/if}
+      <DiscoverPanel {personal} bind:searchField />
     {/if}
   </div>
 </section>

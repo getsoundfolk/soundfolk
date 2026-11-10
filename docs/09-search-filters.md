@@ -246,7 +246,7 @@ Matching happens in Rust, next to `NameQuery`, so that the folding rules (`catal
 - [ ] Station name cleaning (§4.1), with tests on the names quoted there.
 - [ ] Tests: parameters per filter combination, relevance order, sanitising.
 
-**Frontend** (`StationBrowser.svelte`, `StationRow.svelte`, `StationSheet.svelte`, `api.ts`)
+**Frontend** (`DiscoverPanel.svelte`, `catalogSearch.svelte.ts`, `StationRow.svelte`, `StationSheet.svelte`, `api.ts`)
 - [ ] Chip bar under the search box: Genre, Country, Language; each picker searchable.
 - [ ] Genre list with translations.
 - [ ] Result row (§4): logo or initial tile, cleaned name, genres and country, *HD* badge, short warning, row click

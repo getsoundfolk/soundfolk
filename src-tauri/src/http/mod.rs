@@ -6,6 +6,7 @@
 //! own (`RequestBuilder::timeout`). Clients that need something else (the stream decoder's
 //! headers, a pinned Radio-Browser mirror) start from [`builder`] so they keep the User-Agent.
 
+pub mod page;
 pub mod public_net;
 
 use std::sync::OnceLock;
@@ -80,26 +81,27 @@ pub(crate) async fn body_at_most(mut response: Response, max: usize) -> Result<V
     Ok(body)
 }
 
+/// Serves one raw HTTP response on a local port; its address.
+#[cfg(test)]
+pub(crate) async fn serve(response: Vec<u8>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0; 1024];
+        let _ = socket.read(&mut request).await;
+        let _ = socket.write_all(&response).await;
+    });
+    format!("http://{address}/")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-    /// Serves one response, raw, on a local port; its address.
-    async fn serve(response: &'static [u8]) -> String {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
-            let mut request = [0; 1024];
-            let _ = socket.read(&mut request).await;
-            let _ = socket.write_all(response).await;
-        });
-        format!("http://{address}/")
-    }
 
     async fn read(response: &'static [u8], max: usize) -> Result<Vec<u8>, String> {
-        let url = serve(response).await;
+        let url = serve(response.to_vec()).await;
         let response = Client::new().get(url).send().await.unwrap();
         body_at_most(response, max).await
     }
