@@ -20,129 +20,32 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use reqwest::{Client, Url};
-use serde::Serialize;
-use soundfolk_nowplaying::adapters::{self, Adapter, Probe};
+use soundfolk_nowplaying::adapters::Adapter;
 use soundfolk_nowplaying::check;
 use soundfolk_nowplaying::clock::Offset;
 use soundfolk_nowplaying::tracker::{OnAir, Policy, Scheduled, Tracker};
 use soundfolk_nowplaying::{extract, RawTrack, SignedDuration, Snapshot, Start, Timestamp};
-use tokio::sync::watch;
 
 use crate::audio::{Cancel, Reporter, StationRef, TitleSource, TrackInfo};
 use crate::http::page::fetch;
 use crate::http::public_net;
-use crate::recipes::{Change, Entry, Origin, Recipes};
+use crate::recipes::{Change, Entry, Recipes};
+
+mod server;
+mod status;
+mod wait;
+
+pub use status::{
+    LocalError, RecipeNotice, RecipeRef, RecipeTest, SourceState, TitleStatus, WebEvent,
+    WebListener,
+};
+use wait::{until, Changes};
 
 /// Network and audio buffers between the broadcast and what the listener hears (the output
 /// buffer holds up to 2 s, servers send a few seconds in a burst on connect).
 const AUDIO_LATENCY: SignedDuration = SignedDuration::from_secs(3);
-/// How long a stream that carries metadata gets to announce a title before the server's
-/// status page is tried.
-const INBAND_GRACE: Duration = Duration::from_secs(20);
-/// Longest wait for the stream to open before giving up on the server's status page.
-const OPEN_TIMEOUT: Duration = Duration::from_secs(30);
-/// Longest wait for a time read on the wall clock: the timers stop while the computer sleeps, the
-/// wall clock does not, so a wait counted before a sleep would end late after it.
-const CLOCK_CHECK: Duration = Duration::from_secs(5);
-/// An ICY title the server API does not know yet is looked up once more after this (the API may
-/// lag behind the stream, a cache in front of it too).
-const DETAILS_RETRY: Duration = Duration::from_secs(10);
-/// Wait after a failed request for details.
-const DETAILS_BACKOFF: Duration = Duration::from_secs(60);
-
-/// Where the title of the current playback comes from, for the station sheet.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
-pub struct TitleStatus {
-    pub state: SourceState,
-    /// The recipe in use, or the one that would be used.
-    pub recipe: Option<RecipeRef>,
-    /// The server status adapter in use (`icecast`, `shoutcast-v2`…); with `Stream`, the one
-    /// giving the details of the stream's titles (`azuracast`).
-    pub adapter: Option<String>,
-    /// Why the last reading failed (page unreachable, nothing found…).
-    pub error: Option<String>,
-    /// The station's local recipe file exists but cannot be used.
-    pub local_error: Option<LocalError>,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, specta::Type)]
-#[serde(rename_all = "snake_case")]
-pub enum SourceState {
-    /// Nothing playing yet.
-    #[default]
-    Idle,
-    /// Web titles are turned off in the settings.
-    Off,
-    /// Looking for a source (waiting for the stream to announce a title, probing the server).
-    Searching,
-    /// The stream announces its titles itself.
-    Stream,
-    Recipe,
-    Server,
-    /// No source found.
-    None,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-pub struct RecipeRef {
-    pub id: String,
-    pub name: String,
-    pub origin: Origin,
-    pub path: Option<String>,
-}
-
-impl From<&Entry> for RecipeRef {
-    fn from(entry: &Entry) -> Self {
-        Self {
-            id: entry.id.clone(),
-            name: entry.recipe.name.clone(),
-            origin: entry.origin,
-            path: entry.path.as_ref().map(|p| p.display().to_string()),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-pub struct LocalError {
-    pub path: String,
-    pub error: String,
-}
-
-/// Feedback after saving a local recipe.
-#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
-pub struct RecipeNotice {
-    /// The file name.
-    pub file: String,
-    pub ok: bool,
-    pub message: String,
-}
-
-/// What a test reading of a recipe found.
-#[derive(Debug, Clone, Default, PartialEq, Serialize, specta::Type)]
-pub struct RecipeTest {
-    pub recipe: Option<RecipeRef>,
-    pub local_error: Option<LocalError>,
-    /// The page that was read.
-    pub url: Option<String>,
-    pub track: Option<TrackInfo>,
-    pub next: Option<TrackInfo>,
-    pub show: Option<String>,
-    /// The station's UTC offset, in minutes, when the page gives local times.
-    pub utc_offset_minutes: Option<i32>,
-    /// What went wrong, step by step for the user.
-    pub error: Option<String>,
-}
-
-/// Status changes and notices for the window.
-pub enum WebEvent {
-    Status(TitleStatus),
-    Notice(RecipeNotice),
-}
-
-pub type WebListener = Box<dyn Fn(WebEvent) + Send + Sync>;
 
 /// The playback being followed.
 #[derive(Clone)]
@@ -693,162 +596,6 @@ impl WebTitles {
             self.update_status(session, |s| s.state = SourceState::Stream);
         }
     }
-
-    /// For streams one of whose adapters [enriches](Adapter::enriches) titles (AzuraCast): the
-    /// details of each ICY title, from the server's API, until the playback ends. One request
-    /// per title (one more if the API does not know it yet), never closer than the minimum
-    /// interval. Stops for good if the API does not describe the stream.
-    async fn icy_details(
-        &self,
-        session: &Session,
-        client: &SessionClient,
-        reporter: &Reporter,
-        cancel: &Cancel,
-    ) {
-        let stream = session.stream.as_str();
-        let Some(adapter) = adapters::candidates(stream, None)
-            .into_iter()
-            .find(|a| a.enriches())
-        else {
-            return;
-        };
-        if lock(&self.no_details).contains(stream) {
-            return;
-        }
-        let Some(Probe { url, .. }) = adapter.probe(stream) else {
-            return;
-        };
-        let floor = Policy::default().floor;
-        // The ICY title being looked up, when to try, and the lookups left.
-        let mut target: Option<(String, Timestamp, u8)> = None;
-        let mut confirmed = false;
-        let mut changes = Changes::new(&self.recipes, reporter, cancel);
-        while !cancel.is_cancelled() {
-            let now = Timestamp::now();
-            let heard = reporter.stream_meta().icy_title();
-            if heard.is_some() && heard.as_deref() != target.as_ref().map(|(t, ..)| t.as_str()) {
-                target = heard.map(|h| (h, now, 2));
-            }
-            let earliest = lock(&self.last_fetch)
-                .get(&url)
-                .and_then(|last| last.checked_add(floor).ok());
-            let due = target
-                .as_ref()
-                .is_some_and(|(_, at, left)| *left > 0 && *at <= now)
-                && earliest.is_none_or(|e| e <= now);
-            if let (true, Some((heard, at, left))) = (due, target.as_mut()) {
-                lock(&self.last_fetch).insert(url.clone(), now);
-                *left -= 1;
-                let page = match client.fetch(&url).await {
-                    Ok((page, _)) => page,
-                    Err(e) => {
-                        tracing::debug!(%url, "track details unavailable: {e}");
-                        *left += 1; // the network, not the title
-                        *at = now.checked_add(DETAILS_BACKOFF).unwrap_or(now);
-                        continue;
-                    }
-                };
-                match adapter.details(stream, &page, heard) {
-                    Ok(Some(snapshot)) => {
-                        if let Some(track) = snapshot.current.as_ref().and_then(track_info) {
-                            let next = snapshot.next.first().and_then(track_info);
-                            reporter.icy_details(heard, track, next, snapshot.show);
-                        }
-                        *left = 0;
-                        if !confirmed {
-                            confirmed = true;
-                            tracing::info!(
-                                adapter = adapter.name(),
-                                "track details from the server's API"
-                            );
-                            self.update_status(session, |s| {
-                                s.adapter = Some(adapter.name().to_owned())
-                            });
-                        }
-                    }
-                    // Not known yet, or not a track (jingle, live show the API does not see).
-                    Ok(None) => *at = now.checked_add(DETAILS_RETRY).unwrap_or(now),
-                    Err(e) if !confirmed => {
-                        tracing::debug!(%url, "no track details for this stream: {e}");
-                        lock(&self.no_details).insert(stream.to_owned());
-                        return;
-                    }
-                    Err(e) => {
-                        tracing::debug!(%url, "track details unavailable: {e}");
-                        *at = now.checked_add(DETAILS_BACKOFF).unwrap_or(now);
-                    }
-                }
-                continue;
-            }
-            // Next: a new ICY title, or the lookup to try again once due.
-            let retry = target
-                .as_ref()
-                .filter(|(_, _, left)| *left > 0)
-                .map(|(_, at, _)| {
-                    let wake = earliest.map_or(*at, |e| e.max(*at));
-                    until(wake, now)
-                });
-            changes.next(retry).await;
-        }
-    }
-
-    /// The streaming server's status adapter, once the stream turned out not to announce titles.
-    async fn find_server(
-        &self,
-        client: &SessionClient,
-        stream: &Url,
-        reporter: &Reporter,
-        cancel: &Cancel,
-    ) -> Option<Adapter> {
-        let meta = reporter.stream_meta();
-        let mut changes = Changes::new(&self.recipes, reporter, cancel);
-        let opened = loop {
-            if cancel.is_cancelled() {
-                return None;
-            }
-            if let Some(opened) = meta.opened() {
-                break opened;
-            }
-            // `opened` is set by the decoder; give up if it never comes (failed connection).
-            let left = OPEN_TIMEOUT.checked_sub(reporter_age(reporter))?;
-            changes.next(Some(left)).await;
-        };
-        if opened.inband {
-            // The stream can carry titles: give it time to announce one.
-            while let Some(left) = INBAND_GRACE.checked_sub(opened.at.elapsed()) {
-                if cancel.is_cancelled() || meta.has_inband_title() {
-                    return None;
-                }
-                changes.next(Some(left)).await;
-            }
-            if meta.has_inband_title() {
-                return None;
-            }
-        }
-
-        let origin = origin_key(stream);
-        if let Some(known) = lock(&self.servers).get(&origin) {
-            return *known;
-        }
-        let mut found = None;
-        for adapter in adapters::candidates(stream.as_str(), opened.server.as_deref()) {
-            if cancel.is_cancelled() {
-                return None;
-            }
-            let Some(probe) = adapter.probe(stream.as_str()) else {
-                continue;
-            };
-            // A matching URL is not proof: the document must have the adapter's shape.
-            if let Ok((page, _)) = client.fetch(&probe.url).await
-                && adapter.read(stream.as_str(), &page).is_ok()
-            {
-                found = Some(adapter);
-                break;
-            }
-        }
-        lock(&self.servers).insert(origin, found);
-        found
-    }
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -909,15 +656,6 @@ impl SessionClient {
     }
 }
 
-fn origin_key(url: &Url) -> String {
-    format!(
-        "{}://{}:{}",
-        url.scheme(),
-        url.host_str().unwrap_or_default(),
-        url.port_or_known_default().unwrap_or(0)
-    )
-}
-
 /// Jitter seed: different for every playback and station.
 fn seed(key: &str) -> u64 {
     use std::hash::{BuildHasher, Hasher};
@@ -926,58 +664,12 @@ fn seed(key: &str) -> u64 {
     hasher.finish()
 }
 
-fn reporter_age(reporter: &Reporter) -> Duration {
-    reporter.stream_meta().created.elapsed()
-}
-
-/// From `now` to `wake` (nothing if already past), at most [`CLOCK_CHECK`].
-fn until(wake: Timestamp, now: Timestamp) -> Duration {
-    wake.duration_since(now)
-        .max(SignedDuration::ZERO)
-        .unsigned_abs()
-        .min(CLOCK_CHECK)
-}
-
-/// What a title task waits for besides time: the playback ending (stop, other station), the
-/// stream opening or announcing a title, the recipes changing. Create it before reading what it
-/// watches: a change made in between then ends the next wait at once instead of being missed.
-struct Changes<'a> {
-    cancel: &'a Cancel,
-    stream: watch::Receiver<()>,
-    recipes: watch::Receiver<u64>,
-}
-
-impl<'a> Changes<'a> {
-    fn new(recipes: &Recipes, reporter: &Reporter, cancel: &'a Cancel) -> Self {
-        Self {
-            cancel,
-            stream: reporter.stream_meta().changes(),
-            recipes: recipes.changes(),
-        }
-    }
-
-    /// Returns on the next change, or once `timeout` has passed (`None`: no limit). The caller
-    /// checks again what it waits for: a change may concern something else.
-    async fn next(&mut self, timeout: Option<Duration>) {
-        let timeout = async {
-            match timeout {
-                Some(timeout) => tokio::time::sleep(timeout).await,
-                None => std::future::pending().await,
-            }
-        };
-        // Both senders outlive the task (the reporter and the recipes it holds): `changed` does
-        // not fail.
-        tokio::select! {
-            () = self.cancel.cancelled() => {}
-            _ = self.stream.changed() => {}
-            _ = self.recipes.changed() => {}
-            () = timeout => {}
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use super::server::origin_key;
+    use super::wait::CLOCK_CHECK;
     use super::*;
 
     #[test]

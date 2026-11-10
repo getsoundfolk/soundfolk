@@ -23,7 +23,7 @@ Some are checked by tools (in brackets); the others depend on you.
 - **Stores change only through their own methods.** They are exported as `Readonly<…>`, so writing
   `player.x = …` from a component does not type-check. Add a method instead of casting it away.
 - **Files stay small.** At most 800 lines of Rust before `mod tests`, and 350 lines per component.
-  The few files already over the limit may not grow. Split the file rather than raise its limit.
+  Split the file rather than raise the limit.
   [`.github/scripts/check-file-sizes.sh`, run by the CI.]
 - **Visual design (docs/07-visual-design.md):** colors and durations come from `var(--…)`. Radii and
   font weights stay on the scale of §3 and §5. Every animation has a

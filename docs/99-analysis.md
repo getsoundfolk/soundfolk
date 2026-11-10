@@ -50,7 +50,7 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
 - [x] **1.2 ✔ After a terminal error, the web titles keep coming.** `decoder/retry.rs` ends with
   `reporter.failed(...)`, which publishes `Error` but does not cancel the session; the `Session`
   lives until the next command ([audio/mod.rs](../src-tauri/src/audio/mod.rs) `EngineCtx::run`).
-  The web title task ([now_playing.rs](../src-tauri/src/now_playing.rs) `run`/`follow`) therefore
+  The web title task ([now_playing/mod.rs](../src-tauri/src/now_playing/mod.rs) `run`/`follow`) therefore
   keeps polling the recipe page, and `Reporter::web_title` keeps publishing, since
   `update_now_playing` checks only the cancel flag. A recipe station that stops broadcasting at
   night fills the history with titles nobody heard, for hours; the sound output also stays open.
