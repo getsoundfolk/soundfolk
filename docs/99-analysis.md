@@ -175,10 +175,11 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
     favorite named as the user knows it, from the copy taken when Next was pressed (1.1);
   - [x] the export read by pages is the whole history (1.4); a playback starts from the level
     recalled before it, and a level learned during the run wins (2.2).
-- [ ] **4.2 Front end:** pure logic still inside components, without tests: `quality()`
+- [x] **4.2 Front end:** pure logic still inside components, without tests: `quality()`
   (StationSheet), `utc()` and the day labels (HistoryPanel), `sharedOf` and `LIKE_A_LINK`
   (share), `target()` wrap-around (a11y), `lists.matching`, `recipeRequestLink`, the `onAir`
-  title rules.
+  title rules. `quality()` moved to `stations.ts`, `utc()` and `dayLabel()` to `days.ts`, the
+  title rules to `onAirTrack.ts`; the stores are tested as they are (vitest loads `.svelte.ts`).
 
 ## 5. Minor
 

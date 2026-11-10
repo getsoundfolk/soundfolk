@@ -2,7 +2,12 @@
 // Keyboard patterns from the WAI-ARIA Authoring Practices.
 
 /** Index of the item a navigation key moves to, or null for any other key. Wraps around. */
-function target(key: string, current: number, count: number, vertical: boolean): number | null {
+export function target(
+  key: string,
+  current: number,
+  count: number,
+  vertical: boolean,
+): number | null {
   const [prev, next] = vertical ? ['ArrowUp', 'ArrowDown'] : ['ArrowLeft', 'ArrowRight'];
   switch (key) {
     case prev:

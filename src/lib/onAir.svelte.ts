@@ -4,6 +4,7 @@
 import { untrack } from 'svelte';
 import { errors } from './errors.svelte';
 import { history } from './history.svelte';
+import { trackOnAir } from './onAirTrack';
 import { displayTitle } from './trackLinks';
 import { NOTHING_ON_AIR, player } from './player.svelte';
 import { wheelSteps } from './wheel';
@@ -53,21 +54,12 @@ class OnAir {
   /** The first line of the player: the station, which the listener chose and which does not
    *  change from one track to the next. */
   station = $derived(this.stationName ?? 'No station');
-  // Artist and title come apart from the source when it gives them that way, otherwise as the
-  // history split them; a title the history did not log (a jingle) is shown whole. A title that
-  // only repeats the station's name is no track.
-  private split = $derived(this.nowPlaying.track ?? history.onAir);
-  private rawTitle = $derived(this.split?.title ?? this.nowPlaying.title ?? null);
-  private repeatsStation = $derived(
-    !!this.rawTitle &&
-      !!this.stationName &&
-      this.rawTitle.trim().toLowerCase() === this.stationName.trim().toLowerCase(),
-  );
-  /** The track on air, under the station; null without one. */
-  title = $derived(this.nowPlaying.title && !this.repeatsStation ? this.rawTitle : null);
-  artist = $derived(this.title ? (this.split?.artist ?? null) : null);
+  private onAirTrack = $derived(trackOnAir(this.nowPlaying, history.onAir, this.stationName));
+  /** The track on air, under the station; null without one (`trackOnAir`). */
+  title = $derived(this.onAirTrack.title);
+  artist = $derived(this.onAirTrack.artist);
   /** Title and artist on one line, where there is room for one only. */
-  track = $derived(this.title && this.artist ? `${this.title} – ${this.artist}` : this.title);
+  track = $derived(this.onAirTrack.track);
 
   /** Announced by the station's page: the next track, and when it starts. */
   upNext = $derived.by(() => {

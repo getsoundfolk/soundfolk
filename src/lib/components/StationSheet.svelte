@@ -10,7 +10,7 @@
   import { player } from '../player.svelte';
   import { share } from '../share.svelte';
   import { stationNames } from '../stationNames.svelte';
-  import { isCatalogId, playableOf, warningOf } from '../stations';
+  import { isCatalogId, playableOf, quality, warningOf } from '../stations';
   import { ui } from '../ui.svelte';
   import ErrorBanner from './ErrorBanner.svelte';
   import Icon from './Icon.svelte';
@@ -98,24 +98,6 @@
     const timer = setInterval(read, 2000);
     return () => clearInterval(timer);
   });
-
-  /** Codecs that sound as good as MP3 at about half the bitrate. */
-  const EFFICIENT = /aac|opus|ogg|vorbis/i;
-  const LOSSLESS = /flac|alac|wav/i;
-
-  /** "Good quality — AAC 128 kbit/s": the quality in words, then the figures the catalog gives. */
-  function quality(s: Station): string | null {
-    const codec = s.codec?.trim() || null;
-    const figures = [codec, s.bitrate > 0 ? `${s.bitrate} kbit/s` : null].filter(Boolean).join(' ');
-    let words: string | null = null;
-    if (codec && LOSSLESS.test(codec)) words = 'Lossless';
-    else if (s.bitrate > 0) {
-      const mp3 = codec && EFFICIENT.test(codec) ? s.bitrate * 2 : s.bitrate;
-      words = mp3 >= 192 ? 'High quality' : mp3 >= 128 ? 'Good quality' : 'Low quality';
-    }
-    if (words && figures) return `${words} — ${figures}`;
-    return words ?? (figures || null);
-  }
 
   /** The catalog's last check of the stream, in words. */
   function health(s: Station): string {

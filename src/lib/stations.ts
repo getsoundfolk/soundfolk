@@ -46,6 +46,24 @@ export function warningOf(s: Station): string | null {
     : 'Unreachable at last check';
 }
 
+/** Codecs that sound as good as MP3 at about half the bitrate. */
+const EFFICIENT = /aac|opus|ogg|vorbis/i;
+const LOSSLESS = /flac|alac|wav/i;
+
+/** "Good quality — AAC 128 kbit/s": the quality in words, then the figures the catalog gives. */
+export function quality(s: Pick<Station, 'codec' | 'bitrate'>): string | null {
+  const codec = s.codec?.trim() || null;
+  const figures = [codec, s.bitrate > 0 ? `${s.bitrate} kbit/s` : null].filter(Boolean).join(' ');
+  let words: string | null = null;
+  if (codec && LOSSLESS.test(codec)) words = 'Lossless';
+  else if (s.bitrate > 0) {
+    const mp3 = codec && EFFICIENT.test(codec) ? s.bitrate * 2 : s.bitrate;
+    words = mp3 >= 192 ? 'High quality' : mp3 >= 128 ? 'Good quality' : 'Low quality';
+  }
+  if (words && figures) return `${words} — ${figures}`;
+  return words ?? (figures || null);
+}
+
 /** One of `pool` at random, never `exclude` unless it is the only one; null when `pool` is empty. */
 export function pickRandom<T>(pool: T[], exclude: (t: T) => boolean): T | null {
   const others = pool.filter((t) => !exclude(t));

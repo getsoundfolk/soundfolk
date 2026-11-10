@@ -4,6 +4,7 @@
   import { openUrl } from '@tauri-apps/plugin-opener';
   import { focusFirstItem, menuKeydown, rovingKeydown } from '../a11y';
   import { api, errorMessage, type HistoryEntry, type LikedTrack } from '../api';
+  import { dayLabel, utc } from '../days';
   import { errors } from '../errors.svelte';
   import { history } from '../history.svelte';
   import { player } from '../player.svelte';
@@ -57,9 +58,6 @@
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   // Id of the latest request: an older response is ignored.
   let requestId = 0;
-
-  // SQLite stores UTC without a zone marker.
-  const utc = (sqlite: string) => new Date(`${sqlite.replace(' ', 'T')}Z`);
 
   const fromEntry = (e: HistoryEntry): Row => ({
     id: `h${e.id}`,
@@ -132,17 +130,10 @@
     };
   });
 
-  function dayLabel(date: Date): string {
-    const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
-    if (date.toDateString() === today.toDateString()) return 'Today';
-    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-    return date.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
-  }
-
   const groups = $derived.by(() => {
     const result: { label: string; rows: Row[] }[] = [];
     for (const row of rows) {
-      const label = dayLabel(row.at);
+      const label = dayLabel(row.at, today);
       if (result.at(-1)?.label === label) result.at(-1)!.rows.push(row);
       else result.push({ label, rows: [row] });
     }
