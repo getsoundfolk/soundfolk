@@ -16,7 +16,8 @@
 //!   ignored (gates).
 //! * A boost never takes the recent peak above −1 dBFS: no limiter, no clipping.
 
-use std::sync::{mpsc, Arc};
+use std::collections::HashMap;
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -99,15 +100,42 @@ pub trait LevelMemory: Send + Sync {
     /// Starting point for an unknown station (the median of the stations learned), if any.
     fn guess(&self) -> Option<f64>;
     fn remember(&self, station: &str, level: &StoredLevel);
+    /// The level remembered during this run, if it is at hand without reading the store.
+    fn latest_level(&self, _station: &str) -> Option<StoredLevel> {
+        None
+    }
+}
+
+/// A station's level as remembered when its playback was asked for, read before the request
+/// reaches the engine thread: that thread must not wait for the database, which an export can
+/// hold for a while (a `Stop` would wait behind it).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Recalled {
+    /// The station it was read for: the Radio-Browser UUID, else the stream URL.
+    pub station: String,
+    pub stored: Option<StoredLevel>,
+    pub guess: Option<f64>,
+}
+
+impl Recalled {
+    pub fn read(memory: &dyn LevelMemory, station: String) -> Self {
+        Self {
+            stored: memory.recall(&station),
+            guess: memory.guess(),
+            station,
+        }
+    }
 }
 
 /// A [`LevelMemory`] whose writes run on their own thread, in order. The decoder thread saves a
 /// level every minute and when a playback ends: it must never wait for the database, since the
-/// ring buffer's two seconds are all that keep the sound going meanwhile. Reads stay direct: they
-/// happen once, when a playback starts, on the engine thread.
+/// ring buffer's two seconds are all that keep the sound going meanwhile. The levels written are
+/// also kept in memory: a playback started again on a new sound output finds the latest one
+/// there, without reading the database on the engine thread.
 pub(crate) struct WriteBehind {
     inner: Arc<dyn LevelMemory>,
     writes: mpsc::Sender<(String, StoredLevel)>,
+    latest: Mutex<HashMap<String, StoredLevel>>,
 }
 
 impl WriteBehind {
@@ -128,6 +156,7 @@ impl WriteBehind {
             Ok(_) => Arc::new(Self {
                 inner: memory,
                 writes,
+                latest: Mutex::default(),
             }),
             Err(e) => {
                 tracing::warn!("level-writer thread not started, levels saved in place: {e}");
@@ -137,9 +166,20 @@ impl WriteBehind {
     }
 }
 
+impl WriteBehind {
+    fn latest(&self) -> MutexGuard<'_, HashMap<String, StoredLevel>> {
+        self.latest.lock().unwrap_or_else(|p| p.into_inner())
+    }
+}
+
 impl LevelMemory for WriteBehind {
     fn recall(&self, station: &str) -> Option<StoredLevel> {
-        self.inner.recall(station)
+        self.latest_level(station)
+            .or_else(|| self.inner.recall(station))
+    }
+
+    fn latest_level(&self, station: &str) -> Option<StoredLevel> {
+        self.latest().get(station).copied()
     }
 
     fn guess(&self) -> Option<f64> {
@@ -147,6 +187,7 @@ impl LevelMemory for WriteBehind {
     }
 
     fn remember(&self, station: &str, level: &StoredLevel) {
+        self.latest().insert(station.to_owned(), *level);
         if self.writes.send((station.to_owned(), *level)).is_err() {
             tracing::warn!("station level not saved: the level-writer thread is gone");
         }
@@ -498,19 +539,31 @@ pub struct StationLevel {
 }
 
 impl StationLevel {
-    /// `station`: the Radio-Browser UUID, else the stream URL.
+    /// `station`: the Radio-Browser UUID, else the stream URL. `recalled`: its level read before
+    /// the playback was asked for; the memory is read here only without it (or for another
+    /// station), and a level remembered since wins.
     pub fn new(
         memory: Option<Arc<dyn LevelMemory>>,
         station: String,
+        recalled: Option<&Recalled>,
         sample_rate: u32,
         channels: usize,
         enabled: bool,
     ) -> Self {
-        let stored = memory.as_ref().and_then(|m| m.recall(&station));
-        let guess = memory
+        let recalled = match (recalled, &memory) {
+            (Some(recalled), _) if recalled.station == station => recalled.clone(),
+            (_, Some(memory)) => Recalled::read(memory.as_ref(), station.clone()),
+            (_, None) => Recalled {
+                station: station.clone(),
+                stored: None,
+                guess: None,
+            },
+        };
+        let stored = memory
             .as_ref()
-            .and_then(|m| m.guess())
-            .unwrap_or(DEFAULT_GUESS_LUFS);
+            .and_then(|m| m.latest_level(&station))
+            .or(recalled.stored);
+        let guess = recalled.guess.unwrap_or(DEFAULT_GUESS_LUFS);
         tracing::debug!(%station, ?stored, guess, "station level");
         Self {
             leveler: Leveler::new(sample_rate, channels, enabled, stored, guess),
@@ -544,7 +597,6 @@ impl Drop for StationLevel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
 
     /// Records the writes; `remember` waits until `open` is sent something (a slow database).
     struct SlowMemory {
@@ -595,9 +647,15 @@ mod tests {
         assert!(started.elapsed() < Duration::from_secs(1));
         assert!(slow.written.lock().unwrap().is_empty());
 
-        // Reads go straight to the memory.
+        // Reads go straight to the memory, except for a level written meanwhile: it is at hand.
         assert_eq!(memory.recall("known").map(|l| l.loudness_lufs), Some(-20.0));
         assert_eq!(memory.guess(), Some(-18.0));
+        assert_eq!(memory.recall("b").map(|l| l.loudness_lufs), Some(-14.0));
+        assert_eq!(
+            memory.latest_level("a").map(|l| l.loudness_lufs),
+            Some(-23.0)
+        );
+        assert_eq!(memory.latest_level("known"), None);
 
         for _ in 0..2 {
             open.send(()).unwrap();
@@ -607,6 +665,81 @@ mod tests {
             *slow.written.lock().unwrap(),
             [("a".to_owned(), -23.0), ("b".to_owned(), -14.0)]
         );
+    }
+
+    /// Fails the test if read: the level must come from what was recalled before.
+    struct NeverRead;
+
+    impl LevelMemory for NeverRead {
+        fn recall(&self, station: &str) -> Option<StoredLevel> {
+            panic!("{station}'s level read on the engine thread")
+        }
+        fn guess(&self) -> Option<f64> {
+            panic!("level guess read on the engine thread")
+        }
+        fn remember(&self, _: &str, _: &StoredLevel) {}
+    }
+
+    fn stored(lufs: f64) -> StoredLevel {
+        StoredLevel {
+            loudness_lufs: lufs,
+            peak_dbfs: -10.0,
+            measured_secs: 600.0,
+        }
+    }
+
+    fn start(memory: Arc<dyn LevelMemory>, recalled: Option<&Recalled>) -> f64 {
+        StationLevel::new(Some(memory), "fip".into(), recalled, 48_000, 2, true)
+            .leveler
+            .gain_db()
+    }
+
+    #[test]
+    fn a_playback_starts_from_the_level_recalled_before_it_was_asked_for() {
+        // What `SlowMemory` has for "known".
+        let recalled = Recalled {
+            station: "fip".into(),
+            stored: Some(StoredLevel {
+                loudness_lufs: -20.0,
+                peak_dbfs: -3.0,
+                measured_secs: 60.0,
+            }),
+            guess: Some(-18.0),
+        };
+        let from_recalled = start(Arc::new(NeverRead), Some(&recalled));
+        // Same start as a memory read in place.
+        let slow = Arc::new(SlowMemory {
+            open: Mutex::new(mpsc::channel().1),
+            written: Mutex::new(Vec::new()),
+            done: Mutex::new(mpsc::channel().0),
+        });
+        let read_in_place = StationLevel::new(Some(slow), "known".into(), None, 48_000, 2, true)
+            .leveler
+            .gain_db();
+        assert_eq!(from_recalled, read_in_place);
+
+        // Recalled for another station: the memory is read instead.
+        let other = Recalled {
+            station: "other".into(),
+            ..recalled.clone()
+        };
+        let read = std::panic::catch_unwind(|| start(Arc::new(NeverRead), Some(&other)));
+        assert!(read.is_err());
+    }
+
+    #[test]
+    fn a_level_learned_during_the_run_wins_over_the_one_recalled() {
+        let memory = WriteBehind::wrap(Arc::new(NeverRead));
+        let recalled = Recalled {
+            station: "fip".into(),
+            stored: Some(stored(-20.0)),
+            guess: None,
+        };
+        let before = start(memory.clone(), Some(&recalled));
+        // Learned since, and maybe not written yet (a new sound output, minutes later).
+        memory.remember("fip", &stored(-12.0));
+        let after = start(memory, Some(&recalled));
+        assert!(after < before, "{after} dB after, {before} dB before");
     }
 
     #[test]

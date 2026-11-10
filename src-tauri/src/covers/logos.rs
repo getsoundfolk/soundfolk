@@ -117,6 +117,7 @@ fn logo_of(bytes: &[u8], media_type: &str, file: Option<String>) -> Logo {
     }
 }
 
+#[derive(Clone)]
 pub struct LogoCache {
     /// `None`: no cache folder (logos are then fetched each launch).
     dir: Option<PathBuf>,
@@ -164,10 +165,16 @@ impl LogoCache {
         })
     }
 
-    /// Downloads a logo and keeps it for the station.
+    /// Downloads a logo and keeps it for the station (written from a blocking thread).
     pub async fn fetch(&self, id: &str, url: &str) -> Result<Logo, String> {
         let (bytes, ext, media_type) = self.download(url, MAX_BYTES).await?;
-        Ok(logo_of(&bytes, media_type, self.store(id, ext, &bytes)))
+        let (cache, id) = (self.clone(), id.to_owned());
+        tokio::task::spawn_blocking(move || {
+            let file = cache.store(&id, ext, &bytes);
+            logo_of(&bytes, media_type, file)
+        })
+        .await
+        .map_err(|e| format!("logo not kept: {e}"))
     }
 
     /// Downloads an image of at most `max` bytes: its bytes, extension and media type.

@@ -135,11 +135,10 @@ pub(crate) fn watch(app: &AppHandle, station_id: Option<&str>, url: &str) {
     let favorite = station_id
         .filter(|id| player::is_catalog_id(id))
         .and_then(|id| {
-            app.state::<Database>()
-                .list_favorites()
-                .ok()?
-                .into_iter()
-                .find(|f| f.station_id == id)
+            app.state::<Database>().favorite(id).unwrap_or_else(|e| {
+                tracing::warn!("favorite not read: {e}");
+                None
+            })
         });
     state.lock().start(favorite, url);
 }
@@ -157,7 +156,10 @@ pub(crate) fn on_state(app: &AppHandle, state: PlayerState) -> PlayerState {
             PlayerState::Reconnecting(LOOKING_UP.to_owned())
         }
         (Action::Save(watched), _) => {
-            save_new_address(app, &watched);
+            // This runs under the player's lock, often on the decoder thread: the database, which
+            // an export can hold for a while, is written from elsewhere.
+            let app = app.clone();
+            tauri::async_runtime::spawn_blocking(move || save_new_address(&app, &watched));
             state
         }
         _ => state,
@@ -257,24 +259,27 @@ fn take_if_looking_up(app: &AppHandle, play: u64) -> bool {
 
 /// The new address played: it replaces the old one, unless the favorite was removed meanwhile.
 fn save_new_address(app: &AppHandle, watched: &Watched) {
-    let db = app.state::<Database>();
-    let current = match db.list_favorites() {
-        Ok(list) => list
-            .into_iter()
-            .find(|f| f.station_id == watched.favorite.station_id),
+    match replace_address(&app.state::<Database>(), watched) {
+        Ok(true) => {}
+        Ok(false) => return,
         Err(e) => return tracing::warn!("favorite not updated: {e}"),
-    };
-    let Some(favorite) = current else { return };
-    if let Err(e) = db.add_favorite(&Favorite {
-        stream_url: watched.url.clone(),
-        ..favorite
-    }) {
-        return tracing::warn!("favorite not updated: {e}");
     }
     tracing::info!(station = %watched.favorite.station_id, "favorite's new address saved");
     if let Err(e) = app.emit(events::FAVORITES_CHANGED, ()) {
         tracing::warn!("failed to emit the favorites change: {e}");
     }
+}
+
+/// Saves the address played in the favorite; `false` if it is no longer a favorite.
+fn replace_address(db: &Database, watched: &Watched) -> rusqlite::Result<bool> {
+    let Some(favorite) = db.favorite(&watched.favorite.station_id)? else {
+        return Ok(false);
+    };
+    db.add_favorite(&Favorite {
+        stream_url: watched.url.clone(),
+        ..favorite
+    })?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -384,5 +389,29 @@ mod tests {
             Some(Stage::Starting)
         );
         assert_eq!(repair.retry_url, None);
+    }
+
+    #[test]
+    fn the_new_address_replaces_the_old_one_only_in_a_favorite_still_there() {
+        let db = Database::open_in_memory().unwrap();
+        let mut favorite = favorite().unwrap();
+        favorite.name = "Renamed meanwhile".into();
+        db.add_favorite(&favorite).unwrap();
+        let watched = Watched {
+            play: 1,
+            favorite: favorite.clone(),
+            url: NEW.into(),
+            stage: Stage::Retrying,
+        };
+        assert!(replace_address(&db, &watched).unwrap());
+        let saved = db.favorite(&favorite.station_id).unwrap().unwrap();
+        assert_eq!(saved.stream_url, NEW);
+        assert_eq!(saved.name, "Renamed meanwhile");
+        assert_eq!(db.list_favorites().unwrap().len(), 1);
+
+        // Removed while the new address was starting: not added back.
+        db.remove_favorite(&favorite.station_id).unwrap();
+        assert!(!replace_address(&db, &watched).unwrap());
+        assert!(db.list_favorites().unwrap().is_empty());
     }
 }

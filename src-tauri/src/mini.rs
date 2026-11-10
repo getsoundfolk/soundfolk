@@ -44,14 +44,40 @@ pub fn is_open() -> bool {
     OPEN.load(Ordering::Relaxed)
 }
 
+/// The size and the spot it was left at, read from the database before going to the main thread:
+/// the database may be held for a while (an export), and the main thread must not wait for it.
+pub struct Remembered {
+    compact: bool,
+    position: Option<PhysicalPosition<i32>>,
+}
+
+impl Remembered {
+    pub fn read(app: &AppHandle) -> Self {
+        let db = app.state::<Database>();
+        Self {
+            compact: db.flag(settings::MINI_COMPACT).unwrap_or_else(|e| {
+                tracing::warn!("mini player size not read: {e}");
+                false
+            }),
+            position: db
+                .text(settings::MINI_POSITION)
+                .unwrap_or_else(|e| {
+                    tracing::warn!("mini player position not read: {e}");
+                    None
+                })
+                .and_then(|v| parse_position(&v)),
+        }
+    }
+}
+
 /// Opens the mini player (or brings it forward), then closes the main window. Main thread only:
 /// windows are built there.
-pub fn open(app: &AppHandle) -> tauri::Result<()> {
+pub fn open(app: &AppHandle, remembered: &Remembered) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(LABEL) {
         window.show()?;
         window.set_focus()?;
     } else {
-        let (width, height) = size(app);
+        let (width, height) = if remembered.compact { COMPACT } else { FULL };
         let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App("index.html".into()))
             // Its own title, untranslated, so that window manager rules can match it.
             .title("Soundfolk mini player")
@@ -76,7 +102,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
         }) {
             tracing::debug!("mini player: web view size request kept: {e}");
         }
-        if let Some(position) = placement(app, &window, (width, height))
+        if let Some(position) = placement(app, &window, remembered.position, (width, height))
             && let Err(e) = window.set_position(position)
         {
             tracing::debug!("mini player: position not restored: {e}");
@@ -97,7 +123,11 @@ pub fn close(app: &AppHandle) {
     let Some(window) = app.get_webview_window(LABEL) else {
         return;
     };
-    save_position(app);
+    // Called on the main thread: saved from a blocking thread.
+    if let Some(value) = position_of(&window) {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || save_position_value(&app, &value));
+    }
     OPEN.store(false, Ordering::Relaxed);
     // Destroyed rather than closed: closing asks first, and that request is turned into a return
     // to the main window (`lib.rs`).
@@ -154,31 +184,41 @@ pub fn set_compact(app: &AppHandle, compact: bool) -> tauri::Result<()> {
 /// Keeps where the mini player is, if it is up. Also called on exit: Quit never goes through
 /// [`close`].
 pub fn save_position(app: &AppHandle) {
-    let Some(window) = app.get_webview_window(LABEL) else {
-        return;
-    };
-    if let Ok(p) = window.outer_position() {
-        let value = format!("{},{}", p.x, p.y);
-        if let Err(e) = app
-            .state::<Database>()
-            .set_text(settings::MINI_POSITION, &value)
-        {
-            tracing::warn!("mini player position not saved: {e}");
-        }
+    if let Some(value) = app.get_webview_window(LABEL).and_then(|w| position_of(&w)) {
+        save_position_value(app, &value);
+    }
+}
+
+/// `x,y` in physical pixels, as [`parse_position`] reads it.
+fn position_of(window: &WebviewWindow) -> Option<String> {
+    let p = window.outer_position().ok()?;
+    Some(format!("{},{}", p.x, p.y))
+}
+
+fn save_position_value(app: &AppHandle, value: &str) {
+    if let Err(e) = app
+        .state::<Database>()
+        .set_text(settings::MINI_POSITION, value)
+    {
+        tracing::warn!("mini player position not saved: {e}");
     }
 }
 
 /// [`open`] from any thread, a failure logged (the tray's menu).
 pub fn show(app: &AppHandle) {
-    let handle = app.clone();
-    let opened = app.run_on_main_thread(move || {
-        if let Err(e) = open(&handle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let remembered = Remembered::read(&app);
+        let handle = app.clone();
+        let opened = app.run_on_main_thread(move || {
+            if let Err(e) = open(&handle, &remembered) {
+                tracing::warn!("mini player not opened: {e}");
+            }
+        });
+        if let Err(e) = opened {
             tracing::warn!("mini player not opened: {e}");
         }
     });
-    if let Err(e) = opened {
-        tracing::warn!("mini player not opened: {e}");
-    }
 }
 
 /// Hands over from the main window to the mini player.
@@ -187,10 +227,14 @@ pub fn show(app: &AppHandle) {
 pub async fn open_mini_player(app: AppHandle) -> Result<(), String> {
     // Windows are built on the main thread: the answer comes back from there, so that a failure
     // reaches the button rather than only the log.
+    let reader = app.clone();
+    let remembered = tauri::async_runtime::spawn_blocking(move || Remembered::read(&reader))
+        .await
+        .map_err(|e| e.to_string())?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let handle = app.clone();
     app.run_on_main_thread(move || {
-        let _ = tx.send(open(&handle).map_err(|e| e.to_string()));
+        let _ = tx.send(open(&handle, &remembered).map_err(|e| e.to_string()));
     })
     .map_err(|e| e.to_string())?;
     rx.await
@@ -226,27 +270,14 @@ pub async fn switch_favorite(app: AppHandle, forward: bool) {
     let _ = tauri::async_runtime::spawn_blocking(move || control(&app, command)).await;
 }
 
-/// The size it was left at.
-fn size(app: &AppHandle) -> (f64, f64) {
-    match app.state::<Database>().flag(settings::MINI_COMPACT) {
-        Ok(true) => COMPACT,
-        _ => FULL,
-    }
-}
-
 /// Where it was left, if that spot is still on a display (one may have been unplugged since),
 /// otherwise the bottom-right corner of the display.
 fn placement(
     app: &AppHandle,
     window: &WebviewWindow,
+    saved: Option<PhysicalPosition<i32>>,
     size: (f64, f64),
 ) -> Option<PhysicalPosition<i32>> {
-    let saved = app
-        .state::<Database>()
-        .text(settings::MINI_POSITION)
-        .ok()
-        .flatten()
-        .and_then(|v| parse_position(&v));
     let outer = window.outer_size().unwrap_or_default();
     saved
         .filter(|&p| {
@@ -260,7 +291,7 @@ fn placement(
         .or_else(|| bottom_right(app, window, size))
 }
 
-/// `x,y` in physical pixels, as [`save_position`] wrote it.
+/// `x,y` in physical pixels, as [`position_of`] wrote it.
 fn parse_position(s: &str) -> Option<PhysicalPosition<i32>> {
     let (x, y) = s.split_once(',')?;
     Some(PhysicalPosition::new(

@@ -241,6 +241,17 @@ impl Database {
         limit: u32,
         query: Option<&str>,
     ) -> rusqlite::Result<Vec<HistoryEntry>> {
+        self.history_before(None, limit, query)
+    }
+
+    /// Like [`Database::recent_history`], from the entries older than `before` (an entry's id):
+    /// a long read goes page by page, so that the database is not held for its whole length.
+    pub fn history_before(
+        &self,
+        before: Option<i64>,
+        limit: u32,
+        query: Option<&str>,
+    ) -> rusqlite::Result<Vec<HistoryEntry>> {
         let pattern = query.filter(|q| !q.trim().is_empty()).map(contains_pattern);
         let conn = self.conn();
         let mut stmt = conn.prepare(
@@ -249,14 +260,15 @@ impl Database {
              FROM listening_history h
              LEFT JOIN likes l ON l.track_key = h.track_key
              LEFT JOIN station_names n ON n.station_id = h.station_id
-             WHERE ?2 IS NULL
-                OR h.track_title LIKE ?2 ESCAPE '\\'
-                OR h.artist LIKE ?2 ESCAPE '\\'
-                OR h.station_name LIKE ?2 ESCAPE '\\'
-                OR n.name LIKE ?2 ESCAPE '\\'
+             WHERE (?3 IS NULL OR h.id < ?3)
+               AND (?2 IS NULL
+                    OR h.track_title LIKE ?2 ESCAPE '\\'
+                    OR h.artist LIKE ?2 ESCAPE '\\'
+                    OR h.station_name LIKE ?2 ESCAPE '\\'
+                    OR n.name LIKE ?2 ESCAPE '\\')
              ORDER BY h.id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map(params![limit, pattern], |row| {
+        let rows = stmt.query_map(params![limit, pattern, before], |row| {
             let parsed = parsed_from(row, 4, 5, 3)?;
             Ok(HistoryEntry {
                 id: row.get(0)?,

@@ -53,18 +53,27 @@ pub fn is_due(dir: &Path, files: Files) -> bool {
             .is_none_or(|age| age >= MAX_AGE)
 }
 
-/// Downloads the list if it changed, and caches it once it parses. `Ok(None)`: unchanged.
-pub async fn refresh<T>(
+/// Downloads the list if it changed, and caches it once it parses. `Ok(None)`: unchanged. The
+/// files are read and written, and the list parsed (up to 8 MiB), on a blocking thread: never on
+/// the async runtime.
+pub async fn refresh<T: Send + 'static>(
     client: &Client,
     url: &str,
     dir: &Path,
     files: Files,
-    parse: impl Fn(&str) -> Result<T, String>,
+    parse: impl Fn(&str) -> Result<T, String> + Send + 'static,
 ) -> Result<Option<T>, String> {
+    let dir = dir.to_owned();
     let etag_path = dir.join(files.etag);
-    let etag = std::fs::read_to_string(&etag_path)
-        .ok()
-        .filter(|_| dir.join(files.list).is_file());
+    let etag = {
+        let (dir, etag_path) = (dir.clone(), etag_path.clone());
+        blocking(move || {
+            std::fs::read_to_string(&etag_path)
+                .ok()
+                .filter(|_| dir.join(files.list).is_file())
+        })
+        .await?
+    };
     let mut request = client.get(url);
     if let Some(etag) = etag.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
         request = request.header(header::IF_NONE_MATCH, etag);
@@ -73,7 +82,9 @@ pub async fn refresh<T>(
     let status = response.status();
     if status == StatusCode::NOT_MODIFIED {
         // Rewritten to note when the list was checked.
-        std::fs::write(&etag_path, etag.unwrap_or_default()).map_err(|e| e.to_string())?;
+        blocking(move || std::fs::write(&etag_path, etag.unwrap_or_default()))
+            .await?
+            .map_err(|e| e.to_string())?;
         return Ok(None);
     }
     if !status.is_success() {
@@ -87,14 +98,27 @@ pub async fn refresh<T>(
     let body = crate::http::body_at_most(response, MAX_SIZE)
         .await
         .map_err(|e| format!("{url}: {e}"))?;
-    let text = std::str::from_utf8(&body).map_err(|e| format!("{url}: {e}"))?;
-    let list = parse(text).map_err(|e| format!("{url}: {e}"))?;
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    // The list first: an ETag must never describe a list that was not saved.
-    let tmp = dir.join(format!("{}.tmp", files.list));
-    std::fs::write(&tmp, text)
-        .and_then(|()| std::fs::rename(&tmp, dir.join(files.list)))
-        .map_err(|e| e.to_string())?;
-    std::fs::write(&etag_path, new_etag.unwrap_or_default()).map_err(|e| e.to_string())?;
-    Ok(Some(list))
+    let url = url.to_owned();
+    blocking(move || {
+        let text = std::str::from_utf8(&body).map_err(|e| format!("{url}: {e}"))?;
+        let list = parse(text).map_err(|e| format!("{url}: {e}"))?;
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        // The list first: an ETag must never describe a list that was not saved.
+        let tmp = dir.join(format!("{}.tmp", files.list));
+        std::fs::write(&tmp, text)
+            .and_then(|()| std::fs::rename(&tmp, dir.join(files.list)))
+            .map_err(|e| e.to_string())?;
+        std::fs::write(&etag_path, new_etag.unwrap_or_default()).map_err(|e| e.to_string())?;
+        Ok(Some(list))
+    })
+    .await?
+}
+
+/// Runs file work and parsing on a blocking thread.
+async fn blocking<R: Send + 'static>(
+    work: impl FnOnce() -> R + Send + 'static,
+) -> Result<R, String> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| format!("list not processed: {e}"))
 }

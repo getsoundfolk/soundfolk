@@ -93,7 +93,7 @@ pub fn render(
 ) -> AppResult<(String, usize)> {
     Ok(match list {
         List::History => {
-            let entries = db.recent_history(u32::MAX, query)?;
+            let entries = whole_history(db, query)?;
             (history(&entries, format), entries.len())
         }
         List::Likes => {
@@ -101,6 +101,28 @@ pub fn render(
             (likes(&tracks, format), tracks.len())
         }
     })
+}
+
+/// Entries read at a time: the database is let go between pages, so that a history of several
+/// years does not hold up the listening history, the covers and the window meanwhile.
+const PAGE: u32 = 2_000;
+
+/// The whole history, newest first, read page by page.
+fn whole_history(db: &Database, query: Option<&str>) -> AppResult<Vec<HistoryEntry>> {
+    history_by_pages(db, query, PAGE)
+}
+
+fn history_by_pages(db: &Database, query: Option<&str>, size: u32) -> AppResult<Vec<HistoryEntry>> {
+    let mut entries: Vec<HistoryEntry> = Vec::new();
+    loop {
+        let before = entries.last().map(|e| e.id);
+        let page = db.history_before(before, size, query)?;
+        let done = page.len() < size as usize;
+        entries.extend(page);
+        if done {
+            return Ok(entries);
+        }
+    }
 }
 
 pub fn history(entries: &[HistoryEntry], format: Format) -> String {
@@ -312,5 +334,27 @@ mod tests {
         assert_eq!(csv_field("Air - Sexy Boy"), "Air - Sexy Boy");
         let out = history(&[entry("=cmd|' /C calc'!A0", None, None)], Format::Csv);
         assert!(out.contains(",'=cmd|' /C calc'!A0,'=cmd|' /C calc'!A0,"));
+    }
+
+    #[test]
+    fn the_history_read_by_pages_is_the_whole_history() {
+        let db = Database::open_in_memory().unwrap();
+        for i in 0..7 {
+            let station = if i % 2 == 0 { "fip" } else { "f7" };
+            db.log_track(station, None, &format!("Artist {i} - Track {i}"), false)
+                .unwrap();
+        }
+        let whole = db.recent_history(u32::MAX, None).unwrap();
+        assert_eq!(whole.len(), 7);
+        let ids = |entries: &[HistoryEntry]| entries.iter().map(|e| e.id).collect::<Vec<_>>();
+        // Pages that end exactly, and one that does not.
+        for size in [1, 3, 7, 10] {
+            let paged = history_by_pages(&db, None, size).unwrap();
+            assert_eq!(ids(&paged), ids(&whole), "pages of {size}");
+        }
+        // The search narrows every page alike.
+        let found = history_by_pages(&db, Some("Track 4"), 1).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].title, "Track 4");
     }
 }

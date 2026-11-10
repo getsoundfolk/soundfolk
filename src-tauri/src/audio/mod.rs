@@ -38,7 +38,7 @@ use crate::tracks;
 pub use reqwest::Url;
 
 pub use decoder::probe as probe_stream;
-pub use loudness::{LevelMemory, StoredLevel};
+pub use loudness::{LevelMemory, Recalled, StoredLevel};
 pub use playlist::resolve_stream_url;
 
 /// Common facade for all platforms (see `docs/04-audio-engine.md`).
@@ -158,6 +158,14 @@ pub struct StationRef {
     /// Its stream may only reach public addresses: a catalog station, or one received in a link
     /// (`public_net`, docs/16-sharing.md §6.2).
     pub public_only: bool,
+    /// Its remembered level, for *Constant volume*, read before the playback was asked for.
+    pub level: Option<Box<loudness::Recalled>>,
+}
+
+/// What a station's level is remembered by: its Radio-Browser UUID (the level survives a change
+/// of address), else its address.
+pub fn level_key(catalog_id: Option<&str>, url: &Url) -> String {
+    catalog_id.map_or_else(|| url.to_string(), str::to_owned)
 }
 
 pub type StateListener = Arc<dyn Fn(PlayerState) + Send + Sync>;
@@ -877,11 +885,10 @@ impl EngineCtx {
 
     fn start_session(&self, url: Url, station: StationRef) -> Result<Session, String> {
         let (output, producer) = output::open(self.controls.clone())?;
-        // Catalog stations are remembered by their UUID (the level survives a change of
-        // address), the others by their address.
         let level = loudness::StationLevel::new(
             self.levels.get().cloned(),
-            station.id.clone().unwrap_or_else(|| url.to_string()),
+            level_key(station.id.as_deref(), &url),
+            station.level.as_deref(),
             output.format.sample_rate,
             output.format.channels,
             self.controls.normalize(),
@@ -1596,7 +1603,7 @@ mod tests {
         decoder::spawn(decoder::Job {
             url: url.parse().unwrap(),
             public_only: false,
-            level: loudness::StationLevel::new(None, url.clone(), 48_000, 2, false),
+            level: loudness::StationLevel::new(None, url.clone(), None, 48_000, 2, false),
             format,
             producer,
             reporter: Reporter {

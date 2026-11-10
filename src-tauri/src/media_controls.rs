@@ -22,6 +22,7 @@
 //! from the catalog stops the zapping, so that the window can offer to remove it; after a full
 //! turn without sound, the last error is shown. The window lists what was skipped.
 
+use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use serde::Serialize;
@@ -64,9 +65,15 @@ impl Zap {
     }
 }
 
+/// Read from the database when Next / Previous is pressed: the player's state listener, which
+/// decides the skips, runs under the player's lock and never waits on the database.
 #[derive(Debug, Clone, PartialEq)]
 struct Zapping {
     forward: bool,
+    /// The favorites, in their order, as they were when the zapping started.
+    favorites: Vec<Favorite>,
+    /// Names the user gave stations, by station ID.
+    labels: HashMap<String, String>,
     /// The favorite being tried.
     station_id: String,
     /// Favorites tried so far, this one included.
@@ -85,17 +92,25 @@ enum Skip {
 
 impl Zapping {
     /// The favorite tried failed with `message`: the next one, unless all have been tried.
-    fn skip(&mut self, favorites: &[Favorite], message: &str) -> Skip {
-        if self.tried >= favorites.len() {
+    fn skip(&mut self, message: &str) -> Skip {
+        if self.tried >= self.favorites.len() {
             return Skip::Stop;
         }
-        let Some(next) = neighbour(favorites, Some(&self.station_id), self.forward).cloned() else {
+        let Some(next) = neighbour(&self.favorites, Some(&self.station_id), self.forward).cloned()
+        else {
             return Skip::Stop;
         };
-        let name = favorites
-            .iter()
-            .find(|f| f.station_id == self.station_id)
-            .map_or_else(|| self.station_id.clone(), |f| f.name.clone());
+        // Named as the user knows it.
+        let name = self
+            .labels
+            .get(&self.station_id)
+            .cloned()
+            .unwrap_or_else(|| {
+                self.favorites
+                    .iter()
+                    .find(|f| f.station_id == self.station_id)
+                    .map_or_else(|| self.station_id.clone(), |f| f.name.clone())
+            });
         let reason = message
             .strip_prefix("The station is not broadcasting: ")
             .unwrap_or(message)
@@ -142,28 +157,10 @@ pub(crate) fn on_state(app: &tauri::AppHandle, state: PlayerState) -> PlayerStat
         *zap = None;
         return state;
     }
-    let db = app.state::<Database>();
-    let favorites = match db.list_favorites() {
-        Ok(favorites) => favorites,
-        Err(e) => {
-            tracing::warn!("cannot skip to the next favorite: {e}");
-            *zap = None;
-            return state;
-        }
-    };
-    let failed = zapping.station_id.clone();
-    let Skip::To(next, mut skipped) = zapping.skip(&favorites, message) else {
+    let Skip::To(next, skipped) = zapping.skip(message) else {
         *zap = None;
         return state;
     };
-    // Named as the user knows it.
-    if let Ok(Some(label)) = db.station_name(&failed) {
-        for list in [&mut skipped, &mut zapping.skipped] {
-            if let Some(last) = list.last_mut() {
-                last.name = label.clone();
-            }
-        }
-    }
     let shown = PlayerState::Reconnecting(format!("Skipping {}…", skipped[skipped.len() - 1].name));
     tracing::info!(station = %next.station_id, "favorite not broadcasting: skipping to the next one");
     // Starting a station waits for the sound output, and the engine may be locked by the caller.
@@ -619,7 +616,8 @@ fn drive(app: &tauri::AppHandle, command: Command) -> AppResult<()> {
 
 /// Plays the next (or previous) favorite, and tells the window which station is now on air.
 fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
-    let favorites = app.state::<Database>().list_favorites()?;
+    let db = app.state::<Database>();
+    let favorites = db.list_favorites()?;
     let current = app
         .try_state::<AudioState>()
         .and_then(|audio| audio.station())
@@ -628,8 +626,14 @@ fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
         return Ok(());
     };
     if let Some(zap) = app.try_state::<Zap>() {
+        let labels = db.station_names().unwrap_or_else(|e| {
+            tracing::warn!("station names not read: {e}");
+            HashMap::new()
+        });
         *zap.lock() = Some(Zapping {
             forward,
+            favorites,
+            labels,
             station_id: next.station_id.clone(),
             tried: 1,
             skipped: Vec::new(),
@@ -743,9 +747,11 @@ mod tests {
         assert_eq!(neighbour(&[], Some("a"), true).map(|f| &f.station_id), None);
     }
 
-    fn zapping(id: &str, forward: bool) -> Zapping {
+    fn zapping(favorites: &[Favorite], id: &str, forward: bool) -> Zapping {
         Zapping {
             forward,
+            favorites: favorites.to_vec(),
+            labels: HashMap::new(),
             station_id: id.into(),
             tried: 1,
             skipped: Vec::new(),
@@ -757,8 +763,8 @@ mod tests {
     #[test]
     fn a_silent_favorite_gives_way_to_the_next_one() {
         let favorites = [favorite("a"), favorite("b"), favorite("c")];
-        let mut zap = zapping("a", true);
-        let Skip::To(next, skipped) = zap.skip(&favorites, NOT_ON_AIR) else {
+        let mut zap = zapping(&favorites, "a", true);
+        let Skip::To(next, skipped) = zap.skip(NOT_ON_AIR) else {
             panic!("not skipped");
         };
         assert_eq!(next.station_id, "b");
@@ -771,27 +777,43 @@ mod tests {
         );
         assert_eq!(zap.station_id, "b");
         // Previous goes backward
-        let mut zap = zapping("a", false);
-        assert!(matches!(zap.skip(&favorites, NOT_ON_AIR), Skip::To(f, _) if f.station_id == "c"));
+        let mut zap = zapping(&favorites, "a", false);
+        assert!(matches!(zap.skip(NOT_ON_AIR), Skip::To(f, _) if f.station_id == "c"));
     }
 
     #[test]
     fn zapping_stops_after_a_full_turn() {
         let favorites = [favorite("a"), favorite("b"), favorite("c")];
-        let mut zap = zapping("a", true);
-        assert!(matches!(zap.skip(&favorites, NOT_ON_AIR), Skip::To(..)));
-        let Skip::To(_, skipped) = zap.skip(&favorites, "Cannot open the sound output") else {
+        let mut zap = zapping(&favorites, "a", true);
+        assert!(matches!(zap.skip(NOT_ON_AIR), Skip::To(..)));
+        let Skip::To(_, skipped) = zap.skip("Cannot open the sound output") else {
             panic!("not skipped");
         };
         // A message without the usual start is kept whole
         assert_eq!(skipped[1].reason, "Cannot open the sound output");
         // a, b and c tried: c's error is shown
-        assert_eq!(zap.skip(&favorites, NOT_ON_AIR), Skip::Stop);
+        assert_eq!(zap.skip(NOT_ON_AIR), Skip::Stop);
         // A single favorite is never skipped
         assert_eq!(
-            zapping("a", true).skip(&[favorite("a")], NOT_ON_AIR),
+            zapping(&[favorite("a")], "a", true).skip(NOT_ON_AIR),
             Skip::Stop
         );
+    }
+
+    #[test]
+    fn a_skipped_favorite_is_named_as_the_user_knows_it() {
+        let favorites = [favorite("a"), favorite("b"), favorite("c")];
+        let mut zap = zapping(&favorites, "a", true);
+        zap.labels.insert("a".into(), "My A".into());
+        let Skip::To(_, skipped) = zap.skip(NOT_ON_AIR) else {
+            panic!("not skipped");
+        };
+        assert_eq!(skipped[0].name, "My A");
+        // Without a name of the user's, the favorite's own.
+        let Skip::To(_, skipped) = zap.skip(NOT_ON_AIR) else {
+            panic!("not skipped");
+        };
+        assert_eq!(skipped[1].name, "B");
     }
 
     #[test]

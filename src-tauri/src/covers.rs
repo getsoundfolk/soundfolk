@@ -356,14 +356,21 @@ impl Covers {
                 }
             };
             this.state().logos.insert(id, logo);
-            this.resolve(false);
+            this.resolve_later();
         });
     }
 
     /// The sources changed (as saved): the cover of the track on air is chosen again.
     pub fn set_sources(self: &Arc<Self>, sources: Vec<CoverSource>) {
         self.state().sources = Some(sources);
-        self.resolve(false);
+        self.resolve_later();
+    }
+
+    /// [`Covers::resolve`] from async code: it reads the database, which an export can hold for
+    /// a while, so it runs on a blocking thread instead of a runtime worker.
+    fn resolve_later(self: &Arc<Self>) {
+        let this = self.clone();
+        tauri::async_runtime::spawn_blocking(move || this.resolve(false));
     }
 
     /// The cover sources, read from the database the first time.
@@ -382,6 +389,7 @@ impl Covers {
         }
     }
 
+    /// Reads the database: never on the async runtime (see [`Covers::resolve_later`]).
     fn resolve(self: &Arc<Self>, title_changed: bool) {
         let (now_playing, station, label, logo) = {
             let state = self.state();
@@ -496,7 +504,18 @@ impl Covers {
                 .download(&cover, NOTIFICATION_MAX_BYTES)
                 .await
             {
-                Ok((bytes, ext, _)) => notification_file(&this.app, &bytes, ext),
+                Ok((bytes, ext, _)) => {
+                    // Directory listing and writes: off the runtime.
+                    let app = this.app.clone();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        notification_file(&app, &bytes, ext)
+                    })
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::debug!("cover not written for the notification: {e}");
+                        None
+                    })
+                }
                 Err(e) => {
                     tracing::debug!("cover not downloaded for the notification: {e}");
                     None
@@ -572,7 +591,7 @@ impl Covers {
                     state.failed.insert(key, Instant::now());
                 }
             }
-            this.resolve(false);
+            this.resolve_later();
         });
     }
 }

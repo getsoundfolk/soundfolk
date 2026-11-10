@@ -10,7 +10,9 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
-use crate::audio::{AudioEngine, DesktopAudioEngine, PlayerState, StationRef};
+use crate::audio::{
+    level_key, AudioEngine, DesktopAudioEngine, PlayerState, Recalled, StationRef, Url,
+};
 use crate::catalog::CatalogSource;
 use crate::db::{settings, Database};
 use crate::error::AppResult;
@@ -132,9 +134,18 @@ pub(crate) fn start_station(
                 true
             })
         });
+    // Read here, on this blocking thread: the engine thread never waits for the database.
+    let level = url.trim().parse::<Url>().ok().map(|parsed| {
+        let levels = crate::volume::DatabaseLevels(app.clone());
+        Box::new(Recalled::read(
+            &levels,
+            level_key(catalog_id.as_deref(), &parsed),
+        ))
+    });
     let station = StationRef {
         id: catalog_id,
         public_only,
+        level,
     };
     let on_air = OnAir {
         id,
