@@ -20,6 +20,9 @@ pub const USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (+https://github.com/getsoundfolk/soundfolk)"
 );
+/// How the app names itself to radio stations, for their streams and playlists: an address is
+/// of no use to them, and a robot-like `(+https://…)` could put off a firewall.
+pub const STREAM_USER_AGENT: &str = concat!("Soundfolk/", env!("CARGO_PKG_VERSION"));
 /// A request of a shared client that sets no timeout of its own gives up after this.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);

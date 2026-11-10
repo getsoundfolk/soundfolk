@@ -34,6 +34,7 @@ pub async fn resolve_stream_url(url: Url, public_only: bool) -> Result<Url, Stri
         }
         let mut response = client
             .get(current.clone())
+            .header(reqwest::header::USER_AGENT, http::STREAM_USER_AGENT)
             .timeout(TIMEOUT)
             .send()
             .await
