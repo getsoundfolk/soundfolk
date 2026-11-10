@@ -273,11 +273,17 @@
   pointer-events: none;
   transform: translate(-50%, 0.5rem);
   transition:
-    opacity 0.15s,
-    transform 0.15s;
+    opacity var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
 }
 
 .toast[data-visible='true'] {
   opacity: 1;
   transform: translate(-50%, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: none;
+  }
 }

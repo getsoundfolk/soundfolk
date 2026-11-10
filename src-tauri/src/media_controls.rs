@@ -621,7 +621,7 @@ fn drive(app: &tauri::AppHandle, command: Command) -> AppResult<()> {
 }
 
 /// Plays the next (or previous) favorite, and tells the window which station is now on air.
-fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
+pub(crate) fn switch_favorite(app: &tauri::AppHandle, forward: bool) -> AppResult<()> {
     let db = app.state::<Database>();
     let favorites = db.list_favorites()?;
     let current = app

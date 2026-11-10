@@ -9,7 +9,7 @@
     errors.clear('player');
     try {
       await api.setClickCounting(false);
-      player.clickNotice = false;
+      player.hideClickNotice();
     } catch (e) {
       errors.report('player', e);
     }
@@ -22,9 +22,7 @@
       This listen is reported to Radio-Browser (station + IP) to help radios get discovered.
     </p>
     <div class={styles.actions}>
-      <button class={styles.primary} type="button" onclick={() => (player.clickNotice = false)}
-        >OK</button
-      >
+      <button class={styles.primary} type="button" onclick={player.hideClickNotice}>OK</button>
       <button class={styles.secondary} type="button" onclick={disable}>Turn off</button>
     </div>
   </aside>

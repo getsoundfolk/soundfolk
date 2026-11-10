@@ -16,6 +16,7 @@
 
 <script lang="ts">
   import { flip } from 'svelte/animate';
+  import { FAST_MS, motionMs } from '../motion';
   import { Reorder } from '../reorder.svelte';
   import Icon from './Icon.svelte';
   import styles from './OrderedSources.module.css';
@@ -67,7 +68,7 @@
       <li
         class={styles.row}
         data-dragged={item.id === order.draggedId}
-        animate:flip={{ duration: 150 }}
+        animate:flip={{ duration: motionMs(FAST_MS) }}
       >
         <button
           class={styles.handle}

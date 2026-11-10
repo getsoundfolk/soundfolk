@@ -251,6 +251,21 @@ impl WebTitles {
         runtime.spawn(async move { this.run(session, reporter, cancel).await });
     }
 
+    /// Playback stopped: no station is playing any more, and the title has no source. A session
+    /// still running publishes nothing from now on (`is_current`).
+    pub fn stop(&self) {
+        if lock(&self.current).take().is_none() {
+            return;
+        }
+        let status = TitleStatus::default();
+        let mut current = lock(&self.status);
+        if *current != status {
+            *current = status.clone();
+            drop(current);
+            (self.listener)(WebEvent::Status(status));
+        }
+    }
+
     /// Reloads the local recipes if a file changed, and applies them (playback, notices).
     pub fn reload_recipes(&self) {
         if let Some(changes) = self.recipes.reload_if_changed() {
@@ -898,7 +913,7 @@ impl SessionClient {
 
 /// The page and its HTTP `Date` (the site's clock, used to resolve local times).
 async fn fetch(client: &Client, url: &str) -> Result<(String, Option<Timestamp>), String> {
-    let mut response = client
+    let response = client
         .get(url)
         .timeout(REQUEST_TIMEOUT)
         .send()
@@ -922,13 +937,7 @@ async fn fetch(client: &Client, url: &str) -> Result<(String, Option<Timestamp>)
                 .parse_timestamp(d)
                 .ok()
         });
-    let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
-        if body.len() + chunk.len() > MAX_PAGE_BYTES {
-            return Err("page too large".into());
-        }
-        body.extend_from_slice(&chunk);
-    }
+    let body = crate::http::body_at_most(response, MAX_PAGE_BYTES).await?;
     Ok((decode(&body, charset), date))
 }
 
@@ -1215,7 +1224,7 @@ mod tests {
         let url = serve(huge).await;
         assert_eq!(
             fetch(&Client::new(), &url).await.unwrap_err(),
-            "page too large"
+            "response too large"
         );
     }
 
@@ -1284,6 +1293,36 @@ mod tests {
         assert_eq!(by_file("frequence7.toml"), None);
         assert_eq!(*lock(&web.saved), vec!["frequence7".to_owned()]);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn stop_forgets_the_station_and_its_source() {
+        let (web, _) = web(None);
+        let session = Session {
+            id: 1,
+            station: StationRef::default(),
+            stream: "https://live.aurafm.org/Frequence7".parse().unwrap(),
+        };
+        *lock(&web.current) = Some(session.clone());
+        web.set_status(
+            &session,
+            TitleStatus {
+                state: SourceState::Stream,
+                ..Default::default()
+            },
+        );
+        web.stop();
+        assert!(lock(&web.current).is_none());
+        assert_eq!(web.status(), TitleStatus::default());
+        // The session stopped publishes nothing any more.
+        web.set_status(
+            &session,
+            TitleStatus {
+                state: SourceState::Stream,
+                ..Default::default()
+            },
+        );
+        assert_eq!(web.status(), TitleStatus::default());
     }
 
     #[test]

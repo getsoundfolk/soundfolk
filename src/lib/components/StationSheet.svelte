@@ -189,7 +189,7 @@
   aria-labelledby="station-sheet-title"
   onclose={() => {
     // Seen in the sheet: not shown again in the window.
-    player.recipeNotice = null;
+    player.dismissRecipeNotice();
     // The sender and track of a link belong to the visit it opened.
     share.note = null;
     ui.closeStation();

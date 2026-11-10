@@ -22,7 +22,6 @@ use tauri::{
 };
 
 use crate::db::{settings, Database};
-use crate::media_controls::{control, Command};
 
 pub const LABEL: &str = "mini";
 
@@ -258,16 +257,14 @@ pub async fn set_mini_compact(app: AppHandle, compact: bool) -> Result<(), Strin
         .map_err(|e| e.to_string())
 }
 
-/// Next or previous favorite, as the media keys and the tray do it.
+/// Next or previous favorite, as the media keys and the tray do it. Unlike them, the mini player
+/// has a window to show a failure in.
 #[tauri::command]
 #[specta::specta]
-pub async fn switch_favorite(app: AppHandle, forward: bool) {
-    let command = if forward {
-        Command::Next
-    } else {
-        Command::Previous
-    };
-    let _ = tauri::async_runtime::spawn_blocking(move || control(&app, command)).await;
+pub async fn switch_favorite(app: AppHandle, forward: bool) -> Result<(), String> {
+    crate::state::blocking(move || crate::media_controls::switch_favorite(&app, forward))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Where it was left, if that spot is still on a display (one may have been unplugged since),

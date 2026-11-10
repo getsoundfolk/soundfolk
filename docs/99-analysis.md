@@ -133,27 +133,37 @@ commits, is in the history of this file (`git log -p docs/99-analysis.md`).
   engine reads the memory only if it was recalled for another station. `WriteBehind` keeps the
   levels written during the run, so a sound output reopened later starts from the latest one
   without reading the database either.
-- [ ] **2.3 New file names picked with `exists()` then `write`** (`files::save_download`,
+- [x] **2.3 New file names picked with `exists()` then `write`** (`files::save_download`,
   `recipes.rs` new recipe): two exports in the same second can pick the same name and one
   overwrites the other. Proposal: `OpenOptions::create_new` in the `numbered` loop.
-- [ ] **2.4 Swallowed errors:**
+  Done: `files::write_new` creates the file with `create_new` and moves on to the next name when
+  it is taken; both callers use it.
+- [x] **2.4 Swallowed errors:**
   - mini player Next/Previous ([mini.rs](../src-tauri/src/mini.rs)) drops the result: a failed
     skip shows nothing;
   - `lists.svelte.ts`: a failed `getFavoriteLists` silently empties the favorite lists in Listen;
   - `PrivacySettings.svelte`: a failed `getUpdateCheck` leaves the switch on its default;
   - `App.svelte`: a failed `reloadRecipes` on focus silently leaves the edited recipe unapplied.
-- [ ] **2.5 Store fields changed from outside again** (brings back 2.8): `player.recipeNotice =
+
+  Done: `switch_favorite` returns the error, which the skip button already reports; the favorite
+  lists report to the station lists, the update check to the settings, the recipe reload to the
+  player.
+- [x] **2.5 Store fields changed from outside again** (brings back 2.8): `player.recipeNotice =
   null` in `RecipeNotice.svelte`, `player.clickNotice = false` in `ClickNotice.svelte` and
   `PrivacySettings.svelte`. Proposal: `player.dismissRecipeNotice()`, `player.hideClickNotice()`.
-- [ ] **2.6 `WebTitles::current` is never cleared on Stop:** after Stop, `get_title_status` still
+  Done, the station sheet too.
+- [x] **2.6 `WebTitles::current` is never cleared on Stop:** after Stop, `get_title_status` still
   reports the last station's source, and `recipes_changed` talks about "the station playing".
-- [ ] **2.7 `now_playing::fetch` caps the body by hand,** a second copy of `http::body_at_most`
-  without its early `Content-Length` refusal.
-- [ ] **2.8 Reduced motion (07 §7):** `animate:flip` in `OrderedSources.svelte` is a JS animation
+  Done: the engine calls `WebTitles::stop` on Stop, which forgets the session and sends the idle
+  status; the session still running publishes nothing more.
+- [x] **2.7 `now_playing::fetch` caps the body by hand,** a second copy of `http::body_at_most`
+  without its early `Content-Length` refusal. Done: it calls `body_at_most`.
+- [x] **2.8 Reduced motion (07 §7):** `animate:flip` in `OrderedSources.svelte` is a JS animation
   the CSS media query cannot stop; the History toast slides in with a hard-coded `0.15s` and no
-  reduced-motion rule.
-- [ ] **2.9 Play/pause drawn outside `Icon.svelte`** (07 §4): `PlayerControls.svelte` has its own
-  SVG, and its pause glyph differs from the mini player's.
+  reduced-motion rule. Done: `motion.ts` gives JS animations no duration under reduced motion;
+  the toast uses `--duration-fast` and `--ease`, with a reduced-motion rule.
+- [x] **2.9 Play/pause drawn outside `Icon.svelte`** (07 §4): `PlayerControls.svelte` has its own
+  SVG, and its pause glyph differs from the mini player's. Done: it uses `Icon`.
 
 ## 3. Architecture
 

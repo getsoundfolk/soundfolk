@@ -13,7 +13,7 @@
     const notice = player.recipeNotice;
     if (!notice?.ok) return;
     const timer = setTimeout(() => {
-      if (player.recipeNotice === notice) player.recipeNotice = null;
+      player.dismissRecipeNotice(notice);
     }, DISPLAY_MS);
     return () => clearTimeout(timer);
   });
@@ -31,7 +31,7 @@
       class={styles.close}
       type="button"
       aria-label="Dismiss"
-      onclick={() => (player.recipeNotice = null)}><Icon name="x" /></button
+      onclick={() => player.dismissRecipeNotice()}><Icon name="x" /></button
     >
   </aside>
 {/if}

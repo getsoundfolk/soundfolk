@@ -3,6 +3,7 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { onMount } from 'svelte';
   import { api } from './lib/api';
+  import { errors } from './lib/errors.svelte';
   import ClickNotice from './lib/components/ClickNotice.svelte';
   import SettingsPage from './lib/components/SettingsPage.svelte';
   import SharedSheet from './lib/components/SharedSheet.svelte';
@@ -28,7 +29,7 @@
     const updatesReady = updates.init();
     // Back from the editor: a recipe saved meanwhile is picked up now (the folder is not polled).
     const focus = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
-      if (focused) api.reloadRecipes().catch(() => {});
+      if (focused) api.reloadRecipes().catch((e) => errors.report('player', e));
     });
     return () => {
       ready.then((off) => off());

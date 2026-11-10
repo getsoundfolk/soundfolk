@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Curated lists (docs/15-curated-lists.md): loaded once, again when a new file was downloaded, the
 // lists the station in the player is in, and the lists marked as favorites.
-import { unsubscribed } from './errors.svelte';
+import { errors, unsubscribed } from './errors.svelte';
 import { api, listen, type CuratedList, type ListRef, type Playable, type Station } from './api';
 
 // By title, as the listener's language sorts them: no list ranks above another (14 §6.3).
@@ -39,7 +39,8 @@ class ListsStore {
       api
         .getFavoriteLists()
         .then((ids) => (this.favoriteIds = ids))
-        .catch(() => {}),
+        // Unlike the curated lists, these are the user's own: an empty set would look like a loss.
+        .catch((e) => errors.report('stations', e)),
     ]);
     return off;
   }

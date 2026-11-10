@@ -22,7 +22,7 @@ use soundfolk_nowplaying::recipe::{LoadError, Recipe};
 use soundfolk_nowplaying::Timestamp;
 
 use crate::error::{AppResult, IoContext};
-use crate::files::numbered;
+use crate::files::{numbered, write_new};
 
 include!(concat!(env!("OUT_DIR"), "/bundled_recipes.rs"));
 
@@ -564,19 +564,18 @@ pub fn file_to_edit(recipes: &Recipes, station: EditedStation) -> AppResult<Path
                     .ok()
                     .and_then(|u| u.host_str().map(str::to_owned));
                 let base = slug(name.or(host.as_deref()).unwrap_or("station"));
-                let path = numbered(&base)
-                    .filter(|id| !recipes.is_known_id(id))
-                    .map(|id| dir.join(format!("{id}.toml")))
-                    .find(|path| !path.exists())
-                    .expect("an unused name");
                 let text = template(&Template {
                     name: name.or(host.as_deref()).unwrap_or("Station"),
                     station_id: station.id,
                     stream: station.stream,
                     homepage: station.homepage,
                 });
-                std::fs::write(&path, text).at(&path)?;
-                path
+                write_new(
+                    numbered(&base)
+                        .filter(|id| !recipes.is_known_id(id))
+                        .map(|id| dir.join(format!("{id}.toml"))),
+                    &text,
+                )?
             }
         },
     };

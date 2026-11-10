@@ -843,6 +843,7 @@ impl EngineCtx {
             match command {
                 Command::Stop => {
                     self.status.clear_now_playing();
+                    self.web.stop();
                     self.unpause(PlayerState::Idle);
                 }
                 Command::Play {

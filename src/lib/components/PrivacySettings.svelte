@@ -29,7 +29,7 @@
     api
       .getUpdateCheck()
       .then((check) => (updateCheck = check))
-      .catch(() => {});
+      .catch((e) => errors.report('settings', e));
     try {
       [clickCounting, identify, webTitles] = await Promise.all([
         api.getClickCounting(),
@@ -52,7 +52,7 @@
 
   async function saveClickCounting(enabled: boolean) {
     await api.setClickCounting(enabled);
-    if (!enabled) player.clickNotice = false;
+    if (!enabled) player.hideClickNotice();
   }
 
   async function saveUpdateCheck(enabled: boolean) {

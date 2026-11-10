@@ -195,8 +195,11 @@ export const commands = {
 	closeMiniPlayer: () => __TAURI_INVOKE<void>("close_mini_player"),
 	/**  The mini player's shrink and expand buttons. */
 	setMiniCompact: (compact: boolean) => __TAURI_INVOKE<null>("set_mini_compact", { compact }),
-	/**  Next or previous favorite, as the media keys and the tray do it. */
-	switchFavorite: (forward: boolean) => __TAURI_INVOKE<void>("switch_favorite", { forward }),
+	/**
+	 *  Next or previous favorite, as the media keys and the tray do it. Unlike them, the mini player
+	 *  has a window to show a failure in.
+	 */
+	switchFavorite: (forward: boolean) => __TAURI_INVOKE<null>("switch_favorite", { forward }),
 	getUpdateCheck: () => __TAURI_INVOKE<UpdateCheck>("get_update_check"),
 	/**  Switched on, it checks at once if the last check is a day old. */
 	setUpdateCheck: (enabled: boolean) => __TAURI_INVOKE<null>("set_update_check", { enabled }),

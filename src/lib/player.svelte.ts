@@ -62,6 +62,13 @@ class PlayerStore {
   /** Audio is (or is about to be) playing: the main button shows Pause. */
   active = $derived(['connecting', 'reconnecting', 'playing'].includes(this.state.status));
 
+  /** Closes the recipe notice; with `notice`, only if it is still that one (a newer save is kept). */
+  dismissRecipeNotice = (notice?: RecipeNotice) => {
+    if (!notice || this.recipeNotice === notice) this.recipeNotice = null;
+  };
+  /** Closes the listen-counting notice. */
+  hideClickNotice = () => (this.clickNotice = false);
+
   isFavorite = (id: string) => this.favorites.some((f) => f.station_id === id);
 
   /** Call once on mount; returns the unsubscribe function. */
