@@ -4,8 +4,11 @@
 //!
 //! The window gets the logo inline (`data:` address), the desktop's media controls as a file.
 //! Only images are kept: an error page served instead of the favicon is dropped.
+//!
+//! A logo the user chose for a station ([`ChosenLogos`]) is kept in the data folder instead, never
+//! pruned, and shown over the favicon until the user takes it back.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use base64::Engine;
@@ -143,26 +146,14 @@ impl LogoCache {
         Self { dir, client }
     }
 
-    /// Path of a station's logo in a given format.
-    fn path(&self, id: &str, ext: &str) -> Option<PathBuf> {
-        let dir = self.dir.as_ref().filter(|_| is_safe_id(id))?;
-        Some(dir.join(format!("{id}.{ext}")))
-    }
-
     /// The logo kept for a station, and whether it is due to be fetched again.
     pub fn cached(&self, id: &str) -> Option<(Logo, bool)> {
-        FORMATS.iter().find_map(|(ext, _)| {
-            let path = self.path(id, ext)?;
-            let bytes = std::fs::read(&path).ok()?;
-            let (_, media_type) = format_of(&bytes)?;
-            let age = std::fs::metadata(&path)
-                .and_then(|m| m.modified())
-                .ok()
-                .and_then(|at| SystemTime::now().duration_since(at).ok());
-            let stale = age.is_none_or(|age| age > MAX_AGE);
-            let file = Url::from_file_path(&path).ok().map(String::from);
-            Some((logo_of(&bytes, media_type, file), stale))
-        })
+        let (logo, path) = read_in(self.dir.as_deref(), id)?;
+        let age = std::fs::metadata(&path)
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|at| SystemTime::now().duration_since(at).ok());
+        Some((logo, age.is_none_or(|age| age > MAX_AGE)))
     }
 
     /// Downloads a logo and keeps it for the station (written from a blocking thread).
@@ -211,32 +202,97 @@ impl LogoCache {
 
     /// Writes a logo to the cache folder (replacing one of another format); its `file://` address.
     fn store(&self, id: &str, ext: &str, bytes: &[u8]) -> Option<String> {
-        let path = self.path(id, ext)?;
-        let tmp = path.with_extension("part");
-        let written = path
-            .parent()
-            .map_or(Ok(()), std::fs::create_dir_all)
-            .and_then(|()| std::fs::write(&tmp, bytes))
-            .and_then(|()| std::fs::rename(&tmp, &path));
-        if let Err(e) = written {
-            tracing::debug!("station logo not kept: {e}");
-            let _ = std::fs::remove_file(&tmp);
-            return None;
-        }
-        self.forget_except(id, Some(ext));
-        Url::from_file_path(&path).ok().map(String::from)
+        write_in(self.dir.as_deref(), id, ext, bytes)
+            .inspect_err(|e| tracing::debug!("station logo not kept: {e}"))
+            .ok()
     }
 
     /// The station has no logo any more: the kept one goes.
     pub fn forget(&self, id: &str) {
-        self.forget_except(id, None);
+        remove_in(self.dir.as_deref(), id, None);
+    }
+}
+
+/// Logos the user chose for stations, from image files of their own.
+#[derive(Clone)]
+pub struct ChosenLogos {
+    /// `None`: no data folder (no logo can be chosen).
+    dir: Option<PathBuf>,
+}
+
+impl ChosenLogos {
+    pub fn new(dir: Option<PathBuf>) -> Self {
+        Self { dir }
     }
 
-    fn forget_except(&self, id: &str, keep: Option<&str>) {
-        for (ext, _) in FORMATS.iter().filter(|(ext, _)| Some(*ext) != keep) {
-            if let Some(path) = self.path(id, ext) {
-                let _ = std::fs::remove_file(path);
-            }
+    /// The logo the user chose for a station, if any.
+    pub fn get(&self, id: &str) -> Option<Logo> {
+        read_in(self.dir.as_deref(), id).map(|(logo, _)| logo)
+    }
+
+    /// Keeps an image as the station's logo, replacing the one chosen before. The error is
+    /// written for the user.
+    pub fn set(&self, id: &str, bytes: &[u8]) -> Result<Logo, String> {
+        if bytes.len() > MAX_BYTES {
+            return Err("This image is too big: 1 MB at most.".into());
+        }
+        let (ext, media_type) = format_of(bytes).ok_or(
+            "This file is not an image Soundfolk can show (PNG, JPEG, GIF, WebP, ICO, BMP or SVG).",
+        )?;
+        let file = write_in(self.dir.as_deref(), id, ext, bytes).map_err(|e| {
+            tracing::warn!("station logo not saved: {e}");
+            format!("The logo was not saved: {e}")
+        })?;
+        Ok(logo_of(bytes, media_type, Some(file)))
+    }
+
+    /// The station gets back its own logo.
+    pub fn clear(&self, id: &str) {
+        remove_in(self.dir.as_deref(), id, None);
+    }
+}
+
+/// Path of a station's logo in a given format, in `dir`.
+fn path_in(dir: Option<&Path>, id: &str, ext: &str) -> Option<PathBuf> {
+    let dir = dir.filter(|_| is_safe_id(id))?;
+    Some(dir.join(format!("{id}.{ext}")))
+}
+
+/// The logo kept in `dir` for a station, and its file.
+fn read_in(dir: Option<&Path>, id: &str) -> Option<(Logo, PathBuf)> {
+    FORMATS.iter().find_map(|(ext, _)| {
+        let path = path_in(dir, id, ext)?;
+        let bytes = std::fs::read(&path).ok()?;
+        let (_, media_type) = format_of(&bytes)?;
+        let file = Url::from_file_path(&path).ok().map(String::from);
+        Some((logo_of(&bytes, media_type, file), path))
+    })
+}
+
+/// Writes a logo to `dir` (replacing one of another format); its `file://` address.
+fn write_in(dir: Option<&Path>, id: &str, ext: &str, bytes: &[u8]) -> Result<String, String> {
+    let path = path_in(dir, id, ext).ok_or("no folder for this station")?;
+    let tmp = path.with_extension("part");
+    let written = path
+        .parent()
+        .map_or(Ok(()), std::fs::create_dir_all)
+        .and_then(|()| std::fs::write(&tmp, bytes))
+        .and_then(|()| std::fs::rename(&tmp, &path));
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.to_string());
+    }
+    remove_in(dir, id, Some(ext));
+    Url::from_file_path(&path)
+        .map(String::from)
+        .map_err(|()| "not a file address".into())
+}
+
+/// Deletes a station's logos in `dir`, but the one in format `keep`.
+fn remove_in(dir: Option<&Path>, id: &str, keep: Option<&str>) {
+    for (ext, _) in FORMATS.iter().filter(|(ext, _)| Some(*ext) != keep) {
+        if let Some(path) = path_in(dir, id, ext) {
+            let _ = std::fs::remove_file(path);
         }
     }
 }
@@ -370,6 +426,26 @@ mod tests {
 
         cache.forget(id);
         assert_eq!(cache.cached(id), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn chosen_logos_are_images_kept_until_taken_back() {
+        let dir = std::env::temp_dir().join(format!("soundfolk-chosen-{}", std::process::id()));
+        let chosen = ChosenLogos::new(Some(dir.clone()));
+        let id = "ab30ca84-c228-4f57-8cac-816c69ef651d";
+        assert_eq!(chosen.get(id), None);
+
+        assert!(chosen.set(id, b"<!DOCTYPE html>").is_err());
+        assert!(chosen.set(id, &vec![0x89; MAX_BYTES + 1]).is_err());
+        assert!(chosen.set("../x", PNG).is_err());
+
+        let logo = chosen.set(id, PNG).unwrap();
+        assert!(logo.inline.starts_with("data:image/png;base64,"));
+        assert_eq!(chosen.get(id), Some(logo));
+
+        chosen.clear(id);
+        assert_eq!(chosen.get(id), None);
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -167,6 +167,22 @@
   margin-top: 0.25rem;
 }
 
+.logoRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The logo chosen, whole and at a fixed size whatever its shape. */
+.logo {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  object-fit: contain;
+  border-radius: 0.375rem;
+  background: var(--color-surface-high);
+}
+
 .inline {
   padding: 0;
   border: 0;

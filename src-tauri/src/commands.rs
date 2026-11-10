@@ -499,6 +499,48 @@ pub async fn set_station_name(
     .await
 }
 
+// ── Station logos ──────────────────────────────────────────────────────────────
+
+/// The logo the user chose for a catalog station (`data:` address), if any.
+#[tauri::command]
+#[specta::specta]
+pub async fn get_station_logo(app: AppHandle, station_id: String) -> AppResult<Option<String>> {
+    blocking(move || Ok(app.state::<CoversState>().0.chosen_logo(&station_id))).await
+}
+
+/// Makes an image file the logo of a catalog station, shown over its Radio-Browser favicon;
+/// `None` gives it back its own. `image` is the file as a `data:` address (or bare base64).
+/// Returns the logo kept. The player and the media controls follow at once when it is on air.
+#[tauri::command]
+#[specta::specta]
+pub async fn set_station_logo(
+    app: AppHandle,
+    station_id: String,
+    image: Option<String>,
+) -> AppResult<Option<String>> {
+    use base64::Engine;
+    if !player::is_catalog_id(&station_id) {
+        return Err("Only a catalog station can be given a logo."
+            .to_owned()
+            .into());
+    }
+    let bytes = image
+        .map(|image| {
+            let data = image
+                .split_once("base64,")
+                .map_or(image.as_str(), |(_, d)| d);
+            base64::engine::general_purpose::STANDARD
+                .decode(data.trim())
+                .map_err(|_| "This file could not be read.".to_owned())
+        })
+        .transpose()?;
+    blocking(move || {
+        let covers = &app.state::<CoversState>().0;
+        Ok(covers.choose_logo(&station_id, bytes.as_deref())?)
+    })
+    .await
+}
+
 // ── Favorites ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]

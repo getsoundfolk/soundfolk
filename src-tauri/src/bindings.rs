@@ -74,6 +74,8 @@ macro_rules! commands {
             commands::remove_personal_station,
             commands::get_station_names,
             commands::set_station_name,
+            commands::get_station_logo,
+            commands::set_station_logo,
             donations::get_donation_link,
             curated_lists::get_curated_lists,
             curated_lists::get_lists_for_station,

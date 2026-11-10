@@ -11,8 +11,8 @@
 //!   images are served by the Internet Archive, often after several seconds.
 //!
 //! Sources are asked from top to bottom and the first cover found wins; a disabled source is never
-//! asked. Without any, the station's logo (its Radio-Browser favicon, kept on disk: see [`logos`])
-//! is shown. Online sources are looked up one at a time, in order: the next one only when the one
+//! asked. Without any, the station's logo is shown: the one the user chose on the station sheet,
+//! else its Radio-Browser favicon, kept on disk (see [`logos`]). Online sources are looked up one at a time, in order: the next one only when the one
 //! before has no cover. While a lookup runs, the cover of a source further down is shown. A result
 //! (even "none") is cached in the database for each source, so a track that comes back on air is
 //! not looked up again.
@@ -44,7 +44,7 @@ mod logos;
 mod search;
 use deezer::Deezer;
 use itunes::Itunes;
-use logos::{Logo, LogoCache};
+use logos::{ChosenLogos, Logo, LogoCache};
 
 /// After a failed lookup (network), the same track is not looked up again for this long.
 const RETRY_FAILED: Duration = Duration::from_secs(300);
@@ -205,6 +205,8 @@ struct State {
     station_id: Option<String>,
     /// Logos of the stations played since launch (`None`: the station has none).
     logos: HashMap<String, Option<Logo>>,
+    /// Logos the user chose, read from disk the first time a station plays (`None`: not chosen).
+    chosen: HashMap<String, Option<Logo>>,
     /// Stations whose logo was read from disk, and fetched again if need be, since launch.
     logos_checked: HashSet<String>,
     /// Picture last given to the media controls.
@@ -220,6 +222,7 @@ pub struct Covers {
     itunes: Option<Arc<Itunes>>,
     media: Arc<SystemMedia>,
     logo_cache: LogoCache,
+    chosen_logos: ChosenLogos,
     /// `file://` address of the Soundfolk icon, for the media controls of a station without a logo.
     app_icon: Option<String>,
     state: Mutex<State>,
@@ -252,6 +255,12 @@ impl Covers {
     ) -> Arc<Self> {
         let app_icon = app_icon_file(&app);
         let logo_cache = LogoCache::new(app.path().app_cache_dir().ok().map(|d| d.join("logos")));
+        let chosen_logos = ChosenLogos::new(
+            app.path()
+                .app_data_dir()
+                .ok()
+                .map(|d| d.join("station_logos")),
+        );
         Arc::new(Self {
             app,
             mb,
@@ -259,6 +268,7 @@ impl Covers {
             itunes: Itunes::new().map(Arc::new),
             media,
             logo_cache,
+            chosen_logos,
             app_icon,
             state: Mutex::new(State::default()),
         })
@@ -312,6 +322,12 @@ impl Covers {
     /// once; it is fetched from the catalog when there is none yet or it is old, once per launch.
     /// `catalog_id` is `None` for a station outside the catalog (no logo).
     pub fn set_station(self: &Arc<Self>, catalog_id: Option<String>) {
+        if let Some(id) = &catalog_id
+            && !self.state().chosen.contains_key(id)
+        {
+            let chosen = self.chosen_logos.get(id);
+            self.state().chosen.entry(id.clone()).or_insert(chosen);
+        }
         let check = {
             let mut state = self.state();
             state.station_id = catalog_id.clone();
@@ -360,6 +376,44 @@ impl Covers {
         });
     }
 
+    /// The logo the user chose for a station (`data:` address), if any. Reads the disk.
+    pub fn chosen_logo(&self, id: &str) -> Option<String> {
+        if let Some(chosen) = self.state().chosen.get(id) {
+            return chosen.as_ref().map(|l| l.inline.clone());
+        }
+        let chosen = self.chosen_logos.get(id);
+        let inline = chosen.as_ref().map(|l| l.inline.clone());
+        self.state().chosen.insert(id.to_owned(), chosen);
+        inline
+    }
+
+    /// The user chose an image as the station's logo, or took it back (`None`): shown at once if
+    /// the station is on air. Returns the logo kept (`data:` address); the error is for the user.
+    /// Reads the database: never on the async runtime.
+    pub fn choose_logo(
+        self: &Arc<Self>,
+        id: &str,
+        image: Option<&[u8]>,
+    ) -> Result<Option<String>, String> {
+        let logo = match image {
+            Some(bytes) => Some(self.chosen_logos.set(id, bytes)?),
+            None => {
+                self.chosen_logos.clear(id);
+                None
+            }
+        };
+        let inline = logo.as_ref().map(|l| l.inline.clone());
+        let on_air = {
+            let mut state = self.state();
+            state.chosen.insert(id.to_owned(), logo);
+            state.station_id.as_deref() == Some(id)
+        };
+        if on_air {
+            self.resolve(false);
+        }
+        Ok(inline)
+    }
+
     /// The sources changed (as saved): the cover of the track on air is chosen again.
     pub fn set_sources(self: &Arc<Self>, sources: Vec<CoverSource>) {
         self.state().sources = Some(sources);
@@ -393,10 +447,10 @@ impl Covers {
     fn resolve(self: &Arc<Self>, title_changed: bool) {
         let (now_playing, station, label, logo) = {
             let state = self.state();
-            let logo = state
-                .station_id
-                .as_ref()
-                .and_then(|id| state.logos.get(id).cloned().flatten());
+            let logo = state.station_id.as_ref().and_then(|id| {
+                let chosen = state.chosen.get(id).cloned().flatten();
+                chosen.or_else(|| state.logos.get(id).cloned().flatten())
+            });
             (
                 state.now_playing.clone(),
                 state.station.clone(),

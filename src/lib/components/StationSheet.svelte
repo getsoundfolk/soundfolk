@@ -43,12 +43,17 @@
   /** The name the user gave the station, if any; the station keeps its own as `station.name`. */
   const given = $derived(station ? stationNames.given(station.id) : null);
   let nameError = $state<string | null>(null);
+  /** The logo the user chose for the station (`data:` address), over its catalog favicon. */
+  let chosenLogo = $state<string | null>(null);
+  let logoError = $state<string | null>(null);
+  let logoInput: HTMLInputElement | undefined = $state();
 
   $effect(() => {
     if (!dialog) return;
     if (ui.stationOpen && !dialog.open) {
       error = null;
       nameError = null;
+      logoError = null;
       dialog.showModal();
       // Opening focuses its first button: ringed in WebKitGTK, even from a click. The sheet itself
       // takes the focus instead (a blur only sends WebKitGTK to the next button).
@@ -67,6 +72,23 @@
       .getStation(id)
       .then((found) => {
         if (current) fetched = found;
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  });
+
+  // Only a catalog station can be given a logo (its UUID names the file).
+  $effect(() => {
+    chosenLogo = null;
+    const id = station?.id;
+    if (!ui.stationOpen || !isCatalogId(id)) return;
+    let current = true;
+    api
+      .getStationLogo(id)
+      .then((logo) => {
+        if (current) chosenLogo = logo;
       })
       .catch(() => {});
     return () => {
@@ -117,6 +139,27 @@
   function open(url: string) {
     error = null;
     openUrl(url).catch((e) => (error = errorMessage(e)));
+  }
+
+  /** Makes an image file the station's logo (null: gives it back its own). */
+  async function setLogo(file: File | null) {
+    if (!station) return;
+    const id = station.id;
+    logoError = null;
+    try {
+      const image = file
+        ? await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('This file could not be read.'));
+            reader.readAsDataURL(file);
+          })
+        : null;
+      const kept = await api.setStationLogo(id, image);
+      if (station?.id === id) chosenLogo = kept;
+    } catch (e) {
+      logoError = errorMessage(e);
+    }
   }
 
   /** Saves the name typed (on Enter or when the field loses focus). Its own name, or a blank
@@ -253,6 +296,41 @@
           {#if nameError}<p class={styles.warning} role="alert">{nameError}</p>{/if}
         </dd>
       </div>
+      {#if isCatalogId(station.id)}
+        <div>
+          <dt>Logo</dt>
+          <dd>
+            <div class={styles.logoRow}>
+              {#if chosenLogo}<img class={styles.logo} src={chosenLogo} alt="" />{/if}
+              <button class={styles.chip} type="button" onclick={() => logoInput?.click()}
+                >{chosenLogo ? 'Choose another image…' : 'Choose an image…'}</button
+              >
+              <input
+                bind:this={logoInput}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp,image/bmp,image/svg+xml,.ico"
+                hidden
+                onchange={(e) => {
+                  const file = e.currentTarget.files?.[0] ?? null;
+                  e.currentTarget.value = '';
+                  if (file) setLogo(file);
+                }}
+              />
+            </div>
+            <p class={styles.hint}>
+              {#if chosenLogo}
+                Shown instead of its own logo.
+                <button class={styles.inline} type="button" onclick={() => setLogo(null)}
+                  >Use its own logo</button
+                >
+              {:else}
+                An image file of yours, shown instead of its own logo.
+              {/if}
+            </p>
+            {#if logoError}<p class={styles.warning} role="alert">{logoError}</p>{/if}
+          </dd>
+        </div>
+      {/if}
       {#if catalog}
         <!-- No genres until the tags map to translated genres (§3.1): raw tags are in the technical details. -->
         {#if catalog.country || catalog.country_code}

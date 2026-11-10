@@ -132,6 +132,14 @@ export const commands = {
 	 *  media controls follow at once when the station is on air.
 	 */
 	setStationName: (stationId: string, name: string | null) => __TAURI_INVOKE<string | null>("set_station_name", { stationId, name }),
+	/**  The logo the user chose for a catalog station (`data:` address), if any. */
+	getStationLogo: (stationId: string) => __TAURI_INVOKE<string | null>("get_station_logo", { stationId }),
+	/**
+	 *  Makes an image file the logo of a catalog station, shown over its Radio-Browser favicon;
+	 *  `None` gives it back its own. `image` is the file as a `data:` address (or bare base64).
+	 *  Returns the logo kept. The player and the media controls follow at once when it is on air.
+	 */
+	setStationLogo: (stationId: string, image: string | null) => __TAURI_INVOKE<string | null>("set_station_logo", { stationId, image }),
 	/**  The donation page of the station being played or shown, if the list has one. */
 	getDonationLink: (stationId: string | null, url: string) => __TAURI_INVOKE<DonationLink | null>("get_donation_link", { stationId, url }),
 	/**  Every list, in the published order (the app sorts them by title). */
