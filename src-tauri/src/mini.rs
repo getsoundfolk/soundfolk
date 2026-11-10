@@ -21,7 +21,7 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::media_controls::{control, Command};
 
 pub const LABEL: &str = "mini";
@@ -33,10 +33,6 @@ pub const LABEL: &str = "mini";
 /// title bar and no border there is nothing to drag a size from anyway.
 const FULL: (f64, f64) = (560.0, 180.0);
 const COMPACT: (f64, f64) = (320.0, 88.0);
-/// Whether the user left it compact.
-const SETTING_COMPACT: &str = "mini_compact";
-/// Where the user last left it, as physical `x,y` (displays can disagree on their scale factor).
-const SETTING_POSITION: &str = "mini_position";
 /// Gap to the screen's edges the first time it opens.
 const MARGIN: f64 = 24.0;
 
@@ -146,7 +142,10 @@ pub fn set_compact(app: &AppHandle, compact: bool) -> tauri::Result<()> {
     if let Some(position) = moved {
         let _ = window.set_position(position);
     }
-    if let Err(e) = app.state::<Database>().set_bool(SETTING_COMPACT, compact) {
+    if let Err(e) = app
+        .state::<Database>()
+        .set_flag(settings::MINI_COMPACT, compact)
+    {
         tracing::warn!("mini player size not saved: {e}");
     }
     Ok(())
@@ -160,7 +159,10 @@ pub fn save_position(app: &AppHandle) {
     };
     if let Ok(p) = window.outer_position() {
         let value = format!("{},{}", p.x, p.y);
-        if let Err(e) = app.state::<Database>().set_str(SETTING_POSITION, &value) {
+        if let Err(e) = app
+            .state::<Database>()
+            .set_text(settings::MINI_POSITION, &value)
+        {
             tracing::warn!("mini player position not saved: {e}");
         }
     }
@@ -226,7 +228,7 @@ pub async fn switch_favorite(app: AppHandle, forward: bool) {
 
 /// The size it was left at.
 fn size(app: &AppHandle) -> (f64, f64) {
-    match app.state::<Database>().get_bool(SETTING_COMPACT, false) {
+    match app.state::<Database>().flag(settings::MINI_COMPACT) {
         Ok(true) => COMPACT,
         _ => FULL,
     }
@@ -241,7 +243,7 @@ fn placement(
 ) -> Option<PhysicalPosition<i32>> {
     let saved = app
         .state::<Database>()
-        .get_str(SETTING_POSITION)
+        .text(settings::MINI_POSITION)
         .ok()
         .flatten()
         .and_then(|v| parse_position(&v));

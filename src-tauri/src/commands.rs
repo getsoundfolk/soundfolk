@@ -14,18 +14,16 @@ use crate::audio::{self, AudioEngine, NowPlaying, PlayerState};
 use crate::catalog::{surprise, SearchPage, SearchQuery, Station};
 use crate::covers::{self, Cover, CoverSource};
 use crate::db::{
-    Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, Stats,
+    settings, Database, Favorite, HistoryEntry, HistorySummary, LikedTrack, PersonalStation, Stats,
 };
 use crate::error::AppResult;
 use crate::export;
 use crate::files::{open_path, save_download, ExportedFile};
-use crate::musicbrainz::{IdentifyWaker, SETTING_IDENTIFY};
+use crate::musicbrainz::IdentifyWaker;
 use crate::now_playing::{RecipeTest, TitleStatus};
 use crate::player::{self, catalog_ref, AudioState, PlayOutcome, ResolvedStation};
 use crate::recipes;
-use crate::state::{
-    blocking, with_db, CatalogState, CoversState, WebTitlesState, SETTING_WEB_TITLES,
-};
+use crate::state::{blocking, with_db, CatalogState, CoversState, WebTitlesState};
 use crate::track_services::{self, CustomService};
 
 // ── Audio ────────────────────────────────────────────────────────────────────
@@ -94,7 +92,7 @@ pub async fn set_click_counting(db: State<'_, Database>, enabled: bool) -> AppRe
 #[tauri::command]
 #[specta::specta]
 pub async fn get_web_titles(db: State<'_, Database>) -> AppResult<bool> {
-    with_db(&db, |db| Ok(db.get_bool(SETTING_WEB_TITLES, true)?)).await
+    with_db(&db, |db| Ok(db.flag(settings::WEB_TITLES)?)).await
 }
 
 /// Applies from the next station played.
@@ -105,7 +103,10 @@ pub async fn set_web_titles(
     web: State<'_, WebTitlesState>,
     enabled: bool,
 ) -> AppResult<()> {
-    with_db(&db, move |db| Ok(db.set_bool(SETTING_WEB_TITLES, enabled)?)).await?;
+    with_db(&db, move |db| {
+        Ok(db.set_flag(settings::WEB_TITLES, enabled)?)
+    })
+    .await?;
     web.0.set_enabled(enabled);
     Ok(())
 }
@@ -596,7 +597,7 @@ pub async fn get_stats(db: State<'_, Database>, days: Option<u32>) -> AppResult<
 #[tauri::command]
 #[specta::specta]
 pub async fn get_track_identification(db: State<'_, Database>) -> AppResult<bool> {
-    with_db(&db, |db| Ok(db.get_bool(SETTING_IDENTIFY, false)?)).await
+    with_db(&db, |db| Ok(db.flag(settings::IDENTIFY_TRACKS)?)).await
 }
 
 #[tauri::command]
@@ -606,7 +607,10 @@ pub async fn set_track_identification(
     waker: State<'_, IdentifyWaker>,
     enabled: bool,
 ) -> AppResult<()> {
-    with_db(&db, move |db| Ok(db.set_bool(SETTING_IDENTIFY, enabled)?)).await?;
+    with_db(&db, move |db| {
+        Ok(db.set_flag(settings::IDENTIFY_TRACKS, enabled)?)
+    })
+    .await?;
     waker.0.notify_one();
     Ok(())
 }

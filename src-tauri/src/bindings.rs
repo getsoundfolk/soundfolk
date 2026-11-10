@@ -5,8 +5,6 @@
 //! The `bindings` test writes the file again; it fails when the file changed, so a stale copy does
 //! not get past the CI. Run `cargo test bindings` after changing a command or a type it carries.
 
-use serde::Serialize;
-use specta::Type;
 use tauri_specta::{collect_commands, Builder, ErrorHandlingMode};
 
 use crate::*;
@@ -119,7 +117,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         .dangerously_cast_bigints_to_number()
         // One type per Rust type, not one per direction.
         .disable_serde_phases()
-        .typ::<EventPayloads>()
+        .typ::<events::EventPayloads>()
         .typ::<error::AppError>()
 }
 
@@ -127,39 +125,6 @@ pub fn builder() -> Builder<tauri::Wry> {
 /// (serde writes NaN and the infinities as `null`): `#[specta(type = Number)]` on one that is never
 /// NaN or infinite.
 pub(crate) type Number = i32;
-
-/// The events sent to the windows, by name, with their payload: the front end listens to them
-/// through this map (`listen` in `api.ts`). `null` is an event without payload.
-#[derive(Serialize, Type)]
-#[allow(dead_code)] // Only its type is used.
-struct EventPayloads {
-    #[serde(rename = "player:state")]
-    player_state: audio::PlayerState,
-    #[serde(rename = "player:now-playing")]
-    player_now_playing: audio::NowPlaying,
-    #[serde(rename = "player:cover")]
-    player_cover: covers::Cover,
-    #[serde(rename = "player:muted")]
-    player_muted: bool,
-    #[serde(rename = "player:title-status")]
-    player_title_status: crate::now_playing::TitleStatus,
-    #[serde(rename = "player:station")]
-    player_station: media_controls::StationChange,
-    #[serde(rename = "recipes:notice")]
-    recipes_notice: crate::now_playing::RecipeNotice,
-    #[serde(rename = "favorite:gone")]
-    favorite_gone: String,
-    #[serde(rename = "favorites:changed")]
-    favorites_changed: (),
-    #[serde(rename = "donations:updated")]
-    donations_updated: (),
-    #[serde(rename = "lists:updated")]
-    lists_updated: (),
-    #[serde(rename = "share:opened")]
-    share_opened: (),
-    #[serde(rename = "updates:available")]
-    updates_available: (),
-}
 
 #[cfg(test)]
 mod tests {
@@ -193,38 +158,6 @@ mod tests {
         if committed.replace("\r\n", "\n") != now {
             std::fs::write(PATH, &now).expect("bindings.ts not written");
             panic!("src/lib/bindings.ts was out of date: written again, commit it");
-        }
-    }
-
-    /// Each name in the map is one the backend sends.
-    #[test]
-    fn event_names() {
-        let names = [
-            PLAYER_STATE_EVENT,
-            TITLE_STATUS_EVENT,
-            RECIPE_NOTICE_EVENT,
-            DONATIONS_EVENT,
-            LISTS_EVENT,
-            share::OPENED_EVENT,
-            favorite_repair::FAVORITES_EVENT,
-            favorite_repair::GONE_EVENT,
-            media_controls::STATION_EVENT,
-            updates::UPDATE_EVENT,
-            listening::NOW_PLAYING_EVENT,
-            covers::COVER_EVENT,
-            volume::MUTED_EVENT,
-        ];
-        let bindings = generated("events");
-        let map = &bindings[bindings
-            .find("export type EventPayloads")
-            .expect("no EventPayloads")..];
-        let map = &map[..map.find('}').expect("EventPayloads not closed")];
-        assert_eq!(map.matches(": ").count(), names.len(), "{map}");
-        for name in names {
-            assert!(
-                map.contains(&format!("\"{name}\"")),
-                "{name} missing from EventPayloads"
-            );
         }
     }
 }

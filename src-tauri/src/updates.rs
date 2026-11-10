@@ -21,20 +21,15 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::Notify;
 
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
+use crate::events;
 use crate::state::with_db;
 
 pub const DEFAULT_URL: &str =
     "https://github.com/getsoundfolk/soundfolk/releases/latest/download/latest.json";
 /// The only pages the notice may open: a release of the app.
 const RELEASE_PAGES: &str = "https://github.com/getsoundfolk/soundfolk/releases/";
-/// Event emitted when a newer version was found (no payload: the window asks [`get_update`]).
-pub const UPDATE_EVENT: &str = "updates:available";
-/// Whether to check (Settings › Privacy), on by default.
-const SETTING_CHECK: &str = "update_check";
-/// The version the listener chose to skip: no notice for it, the next one has one again.
-const SETTING_SKIPPED: &str = "update_skipped";
 
 const FILES: Files = Files {
     list: "latest.json",
@@ -122,10 +117,10 @@ impl Updates {
 
     /// The release to tell the listener about, if any.
     fn available(&self, db: &Database) -> AppResult<Option<Release>> {
-        if !self.supported || !db.get_bool(SETTING_CHECK, true)? {
+        if !self.supported || !db.flag(settings::UPDATE_CHECK)? {
             return Ok(None);
         }
-        let skipped = db.get_str(SETTING_SKIPPED)?;
+        let skipped = db.text(settings::UPDATE_SKIPPED)?;
         let latest = self.latest.read().unwrap_or_else(|e| e.into_inner());
         Ok(latest
             .as_ref()
@@ -153,7 +148,7 @@ pub fn start(app: &AppHandle, updates: Arc<Updates>, cache_dir: Option<PathBuf>)
         tokio::time::sleep(FIRST_CHECK).await;
         loop {
             let db = app.state::<Database>();
-            let enabled = with_db(&db, |db| Ok(db.get_bool(SETTING_CHECK, true)?))
+            let enabled = with_db(&db, |db| Ok(db.flag(settings::UPDATE_CHECK)?))
                 .await
                 .unwrap_or_else(|e| {
                     tracing::warn!("update check setting not read: {e}");
@@ -164,8 +159,8 @@ pub fn start(app: &AppHandle, updates: Arc<Updates>, cache_dir: Option<PathBuf>)
                     Ok(Some(release)) => {
                         tracing::info!("latest release: {}", release.version);
                         updates.set(release);
-                        if let Err(e) = app.emit(UPDATE_EVENT, ()) {
-                            tracing::warn!("failed to emit {UPDATE_EVENT}: {e}");
+                        if let Err(e) = app.emit(events::UPDATE_AVAILABLE, ()) {
+                            tracing::warn!("failed to emit {}: {e}", events::UPDATE_AVAILABLE);
                         }
                     }
                     Ok(None) => tracing::debug!("latest release: unchanged"),
@@ -197,7 +192,7 @@ pub async fn get_update_check(
     with_db(&db, move |db| {
         Ok(UpdateCheck {
             supported,
-            enabled: db.get_bool(SETTING_CHECK, true)?,
+            enabled: db.flag(settings::UPDATE_CHECK)?,
         })
     })
     .await
@@ -211,7 +206,10 @@ pub async fn set_update_check(
     updates: State<'_, Arc<Updates>>,
     enabled: bool,
 ) -> AppResult<()> {
-    with_db(&db, move |db| Ok(db.set_bool(SETTING_CHECK, enabled)?)).await?;
+    with_db(&db, move |db| {
+        Ok(db.set_flag(settings::UPDATE_CHECK, enabled)?)
+    })
+    .await?;
     if enabled {
         updates.wake.notify_one();
     }
@@ -233,7 +231,10 @@ pub async fn get_update(
 #[tauri::command]
 #[specta::specta]
 pub async fn skip_update(db: State<'_, Database>, version: String) -> AppResult<()> {
-    with_db(&db, move |db| Ok(db.set_str(SETTING_SKIPPED, &version)?)).await
+    with_db(&db, move |db| {
+        Ok(db.set_text(settings::UPDATE_SKIPPED, &version)?)
+    })
+    .await
 }
 
 #[cfg(test)]

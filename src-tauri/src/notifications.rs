@@ -19,12 +19,11 @@ use std::time::Duration;
 use tauri::{AppHandle, State};
 
 use crate::audio::NowPlaying;
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
 use crate::state::with_db;
 use crate::tracks::ParsedTitle;
 
-const SETTING_TRACK_NOTIFICATIONS: &str = "track_notifications";
 /// A notification waits this long for its picture at most, then goes without it.
 const PICTURE_WAIT: Duration = Duration::from_secs(4);
 
@@ -61,12 +60,10 @@ struct Pending {
 
 impl TrackNotifications {
     pub fn new(app: &AppHandle, db: &Database, icon: Option<String>) -> Self {
-        let enabled = db
-            .get_bool(SETTING_TRACK_NOTIFICATIONS, false)
-            .unwrap_or_else(|e| {
-                tracing::warn!("track notifications setting not read: {e}");
-                false
-            });
+        let enabled = db.flag(settings::TRACK_NOTIFICATIONS).unwrap_or_else(|e| {
+            tracing::warn!("track notifications setting not read: {e}");
+            false
+        });
         let identifier = app.config().identifier.clone();
         init(&identifier);
         Self {
@@ -273,10 +270,7 @@ fn init(_identifier: &str) {}
 #[tauri::command]
 #[specta::specta]
 pub async fn get_track_notifications(db: State<'_, Database>) -> AppResult<bool> {
-    with_db(&db, |db| {
-        Ok(db.get_bool(SETTING_TRACK_NOTIFICATIONS, false)?)
-    })
-    .await
+    with_db(&db, |db| Ok(db.flag(settings::TRACK_NOTIFICATIONS)?)).await
 }
 
 #[tauri::command]
@@ -287,7 +281,7 @@ pub async fn set_track_notifications(
     enabled: bool,
 ) -> AppResult<()> {
     with_db(&db, move |db| {
-        Ok(db.set_bool(SETTING_TRACK_NOTIFICATIONS, enabled)?)
+        Ok(db.set_flag(settings::TRACK_NOTIFICATIONS, enabled)?)
     })
     .await?;
     notifications.enabled.store(enabled, Ordering::Relaxed);

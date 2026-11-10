@@ -20,9 +20,6 @@ pub struct CatalogState(pub Arc<dyn CatalogSource>);
 /// Web title sources, to turn them on or off from the settings.
 pub struct WebTitlesState(pub Arc<WebTitles>);
 
-/// Read the title of streams that do not announce it from the web (station page, server status).
-pub const SETTING_WEB_TITLES: &str = "web_titles";
-
 /// Cover art of the track on air, chosen from the sources the user put in order.
 pub struct CoversState(pub Arc<Covers>);
 
@@ -77,11 +74,13 @@ mod tests {
     #[tokio::test]
     async fn database_work_sees_the_same_connection() {
         let db = Database::open_in_memory().unwrap();
-        with_db(&db, |db| Ok(db.set_bool("some_setting", false)?))
-            .await
-            .unwrap();
-        assert!(!db.get_bool("some_setting", true).unwrap());
-        let read = with_db(&db, |db| Ok(db.get_bool("some_setting", true)?)).await;
+        with_db(&db, |db| {
+            Ok(db.set_flag(crate::db::settings::WEB_TITLES, false)?)
+        })
+        .await
+        .unwrap();
+        assert!(!db.flag(crate::db::settings::WEB_TITLES).unwrap());
+        let read = with_db(&db, |db| Ok(db.flag(crate::db::settings::WEB_TITLES)?)).await;
         assert!(!read.unwrap());
     }
 }

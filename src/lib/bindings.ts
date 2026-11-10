@@ -259,8 +259,8 @@ export type DonationLink = {
 export type ErrorKind = "database" | "network" | "catalog" | "io" | "other";
 
 /**
- *  The events sent to the windows, by name, with their payload: the front end listens to them
- *  through this map (`listen` in `api.ts`). `null` is an event without payload.
+ *  The events sent to the windows, by name, with their payload: the front end listens to
+ *  them through this map (`listen` in `api.ts`). `null` is an event without payload.
  */
 export type EventPayloads = {
 	"player:state": PlayerState,

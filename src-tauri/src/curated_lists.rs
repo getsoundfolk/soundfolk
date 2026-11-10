@@ -20,7 +20,7 @@ use soundfolk_nowplaying::recipe::Match;
 
 use crate::catalog::{Health, Station};
 use crate::daily_list::{self, Files, CHECK_EVERY, FIRST_CHECK};
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
 use crate::files::{save_download, ExportedFile};
 use crate::state::{with_db, CatalogState};
@@ -200,8 +200,8 @@ pub async fn refresh_curated_lists(
     match daily_list::refresh(client, &url, &dir, FILES, parse).await? {
         Some(fresh) => {
             lists.set(fresh);
-            if let Err(e) = app.emit(crate::LISTS_EVENT, ()) {
-                tracing::warn!("failed to emit {}: {e}", crate::LISTS_EVENT);
+            if let Err(e) = app.emit(crate::events::LISTS_UPDATED, ()) {
+                tracing::warn!("failed to emit {}: {e}", crate::events::LISTS_UPDATED);
             }
             Ok(true)
         }
@@ -262,16 +262,13 @@ pub async fn export_curated_list(
     )
 }
 
-/// Settings key of the lists marked as favorites: their ids, in the order they were marked.
-const FAVORITE_LISTS: &str = "favorite_lists";
-
 /// The ids of the lists the listener marked as favorites (14 §6.4). Only the id is kept: a list
 /// that left `lists.json` is simply not shown, and comes back if it is published again.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_favorite_lists(db: tauri::State<'_, Database>) -> AppResult<Vec<String>> {
     with_db(&db, |db| {
-        Ok(db.get_list(FAVORITE_LISTS)?.unwrap_or_default())
+        Ok(db.list(settings::FAVORITE_LISTS)?.unwrap_or_default())
     })
     .await
 }
@@ -288,12 +285,12 @@ pub async fn set_favorite_list(
         return Err(format!("not a list id: {id}").into());
     }
     with_db(&db, move |db| {
-        let mut ids = db.get_list(FAVORITE_LISTS)?.unwrap_or_default();
+        let mut ids = db.list(settings::FAVORITE_LISTS)?.unwrap_or_default();
         ids.retain(|i| *i != id);
         if favorite {
             ids.push(id);
         }
-        db.set_list(FAVORITE_LISTS, &ids)?;
+        db.set_list(settings::FAVORITE_LISTS, &ids)?;
         Ok(ids)
     })
     .await

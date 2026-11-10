@@ -4,11 +4,9 @@
 use rusqlite::{params, OptionalExtension, Row};
 use serde::Serialize;
 
+use super::settings::TITLE_PARSER_VERSION;
 use super::Database;
 use crate::tracks::{self, ParsedTitle};
-
-/// Version of the title parser the stored `artist` / `title` / `track_key` columns come from.
-const SETTING_PARSER_VERSION: &str = "title_parser_version";
 
 #[derive(Debug, Clone, Serialize, PartialEq, specta::Type)]
 pub struct HistoryEntry {
@@ -362,7 +360,7 @@ impl Database {
     /// Re-parses the stored titles when the parsing rules changed (or were never applied).
     pub(super) fn reparse_history_if_outdated(&self) -> rusqlite::Result<()> {
         let current = tracks::PARSER_VERSION.to_string();
-        if self.get_str(SETTING_PARSER_VERSION)?.as_deref() == Some(current.as_str()) {
+        if self.text(TITLE_PARSER_VERSION)?.as_deref() == Some(current.as_str()) {
             return Ok(());
         }
         let mut conn = self.conn();
@@ -411,7 +409,7 @@ impl Database {
         tx.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2)
              ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![SETTING_PARSER_VERSION, current],
+            params![TITLE_PARSER_VERSION.key(), current],
         )?;
         tx.commit()
     }
@@ -459,7 +457,7 @@ mod structured_tests {
         db.log_track("f7", Some("Fréquence 7"), "Air - Sexy Boy", true)
             .unwrap();
         // A parser change re-parses ICY titles only.
-        db.set_str(SETTING_PARSER_VERSION, "0").unwrap();
+        db.set_text(TITLE_PARSER_VERSION, "0").unwrap();
         db.reparse_history_if_outdated().unwrap();
 
         let history = db.recent_history(10, None).unwrap();
@@ -504,7 +502,7 @@ mod structured_tests {
         assert!(entry.liked, "the like follows the new track key");
 
         // Kept through a parser change, and a second call changes nothing.
-        db.set_str(SETTING_PARSER_VERSION, "0").unwrap();
+        db.set_text(TITLE_PARSER_VERSION, "0").unwrap();
         db.reparse_history_if_outdated().unwrap();
         db.set_track_parts("wc", "082 - Dru Down - Pimp of the Year", &parsed)
             .unwrap();

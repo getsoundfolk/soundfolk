@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::audio::{AudioEngine, DesktopAudioEngine, PlayerState, StationRef};
 use crate::catalog::CatalogSource;
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
 use crate::state::{with_db, CatalogState, CoversState, WebTitlesState};
 
@@ -61,12 +61,6 @@ impl AudioState {
     }
 }
 
-/// Setting: report to the catalog that a station is being played (enabled by default).
-const SETTING_CLICK_COUNTING: &str = "click_counting";
-/// True once the click-counting notice has been shown to the user.
-const SETTING_CLICK_NOTICE_SEEN: &str = "click_notice_seen";
-/// Last station played (JSON `OnAir`): the app opens with it in the player, ready to play.
-const SETTING_LAST_STATION: &str = "last_station";
 /// A station is only reported once it has been audible this long: zapping through
 /// stations (with the media keys, for instance) does not count.
 const CLICK_LISTEN_DELAY: Duration = Duration::from_secs(30);
@@ -74,7 +68,7 @@ const CLICK_LISTEN_DELAY: Duration = Duration::from_secs(30);
 /// Last station played in a previous run, loaded in the player at launch.
 pub(crate) fn saved_station(db: &Database) -> Option<OnAir> {
     let json = db
-        .get_str(SETTING_LAST_STATION)
+        .text(settings::LAST_STATION)
         .inspect_err(|e| tracing::warn!("last station not read: {e}"))
         .ok()??;
     serde_json::from_str(&json)
@@ -86,7 +80,7 @@ fn save_station(db: &Database, station: &OnAir) {
     let saved = serde_json::to_string(station)
         .map_err(|e| e.to_string())
         .and_then(|json| {
-            db.set_str(SETTING_LAST_STATION, &json)
+            db.set_text(settings::LAST_STATION, &json)
                 .map_err(|e| e.to_string())
         });
     if let Err(e) = saved {
@@ -96,15 +90,14 @@ fn save_station(db: &Database, station: &OnAir) {
 
 /// Whether stations played are reported to the catalog.
 pub(crate) fn click_counting(db: &Database) -> AppResult<bool> {
-    Ok(db.get_bool(SETTING_CLICK_COUNTING, true)?)
+    Ok(db.flag(settings::CLICK_COUNTING)?)
 }
 
 /// If the user sets counting themselves, the notice no longer needs to be shown.
 pub(crate) fn set_click_counting(db: &Database, enabled: bool) -> AppResult<()> {
-    let counting = if enabled { "true" } else { "false" };
-    Ok(db.set_strs(&[
-        (SETTING_CLICK_NOTICE_SEEN, "true"),
-        (SETTING_CLICK_COUNTING, counting),
+    Ok(db.set_flags(&[
+        (settings::CLICK_NOTICE_SEEN, true),
+        (settings::CLICK_COUNTING, enabled),
     ])?)
 }
 
@@ -160,12 +153,12 @@ pub(crate) fn start_station(
     if let Some(id) = station_id.filter(|id| is_catalog_id(id))
         && click_counting(&db)?
     {
-        if db.get_bool(SETTING_CLICK_NOTICE_SEEN, false)? {
+        if db.flag(settings::CLICK_NOTICE_SEEN)? {
             pending_click = Some((play, id));
         } else {
             // Nothing is sent until the user has seen the notice: this first
             // click is therefore not counted.
-            db.set_bool(SETTING_CLICK_NOTICE_SEEN, true)?;
+            db.set_flag(settings::CLICK_NOTICE_SEEN, true)?;
             show_click_notice = true;
         }
     }
@@ -337,7 +330,7 @@ mod tests {
     #[test]
     fn a_damaged_last_station_is_ignored() {
         let db = Database::open_in_memory().unwrap();
-        db.set_str(SETTING_LAST_STATION, "{not json").unwrap();
+        db.set_text(settings::LAST_STATION, "{not json").unwrap();
         assert!(saved_station(&db).is_none());
     }
 
@@ -346,6 +339,6 @@ mod tests {
         let db = Database::open_in_memory().unwrap();
         set_click_counting(&db, false).unwrap();
         assert!(!click_counting(&db).unwrap());
-        assert!(db.get_bool(SETTING_CLICK_NOTICE_SEEN, false).unwrap());
+        assert!(db.flag(settings::CLICK_NOTICE_SEEN).unwrap());
     }
 }

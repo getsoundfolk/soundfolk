@@ -30,11 +30,8 @@ use tauri::{Emitter, Manager};
 use crate::audio::{AudioEngine, NowPlaying, PlayerState};
 use crate::db::{Database, Favorite};
 use crate::error::AppResult;
+use crate::events;
 use crate::player::{start_station, AudioState};
-
-/// Event emitted when the media controls or a favorite's repair switch station (payload:
-/// `StationChange`), so that the window shows the station on air.
-pub(crate) const STATION_EVENT: &str = "player:station";
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub(crate) struct StationChange {
@@ -664,7 +661,7 @@ fn play_favorite(app: &tauri::AppHandle, next: Favorite, skipped: Vec<Skipped>) 
 }
 
 fn emit_station(app: &tauri::AppHandle, change: &StationChange) {
-    if let Err(e) = app.emit(STATION_EVENT, change) {
+    if let Err(e) = app.emit(events::STATION, change) {
         tracing::warn!("failed to emit the new station: {e}");
     }
 }

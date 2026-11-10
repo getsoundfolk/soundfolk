@@ -13,8 +13,9 @@ use url::Url;
 
 use crate::catalog::radio_browser::is_uuid;
 use crate::catalog::Station;
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
+use crate::events;
 use crate::state::{with_db, CatalogState};
 
 /// Where links point until `soundfolk.fm` exists (§2.1).
@@ -380,10 +381,6 @@ fn scheme_link(https: &str) -> String {
 
 // ── Commands ─────────────────────────────────────────────────────────────────
 
-/// Event emitted when a `soundfolk://` link was opened (no payload: the window takes it with
-/// [`take_opened_link`], also when it opens later).
-pub const OPENED_EVENT: &str = "share:opened";
-
 /// The last `soundfolk://` link opened from outside, until the window takes it: only the last
 /// one, so a burst of links shows one sheet (§6.3).
 #[derive(Default)]
@@ -405,8 +402,8 @@ pub fn opened(app: &tauri::AppHandle, url: &str) -> bool {
         .0
         .lock()
         .unwrap_or_else(|p| p.into_inner()) = Some(url.to_owned());
-    if let Err(e) = app.emit(OPENED_EVENT, ()) {
-        tracing::warn!("failed to emit {OPENED_EVENT}: {e}");
+    if let Err(e) = app.emit(events::SHARE_OPENED, ()) {
+        tracing::warn!("failed to emit {}: {e}", events::SHARE_OPENED);
     }
     true
 }
@@ -450,9 +447,6 @@ pub fn take_opened_link(opened: State<'_, OpenedLink>) -> Option<String> {
     opened.0.lock().unwrap_or_else(|p| p.into_inner()).take()
 }
 
-/// The sender's name put in links (§4.2), empty by default.
-const SETTING_FROM: &str = "share_from";
-
 /// Reads a pasted, dropped or opened text. `None`: not a Soundfolk link (a search, say); an
 /// error: a Soundfolk link that cannot be read, with the reason.
 #[tauri::command]
@@ -493,7 +487,7 @@ pub async fn make_share_link(
     item: Shared,
     track: Option<String>,
 ) -> AppResult<ShareOut> {
-    let from = with_db(&db, |db| Ok(db.get_str(SETTING_FROM)?)).await?;
+    let from = with_db(&db, |db| Ok(db.text(settings::SHARE_FROM)?)).await?;
     let (item, looked_up) = match item {
         Shared::PersonalStation { name, url } => {
             let found = catalog.0.by_stream(&url).await.ok().flatten();
@@ -543,7 +537,10 @@ pub async fn catalog_station_for_stream(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_share_name(db: State<'_, Database>) -> AppResult<String> {
-    with_db(&db, |db| Ok(db.get_str(SETTING_FROM)?.unwrap_or_default())).await
+    with_db(&db, |db| {
+        Ok(db.text(settings::SHARE_FROM)?.unwrap_or_default())
+    })
+    .await
 }
 
 /// Saves the sender's name, cleaned and cut to what a link carries; returns it.
@@ -552,7 +549,7 @@ pub async fn get_share_name(db: State<'_, Database>) -> AppResult<String> {
 pub async fn set_share_name(db: State<'_, Database>, name: String) -> AppResult<String> {
     let name = shorten(&name, MAX_FROM);
     with_db(&db, move |db| {
-        db.set_str(SETTING_FROM, &name)?;
+        db.set_text(settings::SHARE_FROM, &name)?;
         Ok(name)
     })
     .await

@@ -4,18 +4,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
 
 /// Most custom sites one can add: the menu must stay short.
 pub const MAX_CUSTOM: usize = 10;
 const MAX_NAME: usize = 40;
 const PLACEHOLDER: &str = "{query}";
-
-/// Services listed under "Find this track on", by id. Unset: the frontend's defaults.
-const SETTING_TRACK_SERVICES: &str = "track_services";
-/// Sites the user added to that menu (JSON list of `CustomService`).
-const SETTING_CUSTOM_TRACK_SERVICES: &str = "custom_track_services";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub struct CustomService {
@@ -87,7 +82,7 @@ pub fn validate(s: CustomService) -> Result<CustomService, String> {
 
 /// Ids of the services shown in a track's menu, or `None` if the user never chose.
 pub fn enabled_ids(db: &Database) -> AppResult<Option<Vec<String>>> {
-    Ok(db.get_list(SETTING_TRACK_SERVICES)?)
+    Ok(db.list(settings::TRACK_SERVICES)?)
 }
 
 /// Saves the ids shown in the menu; ids that cannot be stored in the list are dropped.
@@ -96,12 +91,12 @@ pub fn save_enabled_ids(db: &Database, ids: Vec<String>) -> AppResult<()> {
         .into_iter()
         .filter(|id| !id.is_empty() && !id.contains(','))
         .collect();
-    Ok(db.set_list(SETTING_TRACK_SERVICES, &ids)?)
+    Ok(db.set_list(settings::TRACK_SERVICES, &ids)?)
 }
 
 /// Sites the user added. A stored list that no longer passes the checks is dropped, not trusted.
 pub fn load_custom(db: &Database) -> AppResult<Vec<CustomService>> {
-    let Some(json) = db.get_str(SETTING_CUSTOM_TRACK_SERVICES)? else {
+    let Some(json) = db.text(settings::CUSTOM_TRACK_SERVICES)? else {
         return Ok(Vec::new());
     };
     let stored: Vec<CustomService> = serde_json::from_str(&json).unwrap_or_default();
@@ -114,7 +109,7 @@ pub fn load_custom(db: &Database) -> AppResult<Vec<CustomService>> {
 /// Replaces the whole list, once checked (see [`validate_all`]).
 pub fn save_custom(db: &Database, services: &[CustomService]) -> AppResult<()> {
     let json = serde_json::to_string(services).map_err(|e| e.to_string())?;
-    Ok(db.set_str(SETTING_CUSTOM_TRACK_SERVICES, &json)?)
+    Ok(db.set_text(settings::CUSTOM_TRACK_SERVICES, &json)?)
 }
 
 #[cfg(test)]

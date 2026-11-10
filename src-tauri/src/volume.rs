@@ -7,17 +7,11 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::audio::{AudioEngine, LevelMemory, StoredLevel};
-use crate::db::Database;
+use crate::db::{settings, Database};
 use crate::error::AppResult;
+use crate::events;
 use crate::player::AudioState;
 use crate::state::with_db;
-
-pub const SETTING_CONSTANT_VOLUME: &str = "constant_volume";
-/// Volume the user last chose (`0.0..=1.0`), restored at the next launch.
-const SETTING_VOLUME: &str = "volume";
-/// On by default: it is what nearly every listener wants, and its failure mode (a station a bit
-/// quieter than its own mastering) is mild.
-pub const CONSTANT_VOLUME_DEFAULT: bool = true;
 
 /// Station levels in the database. Read on the engine thread when a playback starts, written
 /// every minute while it plays from the engine's `level-writer` thread: errors are logged, never
@@ -53,20 +47,16 @@ impl LevelMemory for DatabaseLevels {
 }
 
 pub fn constant_volume(db: &Database) -> bool {
-    db.get_bool(SETTING_CONSTANT_VOLUME, CONSTANT_VOLUME_DEFAULT)
-        .unwrap_or_else(|e| {
-            tracing::warn!("constant volume setting not read: {e}");
-            CONSTANT_VOLUME_DEFAULT
-        })
+    db.flag(settings::CONSTANT_VOLUME).unwrap_or_else(|e| {
+        tracing::warn!("constant volume setting not read: {e}");
+        settings::CONSTANT_VOLUME.default
+    })
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn get_constant_volume(db: State<'_, Database>) -> AppResult<bool> {
-    with_db(&db, |db| {
-        Ok(db.get_bool(SETTING_CONSTANT_VOLUME, CONSTANT_VOLUME_DEFAULT)?)
-    })
-    .await
+    with_db(&db, |db| Ok(db.flag(settings::CONSTANT_VOLUME)?)).await
 }
 
 #[tauri::command]
@@ -77,7 +67,7 @@ pub async fn set_constant_volume(
     enabled: bool,
 ) -> AppResult<()> {
     with_db(&db, move |db| {
-        Ok(db.set_bool(SETTING_CONSTANT_VOLUME, enabled)?)
+        Ok(db.set_flag(settings::CONSTANT_VOLUME, enabled)?)
     })
     .await?;
     audio.engine().set_normalize(enabled);
@@ -137,9 +127,6 @@ pub fn set_level(app: &AppHandle, level: f32) -> AppResult<()> {
     Ok(())
 }
 
-/// Event emitted when the sound is cut or comes back (payload: whether it is cut).
-pub(crate) const MUTED_EVENT: &str = "player:muted";
-
 /// Cuts the sound or brings it back, and tells the windows and the tray menu.
 pub fn mute(app: &AppHandle, muted: bool) -> AppResult<()> {
     let (Some(sound), Some(audio)) = (app.try_state::<Sound>(), app.try_state::<AudioState>())
@@ -153,7 +140,7 @@ pub fn mute(app: &AppHandle, muted: bool) -> AppResult<()> {
             .engine()
             .set_volume(if muted { 0.0 } else { s.level.unwrap_or(1.0) })?;
     }
-    if let Err(e) = app.emit(MUTED_EVENT, muted) {
+    if let Err(e) = app.emit(events::MUTED, muted) {
         tracing::warn!("mute not sent to the windows: {e}");
     }
     crate::tray::show_muted(app, muted);
@@ -178,7 +165,7 @@ pub async fn set_volume(app: AppHandle, volume: f32) -> AppResult<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_volume(db: State<'_, Database>) -> AppResult<Option<f32>> {
-    let saved = with_db(&db, |db| Ok(db.get_str(SETTING_VOLUME)?)).await?;
+    let saved = with_db(&db, |db| Ok(db.text(settings::VOLUME)?)).await?;
     let saved = saved.and_then(|v| v.parse::<f32>().ok());
     Ok(saved.filter(|v| v.is_finite()).map(|v| v.clamp(0.0, 1.0)))
 }
@@ -192,7 +179,7 @@ pub async fn save_volume(db: State<'_, Database>, volume: f32) -> AppResult<()> 
         return Err("Invalid volume".to_owned().into());
     }
     let volume = volume.clamp(0.0, 1.0).to_string();
-    with_db(&db, move |db| Ok(db.set_str(SETTING_VOLUME, &volume)?)).await
+    with_db(&db, move |db| Ok(db.set_text(settings::VOLUME, &volume)?)).await
 }
 
 #[tauri::command]

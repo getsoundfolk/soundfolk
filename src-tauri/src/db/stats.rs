@@ -9,7 +9,6 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 
 use super::Database;
-use crate::musicbrainz::SETTING_IDENTIFY;
 
 /// Top entries kept per ranking.
 const TOP: u32 = 10;
@@ -111,7 +110,7 @@ const FIRST_LIKES: &str = "WITH firsts AS (
 impl Database {
     /// Stats over the last `days` days, or all time.
     pub fn stats(&self, days: Option<u32>) -> rusqlite::Result<Stats> {
-        let enabled = self.get_bool(SETTING_IDENTIFY, false)?;
+        let enabled = self.flag(super::settings::IDENTIFY_TRACKS)?;
         let conn = self.conn();
         let (hours_by_weekday, hours_by_hour) = listening_profile(&conn, days)?;
         let stations = station_stats(&conn, days)?;

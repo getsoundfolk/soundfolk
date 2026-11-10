@@ -17,6 +17,7 @@ mod history;
 mod identify;
 mod loudness;
 mod sessions;
+pub mod settings;
 mod stats;
 
 pub use history::{HistoryEntry, HistorySummary, LikedTrack};
@@ -291,58 +292,6 @@ impl Database {
             for (position, id) in station_ids.iter().enumerate() {
                 stmt.execute(params![id, position as i64])?;
             }
-        }
-        tx.commit()
-    }
-
-    // ── settings ─────────────────────────────────────────────────────────────
-
-    pub fn get_bool(&self, key: &str, default: bool) -> rusqlite::Result<bool> {
-        Ok(self.get_str(key)?.map_or(default, |v| v == "true"))
-    }
-
-    pub fn set_bool(&self, key: &str, value: bool) -> rusqlite::Result<()> {
-        self.set_str(key, if value { "true" } else { "false" })
-    }
-
-    /// A list of short ids (no commas), or `None` until it is first set. An empty list is a choice.
-    pub fn get_list(&self, key: &str) -> rusqlite::Result<Option<Vec<String>>> {
-        Ok(self.get_str(key)?.map(|v| {
-            v.split(',')
-                .filter(|s| !s.is_empty())
-                .map(str::to_owned)
-                .collect()
-        }))
-    }
-
-    pub fn set_list(&self, key: &str, values: &[String]) -> rusqlite::Result<()> {
-        self.set_str(key, &values.join(","))
-    }
-
-    pub fn get_str(&self, key: &str) -> rusqlite::Result<Option<String>> {
-        self.conn()
-            .query_row(
-                "SELECT value FROM settings WHERE key = ?1",
-                params![key],
-                |r| r.get(0),
-            )
-            .optional()
-    }
-
-    pub fn set_str(&self, key: &str, value: &str) -> rusqlite::Result<()> {
-        self.set_strs(&[(key, value)])
-    }
-
-    /// Several settings that go together, written in one transaction.
-    pub fn set_strs(&self, settings: &[(&str, &str)]) -> rusqlite::Result<()> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        for (key, value) in settings {
-            tx.execute(
-                "INSERT INTO settings (key, value) VALUES (?1, ?2)
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                params![key, value],
-            )?;
         }
         tx.commit()
     }
@@ -864,30 +813,6 @@ pub(super) mod tests {
         for ext in ["", "-wal", "-shm"] {
             let _ = std::fs::remove_file(format!("{}{ext}", path.display()));
         }
-    }
-
-    #[test]
-    fn settings_use_the_default_until_set() {
-        let db = Database::open_in_memory().unwrap();
-        assert!(db.get_bool("click_counting", true).unwrap());
-        assert!(!db.get_bool("click_notice_seen", false).unwrap());
-        db.set_bool("click_counting", false).unwrap();
-        db.set_bool("click_counting", false).unwrap(); // idempotent
-        assert!(!db.get_bool("click_counting", true).unwrap());
-    }
-
-    #[test]
-    fn lists_tell_unset_from_empty() {
-        let db = Database::open_in_memory().unwrap();
-        assert_eq!(db.get_list("track_services").unwrap(), None);
-        db.set_list("track_services", &[]).unwrap();
-        assert_eq!(db.get_list("track_services").unwrap(), Some(vec![]));
-        db.set_list("track_services", &["bandcamp".into(), "genius".into()])
-            .unwrap();
-        assert_eq!(
-            db.get_list("track_services").unwrap(),
-            Some(vec!["bandcamp".into(), "genius".into()])
-        );
     }
 
     #[test]

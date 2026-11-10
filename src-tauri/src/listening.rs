@@ -18,12 +18,11 @@ use tauri::{Emitter, Manager};
 use crate::audio::{NowPlaying, PlayerState};
 use crate::covers::Covers;
 use crate::db::Database;
+use crate::events;
 use crate::notifications::TrackNotifications;
 use crate::player::OnAir;
 use crate::tracks;
 
-/// Event emitted when the on-air station or title changes (payload: `NowPlaying`).
-pub(crate) const NOW_PLAYING_EVENT: &str = "player:now-playing";
 /// How often an open listening session records that it is still playing.
 const SESSION_HEARTBEAT: Duration = Duration::from_secs(60);
 
@@ -137,7 +136,7 @@ impl Writer {
             notifications.track(&now_playing, name.as_deref(), label.as_deref());
         }
         self.covers.update(now_playing.clone(), name, label);
-        if let Err(e) = self.app.emit(NOW_PLAYING_EVENT, now_playing) {
+        if let Err(e) = self.app.emit(events::NOW_PLAYING, now_playing) {
             tracing::warn!("failed to emit now-playing title: {e}");
         }
     }

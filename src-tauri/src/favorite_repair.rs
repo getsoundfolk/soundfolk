@@ -19,15 +19,12 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::audio::PlayerState;
 use crate::db::{Database, Favorite};
-use crate::media_controls::{StationChange, STATION_EVENT};
+use crate::events;
+use crate::media_controls::StationChange;
 use crate::player::{self, AudioState};
 use crate::state::CatalogState;
 
-/// Tells the window to read the favorites again (one of them has a new address).
-pub(crate) const FAVORITES_EVENT: &str = "favorites:changed";
 const LOOKING_UP: &str = "Looking for the station's new address…";
-/// Tells the window that the favorite on air is no longer in the catalog (payload: its ID).
-pub(crate) const GONE_EVENT: &str = "favorite:gone";
 pub(crate) const GONE: &str = "This station is no longer in the catalog.";
 
 /// The favorite being started, if the current playback is one (Tauri state).
@@ -206,7 +203,7 @@ fn look_up(app: AppHandle, watched: Watched, error: String) {
         if take_if_looking_up(&app, watched.play) {
             engine.show_error(error);
             // The window offers to remove it, under the error.
-            if gone && let Err(e) = app.emit(GONE_EVENT, &watched.favorite.station_id) {
+            if gone && let Err(e) = app.emit(events::FAVORITE_GONE, &watched.favorite.station_id) {
                 tracing::warn!("failed to emit the vanished favorite: {e}");
             }
         }
@@ -241,7 +238,7 @@ fn retry(app: &AppHandle, watched: &Watched, url: String) -> Result<(), String> 
         show_click_notice: outcome.show_click_notice,
         skipped: Vec::new(),
     };
-    if let Err(e) = app.emit(STATION_EVENT, change) {
+    if let Err(e) = app.emit(events::STATION, change) {
         tracing::warn!("failed to emit the new station: {e}");
     }
     Ok(())
@@ -275,7 +272,7 @@ fn save_new_address(app: &AppHandle, watched: &Watched) {
         return tracing::warn!("favorite not updated: {e}");
     }
     tracing::info!(station = %watched.favorite.station_id, "favorite's new address saved");
-    if let Err(e) = app.emit(FAVORITES_EVENT, ()) {
+    if let Err(e) = app.emit(events::FAVORITES_CHANGED, ()) {
         tracing::warn!("failed to emit the favorites change: {e}");
     }
 }

@@ -14,12 +14,9 @@ use serde_json::Value;
 use tauri::Manager;
 use tokio::sync::Notify;
 
-use crate::db::{Database, TrackToIdentify};
+use crate::db::{settings, Database, TrackToIdentify};
 use crate::state::with_db;
 use crate::tracks;
-
-/// Setting: identify liked tracks on MusicBrainz (off by default: titles leave the device).
-pub const SETTING_IDENTIFY: &str = "identify_tracks";
 
 const API: &str = "https://musicbrainz.org/ws/2/";
 const COVER_ART_ARCHIVE: &str = "https://coverartarchive.org/";
@@ -204,7 +201,7 @@ pub fn spawn_worker(app: tauri::AppHandle, mb: Arc<MusicBrainz>, wake: Arc<Notif
         loop {
             let db = app.state::<Database>();
             let next = with_db(&db, |db| {
-                Ok(match db.get_bool(SETTING_IDENTIFY, false)? {
+                Ok(match db.flag(settings::IDENTIFY_TRACKS)? {
                     true => db.next_track_to_identify()?,
                     false => None,
                 })

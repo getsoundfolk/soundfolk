@@ -30,7 +30,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
 use crate::audio::NowPlaying;
-use crate::db::Database;
+use crate::db::{settings, Database};
+use crate::events;
 use crate::media_controls::SystemMedia;
 use crate::musicbrainz::{LookupError, MusicBrainz};
 use crate::notifications::TrackNotifications;
@@ -45,10 +46,6 @@ use deezer::Deezer;
 use itunes::Itunes;
 use logos::{Logo, LogoCache};
 
-/// Setting: the cover sources in order, with their switch (JSON list of [`CoverSource`]).
-pub const SETTING_COVER_SOURCES: &str = "cover_sources";
-/// Event emitted when the cover of the track on air changes (payload: [`Cover`]).
-pub(crate) const COVER_EVENT: &str = "player:cover";
 /// After a failed lookup (network), the same track is not looked up again for this long.
 const RETRY_FAILED: Duration = Duration::from_secs(300);
 
@@ -112,7 +109,7 @@ pub fn normalize(list: Vec<CoverSource>) -> Vec<CoverSource> {
 }
 
 pub fn load_sources(db: &Database) -> rusqlite::Result<Vec<CoverSource>> {
-    let stored = db.get_str(SETTING_COVER_SOURCES)?;
+    let stored = db.text(settings::COVER_SOURCES)?;
     let list = stored
         .and_then(|json| serde_json::from_str(&json).ok())
         .unwrap_or_default();
@@ -122,7 +119,7 @@ pub fn load_sources(db: &Database) -> rusqlite::Result<Vec<CoverSource>> {
 pub fn save_sources(db: &Database, list: Vec<CoverSource>) -> rusqlite::Result<Vec<CoverSource>> {
     let list = normalize(list);
     let json = serde_json::to_string(&list).expect("cover sources serialize");
-    db.set_str(SETTING_COVER_SOURCES, &json)?;
+    db.set_text(settings::COVER_SOURCES, &json)?;
     Ok(list)
 }
 
@@ -467,7 +464,7 @@ impl Covers {
                 picture.as_deref(),
             );
         }
-        if changed && let Err(e) = self.app.emit(COVER_EVENT, cover) {
+        if changed && let Err(e) = self.app.emit(events::COVER, cover) {
             tracing::warn!("failed to emit the cover: {e}");
         }
     }

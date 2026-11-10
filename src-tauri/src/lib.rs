@@ -9,6 +9,7 @@ mod daily_list;
 mod db;
 mod donations;
 mod error;
+mod events;
 mod export;
 mod favorite_repair;
 mod files;
@@ -48,17 +49,6 @@ use now_playing::{WebEvent, WebTitles};
 use player::{AudioState, OnAir};
 use state::CatalogState;
 
-/// Event emitted on every player state change (payload: `PlayerState`).
-const PLAYER_STATE_EVENT: &str = "player:state";
-/// Event emitted when the source of the title changes (payload: `TitleStatus`).
-const TITLE_STATUS_EVENT: &str = "player:title-status";
-/// Event emitted after a local recipe file was saved (payload: `RecipeNotice`).
-const RECIPE_NOTICE_EVENT: &str = "recipes:notice";
-/// Event emitted when a new list of donation links was downloaded (no payload).
-const DONATIONS_EVENT: &str = "donations:updated";
-/// Event emitted when new curated lists were downloaded (no payload).
-const LISTS_EVENT: &str = "lists:updated";
-
 /// Argument of the launch at login (Settings): the app starts in the notification area, without
 /// its window, and does not play.
 const HIDDEN_ARG: &str = "--hidden";
@@ -89,15 +79,15 @@ fn start_web_titles(app: &tauri::App) -> Arc<WebTitles> {
         // A setting that cannot be read takes its default, as Constant volume does: it
         // is no reason not to start.
         app.state::<Database>()
-            .get_bool(state::SETTING_WEB_TITLES, true)
+            .flag(db::settings::WEB_TITLES)
             .unwrap_or_else(|e| {
                 tracing::warn!("web titles setting not read: {e}");
                 true
             }),
         Box::new(move |event| {
             let sent = match event {
-                WebEvent::Status(status) => events.emit(TITLE_STATUS_EVENT, status),
-                WebEvent::Notice(notice) => events.emit(RECIPE_NOTICE_EVENT, notice),
+                WebEvent::Status(status) => events.emit(crate::events::TITLE_STATUS, status),
+                WebEvent::Notice(notice) => events.emit(crate::events::RECIPE_NOTICE, notice),
             };
             if let Err(e) = sent {
                 tracing::warn!("failed to emit a recipe event: {e}");
@@ -115,14 +105,14 @@ fn start_downloads(app: &tauri::App) {
     app.manage(donations.clone());
     let handle = app.handle().clone();
     donations::start(donations, cache_dir(app, "stations"), move || {
-        announce(&handle, DONATIONS_EVENT)
+        announce(&handle, events::DONATIONS_UPDATED)
     });
 
     let lists = Arc::new(curated_lists::CuratedLists::default());
     app.manage(lists.clone());
     let handle = app.handle().clone();
     curated_lists::start(lists, cache_dir(app, "stations"), move || {
-        announce(&handle, LISTS_EVENT)
+        announce(&handle, events::LISTS_UPDATED)
     });
 
     #[cfg(desktop)]
@@ -153,7 +143,7 @@ fn start_player(
             player::schedule_click(&state_handle, &state);
             media.show_state(&state);
             tray::show_state(&state_handle, &state);
-            if let Err(e) = state_handle.emit(PLAYER_STATE_EVENT, state) {
+            if let Err(e) = state_handle.emit(events::PLAYER_STATE, state) {
                 tracing::warn!("failed to emit player state: {e}");
             }
         }),
