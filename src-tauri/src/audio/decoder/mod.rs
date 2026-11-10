@@ -213,7 +213,10 @@ fn stream_client(public_only: bool) -> Result<&'static Client, String> {
             // The stream is read as raw bytes (ICY blocks, range requests): never compressed.
             .no_gzip()
             .connect_timeout(CONNECT_TIMEOUT)
-            .read_timeout(READ_TIMEOUT);
+            .read_timeout(READ_TIMEOUT)
+            // The client outlives sessions: a connection kept from one would be dead after a
+            // network change. Each stream opens its own, as when the client was built per session.
+            .pool_max_idle_per_host(0);
         if public_only {
             public_net::restrict(builder)
         } else {
