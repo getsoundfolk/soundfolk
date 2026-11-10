@@ -1,0 +1,26 @@
+#:schema ../recipe.schema.json
+# Radio Campus Clermont-Ferrand (campus-clermont.net).
+# The Icecast stream sends an empty ICY title. The station's web player
+# (campus-clermont.net/playerdirect/) reads LibreTime's live info through a WordPress proxy:
+# previous, current and next, each with starts / ends in the station's local time.
+# Jingles, ads and "top" time signals are tracks too (the player hides them the same way).
+schema = 1
+name = "Radio Campus Clermont-Ferrand"
+match = { streams = ["live.radio-campus.org:8002/clermont-ferrand"] }
+fetch = { url = "https://campus-clermont.net/wp-admin/admin-ajax.php?action=campus_libretime_live" }
+ignore = ["(?i)^(pub|publicité|publicite|jingle|top)\\b"]
+
+[extract]
+type = "json"
+item = "data.current"
+artist = "metadata.artist_name"
+title = "metadata.track_title"
+start = "starts"
+next = "data.next"
+
+[[test]]
+page = "../fixtures/campus-clermont.json"
+at = "2026-11-06T08:59:43Z"
+artist = "Slim C"
+title = "Les douze maisons"
+started_at = "2026-11-06T08:57:52Z"

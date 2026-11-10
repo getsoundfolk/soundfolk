@@ -3,8 +3,9 @@
 # Run locally: typos   (fix in place: typos -w)
 
 [files]
-# Station lists measured from the outside: names as the stations write them.
-extend-exclude = ["*.tsv"]
+# Station lists measured from the outside, and pages captured from station sites for the recipe
+# tests: text as the stations write it.
+extend-exclude = ["*.tsv", "src-tauri/recipes/fixtures/"]
 
 [default.extend-words]
 # Fréquence 7, a French station (recipes/stations/frequence7.toml)
