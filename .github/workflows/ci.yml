@@ -83,6 +83,8 @@ jobs:
     name: Rust (Windows)
     # The runner the Windows installer is built on (release.yml).
     runs-on: windows-2025
+    # Same limit as the Linux job (2 to 3 minutes today): a stuck runner would hold the run 6 hours.
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -115,6 +117,8 @@ jobs:
     name: Rust (macOS)
     # The runner the macOS disk image is built on (release.yml).
     runs-on: macos-15
+    # Same limit as the Linux job (2 minutes today). Run 43077276878 hung in Clippy here.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
