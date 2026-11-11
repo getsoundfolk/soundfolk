@@ -83,6 +83,12 @@ npm run check
 npm test
 ```
 
+`npm run lint` runs ESLint, then Stylelint on the CSS (`npm run lint:css`): colors and durations through
+tokens, radii, weights and sizes on their scales, a reduced-motion fallback for every transition or
+animation, a stable scrollbar gutter on scrolling panels ([docs/07-visual-design.md](docs/07-visual-design.md)).
+The last two come from a local plugin, `stylelint-plugin-soundfolk.js`. A rule broken on purpose says
+why: `/* stylelint-disable-next-line rule -- why */`.
+
 `src/lib/bindings.ts` (the commands and the types they carry) is generated from the Rust code: a test
 fails when it is out of date, and writes it again, so after changing a command or one of its types run
 `cargo test bindings` in `src-tauri` and commit the new file.

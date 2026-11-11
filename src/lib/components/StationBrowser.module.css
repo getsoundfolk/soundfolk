@@ -24,8 +24,10 @@
   min-width: 0;
 }
 
-/* Mini player and settings: quiet icons at the end of the tab bar. */
+/* Mini player and settings: quiet icons at the end of the tab bar. A new version is out
+   (Settings › About): a dot on the gear, nothing more. */
 .tool {
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
@@ -46,11 +48,6 @@
 
 .tool:active {
   background: var(--color-surface-higher);
-}
-
-/* A new version is out (Settings › About): a dot on the gear, nothing more. */
-.tool {
-  position: relative;
 }
 
 .dot {
@@ -359,4 +356,10 @@
 .star:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surprise {
+    transition: none;
+  }
 }

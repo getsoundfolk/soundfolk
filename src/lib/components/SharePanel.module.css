@@ -41,6 +41,7 @@
   max-width: 100%;
   height: auto;
   border-radius: 0.375rem;
+  /* stylelint-disable-next-line declaration-property-value-disallowed-list -- a QR code scans on white, in both themes */
   background: #fff;
   image-rendering: pixelated;
 }

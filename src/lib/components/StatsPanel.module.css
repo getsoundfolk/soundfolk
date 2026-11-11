@@ -274,3 +274,10 @@
 .table tbody th {
   color: var(--color-text-soft);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .fill,
+  .rise {
+    transition: none;
+  }
+}

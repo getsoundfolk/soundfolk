@@ -28,7 +28,7 @@ Some are checked by tools (in brackets); the others depend on you.
 - **Visual design (docs/07-visual-design.md):** colors and durations come from `var(--…)`. Radii and
   font weights stay on the scale of §3 and §5. Every animation has a
   `prefers-reduced-motion: reduce` fallback. Icons go through `Icon.svelte`. Nothing shifts sideways
-  with its content.
+  with its content. [Stylelint checks all but the icons, in `npm run lint`.]
 - **New files are created atomically** (`files::save_download` and its siblings), never with
   `exists()` then `write`.
 

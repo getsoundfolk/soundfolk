@@ -152,7 +152,7 @@
   border-radius: 999px;
   background: var(--color-surface-control);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--duration-fast) var(--ease);
 }
 
 .toggle::after {
@@ -164,7 +164,7 @@
   height: 1rem;
   border-radius: 50%;
   background: var(--color-knob);
-  transition: transform 0.15s;
+  transition: transform var(--duration-fast) var(--ease);
 }
 
 .toggle:checked {

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # Fast checks before a commit, on the files it touches: Rust formatting (cargo fmt), front-end
-# formatting (Prettier), spelling (typos, when installed) and SPDX lines. Clippy, the tests and
+# formatting (Prettier), the visual rules of the CSS (Stylelint), spelling (typos, when installed) and SPDX lines. Clippy, the tests and
 # the rest run in CI (.github/workflows/ci.yml). Bypass once with `git commit --no-verify`.
 #
 # Enable it once per clone: git config core.hooksPath .githooks
@@ -22,10 +22,14 @@ fail() {
 
 rust=()
 front=()
+styles=()
 for file in "${files[@]}"; do
   case "$file" in
     src-tauri/*.rs) rust+=("$file") ;;
     src/* | *.js | *.ts | *.json) front+=("$file") ;;
+  esac
+  case "$file" in
+    src/*.css | src/*.svelte) styles+=("$file") ;;
   esac
 done
 
@@ -38,6 +42,12 @@ fi
 if [ "${#front[@]}" -gt 0 ]; then
   if ! npx --no-install prettier --check --ignore-unknown "${front[@]}" > /dev/null 2>&1; then
     fail "front-end code is not formatted. Run 'npm run format'."
+  fi
+fi
+
+if [ "${#styles[@]}" -gt 0 ]; then
+  if ! npx --no-install stylelint "${styles[@]}" > /dev/null 2>&1; then
+    fail "the CSS breaks a rule of docs/07-visual-design.md (run 'npm run lint:css' to see which)."
   fi
 fi
 

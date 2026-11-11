@@ -108,7 +108,8 @@ The direction is a quiet tuner: neutral surfaces, one warm dial light, nothing t
 * No scrolling text (marquee): it loops, which §7 rules out.
 
 ## 7. Motion
-* One easing curve, `--ease`, and short durations (`--duration-fast`, 150 ms) for hover and state changes.
+* One easing curve, `--ease`, and short durations: `--duration-fast` (150 ms) for hover and state changes,
+  `--duration-slow` (300 ms) for a cover fading in.
 * Motion confirms an action; it never loops or pulses for attention.
 * Every animation has a `prefers-reduced-motion: reduce` fallback that removes it.
 
@@ -126,6 +127,11 @@ The same feedback confirms choices already made: no promotional content, the pla
 covers with 8 px corners, one-pixel low-opacity borders, filters as chips on the results.
 
 ## 9. Checklist for a new screen or component
+Stylelint (`npm run lint:css`, `stylelint.config.js`) checks the boxes it can: literal colors and durations
+outside the tokens, radii, weights and sizes off their scales, uppercase, a transition or animation with no
+reduced-motion fallback, a scrolling panel without a stable gutter. An exception says why in a
+`stylelint-disable-next-line … -- why` comment (the players' 600, the QR code on white).
+
 - [ ] Colors only through `--color-*` tokens, tried in both themes.
 - [ ] No orange outside the four uses of §2.
 - [ ] Text that can be cut has its full text in `title`; track titles get two lines (§6).

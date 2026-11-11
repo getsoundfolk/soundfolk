@@ -122,9 +122,6 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-}
-
-.tile {
   transition: border-color var(--duration-fast) var(--ease);
 }
 
@@ -196,4 +193,10 @@
 .link:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile {
+    transition: none;
+  }
 }

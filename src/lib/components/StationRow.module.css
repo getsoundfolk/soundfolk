@@ -156,3 +156,10 @@
 .icon[data-on='true'] {
   color: var(--color-text-soft);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .handle,
+  .play {
+    transition: none;
+  }
+}

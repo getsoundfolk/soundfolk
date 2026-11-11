@@ -91,6 +91,7 @@
   /* One easing curve, a few durations. */
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --duration-fast: 150ms;
+  --duration-slow: 300ms;
 
   color-scheme: dark;
   font-family:
@@ -98,6 +99,8 @@
     -apple-system,
     'Segoe UI',
     sans-serif;
+  /* Figures line up wherever they appear. */
+  font-variant-numeric: tabular-nums;
   background: var(--color-bg);
   color: var(--color-text);
 }
@@ -170,11 +173,6 @@ body {
 :root[data-window='mini'],
 :root[data-window='mini'] body {
   background: transparent;
-}
-
-/* Figures line up wherever they appear. */
-:root {
-  font-variant-numeric: tabular-nums;
 }
 
 /* A button holding a line icon centers it, and spaces it from a label next to it. Zero
