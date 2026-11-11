@@ -57,6 +57,14 @@
       "desktop": {
         "schemes": ["soundfolk"]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI4OUJBOEIwRkEyQkU4MDEKUldRQjZDdjZzS2lidUNCZE1pWnJVc2NaaFpDTXVLVVNlcTJrL3V3aklZc3dhVElYMHRINEY2L08K",
+      "endpoints": ["https://github.com/getsoundfolk/soundfolk/releases/latest/download/latest.json"],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {

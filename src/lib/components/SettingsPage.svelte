@@ -118,6 +118,14 @@
       errors.report('settings', e);
     }
   }
+
+  async function installUpdate() {
+    try {
+      await updates.install();
+    } catch (e) {
+      errors.report('settings', e);
+    }
+  }
 </script>
 
 <svelte:window
@@ -235,6 +243,15 @@
             <dt>New version</dt>
             <dd>
               {updates.available.version}
+              {#if updates.available.installable}
+                <!-- Signed package for this copy (docs/19-in-app-updates.md): the app restarts. -->
+                <button
+                  class={styles.link}
+                  type="button"
+                  disabled={updates.installing}
+                  onclick={installUpdate}>Install and restart</button
+                >
+              {/if}
               <button
                 class={styles.link}
                 type="button"
@@ -242,7 +259,9 @@
                 >What's new</button
               >
               <button class={styles.link} type="button" onclick={skipUpdate}>Skip</button>
-              {#if updates.available.through_apt}
+              {#if updates.installing}
+                <p class={styles.hint} role="status">Downloading the new version…</p>
+              {:else if updates.available.through_apt}
                 <!-- Subscribed by the .deb (docs/17-apt-repository.md): nothing to download. -->
                 <p class={styles.hint}>Software Updater will install it.</p>
               {/if}

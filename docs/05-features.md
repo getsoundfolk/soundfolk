@@ -94,9 +94,10 @@ onwards.
   MusicBrainz. One request per second at most; lookups wait while offline and resume later.
 * **New versions (desktop, on by default):** once a day, Soundfolk downloads `latest.json` from the latest GitHub
   Release (the version number and its release page; GitHub sees the IP address). When it is newer, a dot on ⚙ and a
-  line in Settings › About link to the release page, with **Skip** for that version. Nothing is downloaded or
-  installed: the listener updates the way they installed. A `.deb` subscribes the system to Soundfolk's APT
-  repository, and the line then says that Software Updater will install it (17). Never checked by a nightly, a
+  line in Settings › About link to the release page, with **Skip** for that version. On macOS, Windows and from an
+  AppImage, **Install and restart** downloads the new version, checks its signature and installs it over this one
+  (19); nothing is downloaded before that click. A `.deb` subscribes the system to Soundfolk's APT repository, and
+  the line then says that Software Updater will install it (17). Never checked by a nightly, a
   Flatpak or Snap, or a build whose packager set `SOUNDFOLK_NO_UPDATE_CHECK`, since their package manager updates
   them. Turned off in ⚙ › Privacy.
 * **No telemetry** beyond that.

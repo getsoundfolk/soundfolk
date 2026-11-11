@@ -264,7 +264,9 @@ pub fn run() {
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![HIDDEN_ARG]),
-        ));
+        ))
+        // Used by Settings › About only, from Rust (updates.rs): no permission for the web view
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
         .plugin(tauri_plugin_opener::init())
@@ -285,10 +287,16 @@ pub fn run() {
                 api.prevent_exit();
             }
             if let tauri::RunEvent::Exit = event {
-                mini::save_position(app);
-                if let Err(e) = app.state::<Database>().end_session() {
-                    tracing::warn!("listening session not closed: {e}");
-                }
+                before_exit(app);
             }
         });
+}
+
+/// What the app saves when it ends: on exit, and before an update restarts it (updates.rs), which
+/// bypasses the exit event. Uses the database: not on an async worker.
+pub(crate) fn before_exit(app: &tauri::AppHandle) {
+    mini::save_position(app);
+    if let Err(e) = app.state::<Database>().end_session() {
+        tracing::warn!("listening session not closed: {e}");
+    }
 }

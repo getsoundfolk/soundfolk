@@ -106,6 +106,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         updates::get_update_check,
         updates::set_update_check,
         updates::get_update,
+        updates::install_update,
         updates::skip_update
     );
     #[cfg(not(desktop))]

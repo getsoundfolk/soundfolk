@@ -205,6 +205,15 @@ export const commands = {
 	setUpdateCheck: (enabled: boolean) => __TAURI_INVOKE<null>("set_update_check", { enabled }),
 	/**  The newer version to tell the listener about, if there is one. */
 	getUpdate: () => __TAURI_INVOKE<Release | null>("get_update"),
+	/**
+	 *  Downloads the new version, checks its signature against the key in `tauri.conf.json` (and that
+	 *  it was signed for the version announced), installs it over this copy and starts it. Only when
+	 *  [`Release::installable`]. On Windows the installer closes the app and starts it again itself.
+	 * 
+	 *  The updater reads `latest.json` again from `tauri.conf.json`'s address (`SOUNDFOLK_UPDATE_URL`
+	 *  does not apply), with its own HTTP client: our own service, and the package is signed.
+	 */
+	installUpdate: () => __TAURI_INVOKE<null>("install_update"),
 	/**  No more notice for this version. */
 	skipUpdate: (version: string) => __TAURI_INVOKE<null>("skip_update", { version }),
 };
@@ -487,6 +496,11 @@ export type Release = {
 	 *  `latest.json` is replaced ([`Updates::available`]).
 	 */
 	through_apt?: boolean,
+	/**
+	 *  The app can install it itself: this copy is one the updater replaces, and the release has
+	 *  a signed package for it. Decided by the app, as `through_apt`.
+	 */
+	installable?: boolean,
 };
 
 /**  What the player needs to play a station, whatever its origin. */

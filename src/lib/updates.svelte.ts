@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 // A newer version of the app (desktop only, src-tauri/src/updates.rs): a dot on the settings gear,
-// and a line in Settings › About with its release page. Nothing during listening, nothing modal.
+// and a line in Settings › About with its release page, and an Install button where the app can
+// install it itself (docs/19-in-app-updates.md). Nothing during listening, nothing modal.
 import { unsubscribed } from './errors.svelte';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { api, listen, type Release } from './api';
 
 class UpdatesStore {
   available = $state<Release | null>(null);
+  /** Downloading and installing it: the app restarts once done. */
+  installing = $state(false);
 
   /** Call once on mount; returns the unsubscribe function. */
   async init(): Promise<() => void> {
@@ -22,6 +25,17 @@ class UpdatesStore {
   };
 
   open = () => (this.available ? openUrl(this.available.url) : Promise.resolve());
+
+  /** Installs it and restarts the app; rejects if it fails, and the app goes on as it was. */
+  install = async () => {
+    if (!this.available?.installable || this.installing) return;
+    this.installing = true;
+    try {
+      await api.installUpdate();
+    } finally {
+      this.installing = false;
+    }
+  };
 
   /** No more notice for this version; the next one has one again. */
   skip = async () => {

@@ -12,6 +12,8 @@
 #     and to winget's catalogue, through a pull request to microsoft/winget-pkgs (docs/18-winget.md).
 # Each package gets a signed build provenance attestation
 # (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
+# On tags, the packages the app installs itself (the macOS app, the Windows installer, the AppImage)
+# are also signed for Tauri's updater, and listed in latest.json (docs/19-in-app-updates.md).
 # The Windows installer is not code-signed yet: SmartScreen warns before running it.
 # The macOS app is signed ad hoc only, not notarized: Gatekeeper blocks it on first launch
 # (System Settings > Privacy & Security > Open Anyway).
@@ -304,21 +306,116 @@ jobs:
           binaries=("${apps[0]}"/Contents/MacOS/*)
           lipo "${binaries[0]}" -verify_arch arm64 x86_64
           codesign --verify --deep --strict "${apps[0]}"
+          # The app alone, for the in-app updater (docs/19-in-app-updates.md), which replaces the
+          # installed one with it. No AppleDouble files (COPYFILE_DISABLE): extracted again, its
+          # signature must still verify.
+          updater="out/Soundfolk_${VERSION}_universal.app.tar.gz"
+          COPYFILE_DISABLE=1 tar -czf "$updater" -C "$RUNNER_TEMP/dmg" "$(basename "${apps[0]}")"
           hdiutil detach "$RUNNER_TEMP/dmg"
+          mkdir "$RUNNER_TEMP/extracted"
+          tar -xzf "$updater" -C "$RUNNER_TEMP/extracted"
+          codesign --verify --deep --strict "$RUNNER_TEMP/extracted/$(basename "${apps[0]}")"
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: out/*.dmg
+          subject-path: |
+            out/*.dmg
+            out/*.app.tar.gz
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: soundfolk-macos-${{ needs.version.outputs.version }}
-          path: out/*.dmg
+          path: |
+            out/*.dmg
+            out/*.app.tar.gz
+          if-no-files-found: error
+
+  updater:
+    name: Sign the in-app updates
+    needs: [version, linux, windows, macos]
+    # Tagged releases only: latest.json, which lists these packages, is never a nightly's.
+    if: github.ref_type == 'tag'
+    # A fixed image, as for the APT repository: the tools that sign what every app checks change
+    # only when this line does.
+    runs-on: ubuntu-24.04
+    # Holds the updater's signing key (docs/19-in-app-updates.md §4): protected, so that only this
+    # workflow on a `v*` tag can read it. The builds never see it.
+    environment: updater
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.version.outputs.sha }}
+
+      # Until the key is set up, the job says so and stops: the release then lists no package,
+      # and the app links to the release page as before.
+      - name: Check that the key is set up
+        id: setup
+        env:
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_KEY" = true ] && [ -n "$(jq -r '.plugins.updater.pubkey // empty' src-tauri/tauri.conf.json)" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::updater key not set up yet (docs/19-in-app-updates.md §4): skipped"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          pattern: soundfolk-*-${{ needs.version.outputs.version }}
+          path: out
+          merge-multiple: true
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          node-version: 22
+          package-manager-cache: false # see the Linux job
+
+      - name: Sign the packages
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # The Tauri CLI of package-lock.json, nothing else.
+          npm ci --ignore-scripts
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends minisign
+          # The key the app trusts (tauri.conf.json) must be the one that signs: else every update
+          # fails. Checked with minisign, apart from the CLI that signed.
+          jq -r .plugins.updater.pubkey src-tauri/tauri.conf.json | base64 -d > "$RUNNER_TEMP/updater.pub"
+          mkdir signatures
+          for package in out/*.AppImage out/*-setup.exe out/*.app.tar.gz; do
+            # Bound to the version: the app refuses a package signed for another one.
+            npx --no-install tauri signer sign --app-version "$VERSION" "$package"
+            base64 -d < "$package.sig" > "$RUNNER_TEMP/package.minisig"
+            minisign -V -p "$RUNNER_TEMP/updater.pub" -m "$package" -x "$RUNNER_TEMP/package.minisig" \
+              | tee "$RUNNER_TEMP/verified"
+            grep -qP "^Trusted comment: .*\tversion:\Q$VERSION\E(\t|$)" "$RUNNER_TEMP/verified"
+            mv "$package.sig" signatures/
+          done
+          ls -l signatures
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          name: soundfolk-updater-${{ needs.version.outputs.version }}
+          path: signatures/*.sig
           if-no-files-found: error
 
   publish:
     name: Publish
-    needs: [version, linux, windows, macos]
+    needs: [version, linux, windows, macos, updater]
+    # Every build succeeded; the updater job too, or it did not run (a nightly).
+    if: >-
+      ${{ !cancelled() && needs.linux.result == 'success' && needs.windows.result == 'success'
+      && needs.macos.result == 'success' && needs.updater.result != 'failure' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release and upload the packages
@@ -339,10 +436,24 @@ jobs:
           TAG: ${{ needs.version.outputs.release }}
         run: |
           # Read by src-tauri/src/updates.rs at releases/latest/download/latest.json, which
-          # GitHub serves from the latest release that is not a pre-release.
+          # GitHub serves from the latest release that is not a pre-release; and by Tauri's updater,
+          # which installs the package of `platforms` named after the copy, `{os}-{arch}-{kind}`
+          # (docs/19-in-app-updates.md). Only the packages signed by the updater job are listed.
+          platforms='{}'
+          list() { # <entry> <package file>
+            [ -f "out/$2.sig" ] || return 0
+            platforms=$(jq --arg entry "$1" --arg signature "$(cat "out/$2.sig")" \
+              --arg url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$2" \
+              '. + {($entry): {url: $url, signature: $signature}}' <<< "$platforms")
+          }
+          list darwin-aarch64-app "Soundfolk_${VERSION}_universal.app.tar.gz"
+          list darwin-x86_64-app "Soundfolk_${VERSION}_universal.app.tar.gz"
+          list windows-x86_64-nsis "Soundfolk_${VERSION}_x64-setup.exe"
+          list linux-x86_64-appimage "Soundfolk_${VERSION}_amd64.AppImage"
           jq -n --arg version "$VERSION" \
             --arg url "https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG" \
-            '{version: $version, url: $url}' > out/latest.json
+            --argjson platforms "$platforms" \
+            '{version: $version, url: $url, platforms: $platforms}' > out/latest.json
           cat out/latest.json
 
       - name: Publish the tagged release
