@@ -8,7 +8,8 @@
 #   - every night from main, to the rolling "nightly" pre-release
 #     (skipped when main hasn't moved since the last nightly);
 #   - on every `v*` tag, to the GitHub Release of that tag, once ci.yml has passed for its commit,
-#     and to the APT repository getsoundfolk.github.io/apt (docs/17-apt-repository.md).
+#     to the APT repository getsoundfolk.github.io/apt (docs/17-apt-repository.md),
+#     and to winget's catalogue, through a pull request to microsoft/winget-pkgs (docs/18-winget.md).
 # Each package gets a signed build provenance attestation
 # (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
 # The Windows installer is not code-signed yet: SmartScreen warns before running it.
@@ -453,3 +454,72 @@ jobs:
             commit --quiet --message "Soundfolk $VERSION"
           git push --force origin published:main
           rm -f "$key"
+
+  winget:
+    name: Submit to winget
+    needs: [version, publish]
+    # Tagged releases only, like the APT repository: winget offers stable versions.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    # Holds WINGET_TOKEN, the token that opens the pull request (docs/18-winget.md §3): protected, so
+    # that only this workflow on a `v*` tag can read it.
+    environment: winget
+    permissions:
+      contents: read
+    env:
+      PACKAGE: Soundfolk.Soundfolk
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.version.outputs.sha }}
+
+      # `komac update` only adds a version to a package already in the catalogue: the first one is
+      # submitted by hand (docs/18-winget.md §3). Until then, or without the token, the job says so
+      # and stops.
+      - name: Check that the package is set up
+        id: setup
+        env:
+          HAS_TOKEN: ${{ secrets.WINGET_TOKEN != '' }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          first=$(tr '[:upper:]' '[:lower:]' <<< "${PACKAGE:0:1}")
+          path="manifests/$first/${PACKAGE//.//}"
+          if [ "$HAS_TOKEN" != true ]; then
+            echo "::notice::WINGET_TOKEN not set (docs/18-winget.md §3): skipped"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif answer=$(gh api "repos/microsoft/winget-pkgs/contents/$path" --silent 2>&1); then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'HTTP 404' <<< "$answer"; then
+            echo "::notice::$PACKAGE is not in winget-pkgs yet (docs/18-winget.md §3): skipped"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::could not read $path in microsoft/winget-pkgs: $answer"
+            exit 1
+          fi
+
+      # Komac writes the manifests from the installer itself (type, scope, Apps & Features entry,
+      # SHA-256) and the GitHub release (notes, release date), and opens the pull request from the
+      # token owner's fork of winget-pkgs. Pinned by checksum, like the AppImage tools.
+      - name: Fetch Komac
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          .github/scripts/fetch-release-asset.sh russellbanks/Komac v2.17.2 \
+            komac-2.17.2-x86_64-unknown-linux-gnu.tar.gz \
+            b03b020eec98acfb0b53e284a6e21815b884be33de6785b97e7a120f0e748966 "$RUNNER_TEMP/komac.tar.gz"
+          tar -xzf "$RUNNER_TEMP/komac.tar.gz" -C "$RUNNER_TEMP" komac
+          "$RUNNER_TEMP/komac" --version
+
+      - name: Submit the new version
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.WINGET_TOKEN }}
+          VERSION: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.release }}
+        run: |
+          # The installer of the release just published: winget downloads it from there and checks
+          # it against the SHA-256 in the manifest.
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Soundfolk_${VERSION}_x64-setup.exe"
+          "$RUNNER_TEMP/komac" update "$PACKAGE" --version "$VERSION" --urls "$url" --submit
