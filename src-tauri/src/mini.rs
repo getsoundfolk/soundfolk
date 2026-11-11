@@ -7,9 +7,12 @@
 //!
 //! Opening it **closes** the main window, as closing it from its title bar does: one web view at a
 //! time, the main window's memory freed (`windows.rs`). Coming back is always
-//! [`crate::windows::show_main_window`] — the mini player's own button, the tray, a second
-//! launch — which opens the main window first, then takes the mini player down, so the app never
-//! goes without a window it can come back from.
+//! [`crate::windows::show_main_window`] — the mini player's own button, a shared link — which
+//! opens the main window first, then takes the mini player down, so the app never goes without a
+//! window it can come back from. The tray's Hide takes it down alone: the tray is the way back.
+//!
+//! The app remembers which of the two was shown last ([`last`]): Show, a second launch and the
+//! next launch open that one.
 //!
 //! Two sizes, full and compact; the front end picks its layout from the window's width, so the
 //! size is the only copy of the mode. Both the size and the position are kept for the next time.
@@ -39,8 +42,45 @@ const MARGIN: f64 = 24.0;
 /// mini player already shows the title, on top of everything.
 static OPEN: AtomicBool = AtomicBool::new(false);
 
+/// Whether the mini player was the last window shown, as [`settings::MINI_LAST`] keeps it. Read
+/// from the database once at launch ([`read_last`]), then followed here: the main thread, which
+/// toggles the windows, must not wait for the database.
+static LAST: AtomicBool = AtomicBool::new(false);
+
 pub fn is_open() -> bool {
     OPEN.load(Ordering::Relaxed)
+}
+
+/// Whether Show should bring back the mini player rather than the main window.
+pub fn last() -> bool {
+    LAST.load(Ordering::Relaxed)
+}
+
+/// Reads which window was shown last, at launch.
+pub fn read_last(app: &AppHandle) -> bool {
+    let last = app
+        .state::<Database>()
+        .flag(settings::MINI_LAST)
+        .unwrap_or_else(|e| {
+            tracing::warn!("last window not read: {e}");
+            settings::MINI_LAST.default
+        });
+    LAST.store(last, Ordering::Relaxed);
+    last
+}
+
+/// Keeps which window is shown, for Show and the next launch. From any thread: saved from a
+/// blocking one, and only when it changes.
+pub fn remember_last(app: &AppHandle, mini: bool) {
+    if LAST.swap(mini, Ordering::Relaxed) == mini {
+        return;
+    }
+    let app = app.clone();
+    crate::state::spawn_blocking(move || {
+        if let Err(e) = app.state::<Database>().set_flag(settings::MINI_LAST, mini) {
+            tracing::warn!("last window not saved: {e}");
+        }
+    });
 }
 
 /// The size and the spot it was left at, read from the database before going to the main thread:
@@ -110,6 +150,8 @@ pub fn open(app: &AppHandle, remembered: &Remembered) -> tauri::Result<()> {
         window.set_focus()?;
     }
     OPEN.store(true, Ordering::Relaxed);
+    remember_last(app, true);
+    crate::tray::show_window_state(app, true);
     // Last, once the mini player is up: if it failed, the main window stays.
     if let Some(main) = app.get_webview_window(crate::windows::MAIN_WINDOW) {
         main.close()?;
@@ -117,7 +159,8 @@ pub fn open(app: &AppHandle, remembered: &Remembered) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Takes the mini player down, keeping where it was. The caller has shown the main window first.
+/// Takes the mini player down, keeping where it was: after the main window was shown, or for the
+/// tray's Hide. Main thread only.
 pub fn close(app: &AppHandle) {
     let Some(window) = app.get_webview_window(LABEL) else {
         return;
@@ -133,6 +176,7 @@ pub fn close(app: &AppHandle) {
     if let Err(e) = window.destroy() {
         tracing::warn!("mini player not closed: {e}");
     }
+    crate::tray::show_window_state(app, crate::windows::main_window_shown(app));
 }
 
 /// Switches between the full and the compact size, and keeps the choice.

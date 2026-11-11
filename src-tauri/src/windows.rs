@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! The main window: opened, shown, toggled and closed from anywhere (tray, media keys, a second
-//! launch, the mini player), and opened again where it was when it was closed.
+//! launch, the mini player), and opened again where it was when it was closed. Show (tray), a
+//! second launch and the launch itself bring back the window used last, main or mini player.
 //!
 //! Closing the window really closes it: its web view (WebKit, most of the app's memory) is freed
 //! while the app keeps playing from the notification area (`tray.rs`).
@@ -25,16 +26,51 @@ pub fn main_window_shown(app: &tauri::AppHandle) -> bool {
     })
 }
 
-/// Shows the main window if it is closed or minimized, closes it otherwise.
-pub fn toggle_main_window(app: &tauri::AppHandle) {
+/// Whether a window of the app is up: the main one, or the mini player standing in for it (only
+/// one of them at a time).
+pub fn window_shown(app: &tauri::AppHandle) -> bool {
+    mini::is_open() || main_window_shown(app)
+}
+
+/// The tray's Show / Hide: hides the window that is up, the main one or the mini player; shows
+/// the last one used otherwise.
+pub fn toggle_window(app: &tauri::AppHandle) {
+    if mini::is_open() {
+        let handle = app.clone();
+        if let Err(e) = app.run_on_main_thread(move || mini::close(&handle)) {
+            tracing::warn!("failed to hide the mini player: {e}");
+        }
+        return;
+    }
     match app.get_webview_window(MAIN_WINDOW) {
         Some(window) if main_window_shown(app) => {
             if let Err(e) = window.close() {
                 tracing::warn!("failed to close the main window: {e}");
             }
         }
-        _ => show_main_window(app),
+        _ => show_last_window(app),
     }
+}
+
+/// Brings back the window last used: the mini player if the user left the main window for it,
+/// the main window otherwise (tray, second launch, the desktop's Raise).
+pub fn show_last_window(app: &tauri::AppHandle) {
+    if mini::last() {
+        mini::show(app);
+    } else {
+        show_main_window(app);
+    }
+}
+
+/// At launch, the window used last. The main window if the mini player cannot be built.
+pub fn open_last_window(app: &tauri::AppHandle) -> tauri::Result<()> {
+    if mini::read_last(app) {
+        match mini::open(app, &mini::Remembered::read(app)) {
+            Ok(()) => return Ok(()),
+            Err(e) => tracing::warn!("mini player not opened at launch: {e}"),
+        }
+    }
+    open_main_window(app).map(drop)
 }
 
 /// Brings the main window to the front, even from the notification area: once closed it no longer
@@ -58,6 +94,7 @@ pub fn show_main_window(app: &tauri::AppHandle) {
         }
         // Only once the main window is there: the mini player is the app's last window otherwise.
         mini::close(&handle);
+        mini::remember_last(&handle, false);
     });
     if let Err(e) = shown {
         tracing::warn!("failed to show the main window: {e}");
@@ -107,7 +144,8 @@ pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
         *geometry.0.lock().unwrap_or_else(|p| p.into_inner()) = Some((position, size));
     }
     // The tray menu offers to show the window or to hide it, whichever it would do. Being
-    // minimized or restored comes as a resize (or a focus change), closing as `Destroyed`.
+    // minimized or restored comes as a resize (or a focus change), closing as `Destroyed`. The
+    // main window also closes when the mini player takes over: still a window shown.
     // Track notifications are only for when the window does not have the focus.
     if window.label() == MAIN_WINDOW {
         match event {
@@ -116,9 +154,9 @@ pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
             _ => {}
         }
         match event {
-            WindowEvent::Destroyed => tray::show_window_state(window.app_handle(), false),
+            WindowEvent::Destroyed => tray::show_window_state(window.app_handle(), mini::is_open()),
             WindowEvent::Resized(_) | WindowEvent::Focused(_) => {
-                tray::show_window_state(window.app_handle(), main_window_shown(window.app_handle()))
+                tray::show_window_state(window.app_handle(), window_shown(window.app_handle()))
             }
             _ => {}
         }

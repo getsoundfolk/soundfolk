@@ -93,6 +93,12 @@ pub const MINI_COMPACT: Flag = Flag {
 /// Where the user last left the mini player, as physical `x,y` (displays can disagree on their
 /// scale factor).
 pub const MINI_POSITION: Text = Text("mini_position");
+/// Whether the mini player was the last window shown: Show (tray), a second launch and the next
+/// launch open it rather than the main window.
+pub const MINI_LAST: Flag = Flag {
+    key: "mini_last",
+    default: false,
+};
 
 // ── updates ──────────────────────────────────────────────────────────────────
 
@@ -218,6 +224,7 @@ mod tests {
             SHARE_FROM.0,
             MINI_COMPACT.key,
             MINI_POSITION.0,
+            MINI_LAST.key,
             UPDATE_CHECK.key,
             UPDATE_SKIPPED.0,
             TITLE_PARSER_VERSION.0,

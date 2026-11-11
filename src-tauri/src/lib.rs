@@ -163,7 +163,8 @@ fn start_player(
     Ok(())
 }
 
-/// The tray icon, and the main window unless the app was launched at login.
+/// The tray icon, and the window used last unless the app was launched at login. Without an icon,
+/// the main window: the mini player has no title bar to quit from.
 fn open_windows(app: &tauri::App) -> tauri::Result<()> {
     // Launched at login: no window, so no web view, until the icon is clicked. If the icon turns
     // out to show nowhere, the window opens after all (`tray::set_unavailable`).
@@ -171,13 +172,31 @@ fn open_windows(app: &tauri::App) -> tauri::Result<()> {
     if hidden {
         tray::show_window_state(app.handle(), false);
     }
+    // What the menu greys out: Play without a station, Previous and Next without two favorites
+    let has_station = app
+        .try_state::<AudioState>()
+        .is_some_and(|audio| audio.station().is_some());
+    let favorites = app
+        .state::<Database>()
+        .list_favorites()
+        .map(|favorites| favorites.len())
+        .unwrap_or_else(|e| {
+            tracing::warn!("favorites not counted for the tray: {e}");
+            0
+        });
+    tray::show_launch_state(has_station, favorites);
     // Without an icon, closing the window quits: there would be no way back to it
     if let Err(e) = tray::init(app) {
         tracing::warn!("no notification area icon: {e}");
         tray::set_available(false);
     }
-    if !hidden || !tray::available() {
+    if !tray::available() {
         windows::open_main_window(app.handle())?;
+    } else if hidden {
+        // Show (tray) still needs to know which window to bring back.
+        mini::read_last(app.handle());
+    } else {
+        windows::open_last_window(app.handle())?;
     }
     Ok(())
 }
@@ -234,11 +253,11 @@ pub fn run() {
 
     let builder = tauri::Builder::default();
     // Registered first, as the plugin asks: a second launch hands over to the running copy
-    // (which keeps playing and shows its window) and exits before opening the database or the audio
+    // (which keeps playing and shows the window used last) and exits before opening the database or the audio
     #[cfg(desktop)]
     let builder = builder
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            windows::show_main_window(app)
+            windows::show_last_window(app)
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_autostart::init(

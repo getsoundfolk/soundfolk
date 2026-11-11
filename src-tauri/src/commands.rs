@@ -545,14 +545,32 @@ pub async fn set_station_logo(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn add_favorite(db: State<'_, Database>, favorite: Favorite) -> AppResult<()> {
-    with_db(&db, move |db| Ok(db.add_favorite(&favorite)?)).await
+pub async fn add_favorite(
+    app: AppHandle,
+    db: State<'_, Database>,
+    favorite: Favorite,
+) -> AppResult<()> {
+    with_db(&db, move |db| {
+        db.add_favorite(&favorite)?;
+        crate::tray::show_favorites(&app, db.list_favorites()?.len());
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn remove_favorite(db: State<'_, Database>, station_id: String) -> AppResult<bool> {
-    with_db(&db, move |db| Ok(db.remove_favorite(&station_id)?)).await
+pub async fn remove_favorite(
+    app: AppHandle,
+    db: State<'_, Database>,
+    station_id: String,
+) -> AppResult<bool> {
+    with_db(&db, move |db| {
+        let removed = db.remove_favorite(&station_id)?;
+        crate::tray::show_favorites(&app, db.list_favorites()?.len());
+        Ok(removed)
+    })
+    .await
 }
 
 /// Saves the order the listener gave the favorites (station IDs, top first).

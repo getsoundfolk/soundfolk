@@ -9,10 +9,14 @@
 //! the window, a middle click plays or pauses, a right click opens the menu. Windows and macOS
 //! keep Tauri's icon.
 //!
+//! "The window" is the one used last, main or mini player (`windows.rs`): only one is up at a
+//! time, so Hide needs no name. Items that would do nothing are greyed out: Play before any
+//! station was chosen, Previous and Next with fewer than two favorites.
+//!
 //! The menu's actions go through the same [`control`] as the desktop's media keys (MPRIS), so the
 //! two can never behave differently.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use tauri::AppHandle;
 
@@ -35,9 +39,16 @@ static PLAYING: AtomicBool = AtomicBool::new(false);
 /// Whether the sound is muted, as the menu shows it (Mute or Unmute).
 static MUTED: AtomicBool = AtomicBool::new(false);
 
-/// Whether the main window is shown, as the menu shows it (Hide or Show). It opens at launch,
-/// unless the app starts hidden (`lib.rs`).
+/// Whether a window (main or mini player) is shown, as the menu shows it (Hide or Show). One
+/// opens at launch, unless the app starts hidden (`lib.rs`).
 static WINDOW_SHOWN: AtomicBool = AtomicBool::new(true);
+
+/// Whether the player has a station, as the menu shows it (Play greyed out without one). Never
+/// lost once there: the player keeps the last station.
+static HAS_STATION: AtomicBool = AtomicBool::new(false);
+
+/// How many favorites there are: Previous and Next need two to switch between.
+static FAVORITES: AtomicUsize = AtomicUsize::new(0);
 
 /// Can the window be brought back from the notification area? See [`AVAILABLE`].
 pub fn available() -> bool {
@@ -63,30 +74,99 @@ pub fn set_unavailable(app: &AppHandle) {
     }
 }
 
-/// Follows the player, so that the menu offers Pause while it plays and Play otherwise.
+/// Follows the player, so that the menu offers Pause while it plays and Play otherwise. Any
+/// state but `Idle` means a station was chosen.
 pub fn show_state(app: &AppHandle, state: &PlayerState) {
     let playing = matches!(
         state,
         PlayerState::Playing | PlayerState::Connecting | PlayerState::Reconnecting(_)
     );
-    if PLAYING.swap(playing, Ordering::Relaxed) != playing {
-        imp::set_playing(app, playing);
+    let station = !matches!(state, PlayerState::Idle);
+    let changed = PLAYING.swap(playing, Ordering::Relaxed) != playing;
+    let found = station && !HAS_STATION.swap(true, Ordering::Relaxed);
+    if changed || found {
+        imp::refresh(app);
+    }
+}
+
+/// At launch: whether the player starts with a station (the last one played), and how many
+/// favorites there are. Before [`init`].
+pub fn show_launch_state(has_station: bool, favorites: usize) {
+    HAS_STATION.store(has_station, Ordering::Relaxed);
+    FAVORITES.store(favorites, Ordering::Relaxed);
+}
+
+/// Follows the favorites, so that Previous and Next are greyed out with fewer than two.
+pub fn show_favorites(app: &AppHandle, count: usize) {
+    if FAVORITES.swap(count, Ordering::Relaxed) != count {
+        imp::refresh(app);
     }
 }
 
 /// Follows the mute, so that the menu offers Unmute while the sound is cut, Mute otherwise.
 pub fn show_muted(app: &AppHandle, muted: bool) {
     if MUTED.swap(muted, Ordering::Relaxed) != muted {
-        imp::set_muted(app, muted);
+        imp::refresh(app);
     }
 }
 
-/// Follows the main window, so that the menu offers to hide it while it is shown, to show it
+/// Follows the windows, so that the menu offers to hide the one shown, to show the last one used
 /// otherwise (closed or minimized).
 pub fn show_window_state(app: &AppHandle, shown: bool) {
     if WINDOW_SHOWN.swap(shown, Ordering::Relaxed) != shown {
-        imp::set_window_shown(app, shown);
+        imp::refresh(app);
     }
+}
+
+/// What the menu shows, read from the atomics above.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct MenuState {
+    window_shown: bool,
+    playing: bool,
+    muted: bool,
+    has_station: bool,
+    favorites: usize,
+}
+
+impl MenuState {
+    fn now() -> Self {
+        Self {
+            window_shown: WINDOW_SHOWN.load(Ordering::Relaxed),
+            playing: PLAYING.load(Ordering::Relaxed),
+            muted: MUTED.load(Ordering::Relaxed),
+            has_station: HAS_STATION.load(Ordering::Relaxed),
+            favorites: FAVORITES.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// An item of the menu. Its id is the contract between the backends and [`handle_menu`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Entry {
+    id: &'static str,
+    label: &'static str,
+    enabled: bool,
+}
+
+/// The menu, top to bottom, `None` for a separator. Always the same items, so that the backends
+/// only change labels and greying.
+fn entries(state: MenuState) -> [Option<Entry>; 8] {
+    let entry = |id, label, enabled| Some(Entry { id, label, enabled });
+    let can_switch = state.favorites >= 2;
+    [
+        entry("toggle", toggle_label(state.window_shown), true),
+        None,
+        entry(
+            "play_pause",
+            play_pause_label(state.playing),
+            state.playing || state.has_station,
+        ),
+        entry("previous", "Previous favorite", can_switch),
+        entry("next", "Next favorite", can_switch),
+        entry("mute", mute_label(state.muted), true),
+        None,
+        entry("quit", "Quit", true),
+    ]
 }
 
 fn play_pause_label(playing: bool) -> &'static str {
@@ -107,17 +187,16 @@ fn mute_label(muted: bool) -> &'static str {
 
 fn toggle_label(window_shown: bool) -> &'static str {
     if window_shown {
-        "Hide Soundfolk"
+        "Hide"
     } else {
-        "Show Soundfolk"
+        "Show"
     }
 }
 
-/// Shared by both backends: the menu ids are the contract between them.
+/// Shared by both backends.
 fn handle_menu(app: &AppHandle, id: &str) {
     let command = match id {
-        "toggle" => return crate::windows::toggle_main_window(app),
-        "mini" => return crate::mini::show(app),
+        "toggle" => return crate::windows::toggle_window(app),
         "quit" => return app.exit(0),
         "mute" => {
             let app = app.clone();
@@ -143,19 +222,15 @@ mod imp {
     use ksni::{Handle, Icon, OfflineReason, ToolTip, Tray, TrayMethods};
     use tauri::AppHandle;
 
-    use super::{
-        handle_menu, mute_label, play_pause_label, set_available, set_unavailable, toggle_label,
-        MUTED, WINDOW_SHOWN,
-    };
+    use super::{entries, handle_menu, set_available, set_unavailable, MenuState, WINDOW_SHOWN};
 
     /// Set once the icon is registered; `Handle` is not `Clone`, so it lives here.
     static HANDLE: OnceLock<Handle<SoundfolkTray>> = OnceLock::new();
 
+    /// The menu is built from [`MenuState::now`] each time it is asked for: the tray holds no
+    /// state of its own.
     struct SoundfolkTray {
         app: AppHandle,
-        playing: bool,
-        muted: bool,
-        window_shown: bool,
         icon: Vec<Icon>,
         /// The icon as a PNG file ([`write_icon`]), empty if it could not be written.
         icon_file: String,
@@ -193,7 +268,7 @@ mod imp {
 
         /// Left click.
         fn activate(&mut self, _x: i32, _y: i32) {
-            crate::windows::toggle_main_window(&self.app);
+            crate::windows::toggle_window(&self.app);
         }
 
         /// Middle click.
@@ -205,8 +280,7 @@ mod imp {
         /// the label is checked again as the menu opens. Some panels show the menu before the
         /// update arrives, hence the window events too.
         fn menu_about_to_show(&mut self) {
-            self.window_shown = crate::windows::main_window_shown(&self.app);
-            WINDOW_SHOWN.store(self.window_shown, Ordering::Relaxed);
+            WINDOW_SHOWN.store(crate::windows::window_shown(&self.app), Ordering::Relaxed);
         }
 
         fn watcher_online(&self) {
@@ -225,27 +299,20 @@ mod imp {
         }
 
         fn menu(&self) -> Vec<MenuItem<Self>> {
-            let item = |label: &str, id: &'static str| {
-                MenuItem::from(StandardItem {
-                    label: label.into(),
-                    activate: Box::new(move |tray: &mut Self| handle_menu(&tray.app, id)),
-                    ..Default::default()
+            entries(MenuState::now())
+                .into_iter()
+                .map(|entry| match entry {
+                    Some(entry) => MenuItem::from(StandardItem {
+                        label: entry.label.into(),
+                        enabled: entry.enabled,
+                        activate: Box::new(move |tray: &mut Self| handle_menu(&tray.app, entry.id)),
+                        ..Default::default()
+                    }),
+                    None => MenuItem::Separator,
                 })
-            };
-            vec![
-                item(toggle_label(self.window_shown), "toggle"),
-                item("Mini player", "mini"),
-                MenuItem::Separator,
-                item(play_pause_label(self.playing), "play_pause"),
-                item(mute_label(self.muted), "mute"),
-                item("Next favorite", "next"),
-                item("Previous favorite", "previous"),
-                MenuItem::Separator,
-                item("Quit", "quit"),
-            ]
+                .collect()
         }
     }
-
     /// Writes the app icon to a file (once) and returns its path, empty if it could not be
     /// written.
     fn write_icon(app: &AppHandle) -> String {
@@ -282,12 +349,8 @@ mod imp {
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
         let icon = app.default_window_icon().map(pixmap).unwrap_or_default();
         let icon_file = write_icon(app.handle());
-        let window_shown = WINDOW_SHOWN.load(Ordering::Relaxed);
         let tray = SoundfolkTray {
             app: app.handle().clone(),
-            playing: false,
-            muted: MUTED.load(Ordering::Relaxed),
-            window_shown,
             icon,
             icon_file,
         };
@@ -309,24 +372,12 @@ mod imp {
         Ok(())
     }
 
-    pub fn set_playing(_app: &AppHandle, playing: bool) {
+    /// The menu is read again from the atomics: an empty update is enough for ksni to compare it
+    /// with the one shown and send the change.
+    pub fn refresh(_app: &AppHandle) {
         let Some(handle) = HANDLE.get() else { return };
         tauri::async_runtime::spawn(async move {
-            handle.update(|tray| tray.playing = playing).await;
-        });
-    }
-
-    pub fn set_muted(_app: &AppHandle, muted: bool) {
-        let Some(handle) = HANDLE.get() else { return };
-        tauri::async_runtime::spawn(async move {
-            handle.update(|tray| tray.muted = muted).await;
-        });
-    }
-
-    pub fn set_window_shown(_app: &AppHandle, shown: bool) {
-        let Some(handle) = HANDLE.get() else { return };
-        tauri::async_runtime::spawn(async move {
-            handle.update(|tray| tray.window_shown = shown).await;
+            handle.update(|_| {}).await;
         });
     }
 }
@@ -337,45 +388,25 @@ mod imp {
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::{AppHandle, Manager, Wry};
 
-    use super::{handle_menu, mute_label, play_pause_label, toggle_label, MUTED, WINDOW_SHOWN};
+    use super::{entries, handle_menu, MenuState};
 
-    /// The items whose label follows the window and the player.
-    struct Labels {
-        toggle: MenuItem<Wry>,
-        play_pause: MenuItem<Wry>,
-        mute: MenuItem<Wry>,
-    }
+    /// The menu's items, by id, to change their label and greying.
+    struct Items(Vec<(&'static str, MenuItem<Wry>)>);
 
     pub fn init(app: &tauri::App) -> tauri::Result<()> {
-        let shown = WINDOW_SHOWN.load(std::sync::atomic::Ordering::Relaxed);
-        let toggle = MenuItem::with_id(app, "toggle", toggle_label(shown), true, None::<&str>)?;
-        let mini = MenuItem::with_id(app, "mini", "Mini player", true, None::<&str>)?;
-        let play_pause = MenuItem::with_id(
-            app,
-            "play_pause",
-            play_pause_label(false),
-            true,
-            None::<&str>,
-        )?;
-        let muted = MUTED.load(std::sync::atomic::Ordering::Relaxed);
-        let mute = MenuItem::with_id(app, "mute", mute_label(muted), true, None::<&str>)?;
-        let next = MenuItem::with_id(app, "next", "Next favorite", true, None::<&str>)?;
-        let previous = MenuItem::with_id(app, "previous", "Previous favorite", true, None::<&str>)?;
-        let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-        let menu = Menu::with_items(
-            app,
-            &[
-                &toggle,
-                &mini,
-                &PredefinedMenuItem::separator(app)?,
-                &play_pause,
-                &mute,
-                &next,
-                &previous,
-                &PredefinedMenuItem::separator(app)?,
-                &quit,
-            ],
-        )?;
+        let menu = Menu::new(app)?;
+        let mut items = Vec::new();
+        for entry in entries(MenuState::now()) {
+            match entry {
+                Some(entry) => {
+                    let item =
+                        MenuItem::with_id(app, entry.id, entry.label, entry.enabled, None::<&str>)?;
+                    menu.append(&item)?;
+                    items.push((entry.id, item));
+                }
+                None => menu.append(&PredefinedMenuItem::separator(app)?)?,
+            }
+        }
         let mut tray = TrayIconBuilder::with_id("main")
             .tooltip("Soundfolk")
             .menu(&menu)
@@ -389,42 +420,32 @@ mod imp {
                     ..
                 } = event
                 {
-                    crate::windows::toggle_main_window(tray.app_handle());
+                    crate::windows::toggle_window(tray.app_handle());
                 }
             });
         if let Some(icon) = app.default_window_icon() {
             tray = tray.icon(icon.clone());
         }
         tray.build(app)?;
-        app.manage(Labels {
-            toggle,
-            play_pause,
-            mute,
-        });
+        app.manage(Items(items));
         Ok(())
     }
 
-    pub fn set_playing(app: &AppHandle, playing: bool) {
-        if let Some(labels) = app.try_state::<Labels>()
-            && let Err(e) = labels.play_pause.set_text(play_pause_label(playing))
-        {
-            tracing::debug!("tray: Play / Pause label not updated: {e}");
-        }
-    }
-
-    pub fn set_muted(app: &AppHandle, muted: bool) {
-        if let Some(labels) = app.try_state::<Labels>()
-            && let Err(e) = labels.mute.set_text(mute_label(muted))
-        {
-            tracing::debug!("tray: Mute / Unmute label not updated: {e}");
-        }
-    }
-
-    pub fn set_window_shown(app: &AppHandle, shown: bool) {
-        if let Some(labels) = app.try_state::<Labels>()
-            && let Err(e) = labels.toggle.set_text(toggle_label(shown))
-        {
-            tracing::debug!("tray: Show / Hide label not updated: {e}");
+    /// Sets every label and greying from [`MenuState::now`].
+    pub fn refresh(app: &AppHandle) {
+        let Some(items) = app.try_state::<Items>() else {
+            return;
+        };
+        for entry in entries(MenuState::now()).into_iter().flatten() {
+            let Some((_, item)) = items.0.iter().find(|(id, _)| *id == entry.id) else {
+                continue;
+            };
+            if let Err(e) = item
+                .set_text(entry.label)
+                .and_then(|()| item.set_enabled(entry.enabled))
+            {
+                tracing::debug!("tray: {} not updated: {e}", entry.id);
+            }
         }
     }
 }
@@ -433,14 +454,68 @@ mod imp {
 mod tests {
     use super::*;
 
+    fn labels(state: MenuState) -> Vec<Option<(&'static str, bool)>> {
+        entries(state)
+            .into_iter()
+            .map(|e| e.map(|e| (e.label, e.enabled)))
+            .collect()
+    }
+
     #[test]
-    fn menu_labels_say_what_a_click_does() {
-        assert_eq!(play_pause_label(true), "Pause");
-        assert_eq!(play_pause_label(false), "Play");
-        assert_eq!(mute_label(true), "Unmute");
-        assert_eq!(mute_label(false), "Mute");
-        assert_eq!(toggle_label(true), "Hide Soundfolk");
-        assert_eq!(toggle_label(false), "Show Soundfolk");
+    fn menu_says_what_a_click_does() {
+        let state = MenuState {
+            window_shown: true,
+            playing: true,
+            muted: true,
+            has_station: true,
+            favorites: 3,
+        };
+        assert_eq!(
+            labels(state),
+            [
+                Some(("Hide", true)),
+                None,
+                Some(("Pause", true)),
+                Some(("Previous favorite", true)),
+                Some(("Next favorite", true)),
+                Some(("Unmute", true)),
+                None,
+                Some(("Quit", true)),
+            ]
+        );
+        let hidden = labels(MenuState {
+            window_shown: false,
+            playing: false,
+            muted: false,
+            ..state
+        });
+        assert_eq!(hidden[0], Some(("Show", true)));
+        assert_eq!(hidden[2], Some(("Play", true)));
+        assert_eq!(hidden[5], Some(("Mute", true)));
+    }
+
+    #[test]
+    fn items_that_would_do_nothing_are_greyed_out() {
+        // First launch: no station yet, no favorites.
+        let empty = labels(MenuState::default());
+        assert_eq!(empty[2], Some(("Play", false)));
+        assert_eq!(empty[3], Some(("Previous favorite", false)));
+        assert_eq!(empty[4], Some(("Next favorite", false)));
+        // One favorite: nothing to switch to.
+        let one = labels(MenuState {
+            has_station: true,
+            favorites: 1,
+            ..MenuState::default()
+        });
+        assert_eq!(one[2], Some(("Play", true)));
+        assert_eq!(one[4], Some(("Next favorite", false)));
+        assert_eq!(
+            labels(MenuState {
+                favorites: 2,
+                ..MenuState::default()
+            })[4],
+            Some(("Next favorite", true))
+        );
     }
 
     #[cfg(target_os = "linux")]
