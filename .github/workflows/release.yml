@@ -127,10 +127,11 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.version.outputs.sha }}
 
+      # Falls back to the main Ubuntu archive when the runner's Azure mirror does not answer.
       - name: Install system libraries
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          .github/scripts/apt-install.sh \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
             libasound2-dev patchelf
 

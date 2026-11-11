@@ -28,16 +28,20 @@ jobs:
     name: Rust
     # The runner the .deb is built on (release.yml): same system libraries.
     runs-on: ubuntu-22.04
+    # 1 to 6 minutes over the last runs: 45 leaves room for a cold cache. Without a limit,
+    # a stuck runner holds the run for 6 hours.
+    timeout-minutes: 45
     steps:
       # Pinned to commit SHAs rather than mutable tags.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # Falls back to the main Ubuntu archive when the runner's Azure mirror does not answer.
       - name: Install system libraries
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          .github/scripts/apt-install.sh \
             libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
             libasound2-dev
 
