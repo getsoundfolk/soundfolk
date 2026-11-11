@@ -4,7 +4,8 @@
 #   - Rust: formatting (cargo fmt), lints (clippy, warnings fail), tests, unused dependencies;
 #     lints and tests again on Windows and macOS;
 #   - front end: formatting (Prettier), lints (ESLint), types (svelte-check), build;
-#   - repository: spelling (typos), SPDX lines, file sizes, workflows (actionlint, zizmor).
+#   - repository: spelling (typos), SPDX lines, file sizes, the APT signing key's expiry,
+#     workflows (actionlint, zizmor).
 # Dependencies (advisories, licenses, duplicates) are checked by deps.yml, the DCO by dco.yml.
 name: CI
 
@@ -194,6 +195,10 @@ jobs:
 
       - name: File sizes
         run: .github/scripts/check-file-sizes.sh
+
+      # Months ahead: once expired, no release can reach the subscribed systems any more.
+      - name: APT signing key expiry
+        run: .github/scripts/check-apt-key.sh
 
       # install-action has no actionlint manifest, and actionlint is no crate
       # for its cargo-binstall fallback: the release archive, as for typos.

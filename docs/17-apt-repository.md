@@ -3,11 +3,8 @@
 How a `.deb` installed once keeps itself up to date on Debian and Ubuntu: Soundfolk's own APT repository, which
 Software Updater (or `apt upgrade`) reads like any other. First step of 16 §7.3 that needs no third party.
 
-**Status: ready, not live.** The workflow job, the script, the package scripts and the app's notice are in place;
-the repository waits for the setup of §5. Until then the release job skips it, and the `.deb` does not carry the
-key and the source yet: once the public key is committed, `bundle.linux.deb` in `tauri.conf.json` gains
-`files` (the keyring and the source template) and `postInstallScript` / `postRemoveScript`
-(`packaging/apt/postinst.sh`, `postrm.sh`).
+**Status: set up on 2026-11-11, filled from the first release after 0.2.3.** Packages up to 0.2.3 do not
+subscribe: their listeners install the next `.deb` once by hand, or subscribe with §4.
 
 ## 1. What the listener sees
 * **They install the `.deb` once**, as today. The package subscribes the system to the repository: from then on,
@@ -52,29 +49,50 @@ sudo apt update && sudo apt install soundfolk
 ```
 The same two files as the package's, at the same paths: installing the package afterwards changes nothing.
 
-## 5. Setting it up (once, by a maintainer)
-Done by hand: the keys must never pass through anyone else.
+## 5. Keys and setup
+Done by hand by a maintainer: the private keys never pass through anyone else.
 
-1. **The archive key.** On a trusted machine, in a fresh `GNUPGHOME`: a primary key that only certifies, kept
-   offline, and a signing subkey for the CI.
-   ```bash
-   export GNUPGHOME="$(mktemp -d)"
-   gpg --quick-gen-key "Soundfolk archive <maintainer address>" ed25519 cert never
-   gpg --quick-add-key <primary fingerprint> ed25519 sign 3y
-   gpg --export <primary fingerprint> > src-tauri/packaging/apt/soundfolk-archive-keyring.gpg
-   gpg --armor --export-secret-subkeys <primary fingerprint> > signing-subkey.asc   # → APT_SIGNING_KEY
-   gpg --armor --export-secret-keys <primary fingerprint> > primary.asc             # → offline backup
-   ```
-   Commit the public keyring. Keep `primary.asc` offline; delete `signing-subkey.asc` once it is a secret.
-2. **The repository** `getsoundfolk/apt`: public, created with a README so that `main` exists. Settings › Pages:
-   deploy from the branch `main`, folder `/`.
-3. **The push key.** `ssh-keygen -t ed25519 -N '' -f apt-deploy`; `apt-deploy.pub` goes to `getsoundfolk/apt` ›
-   Settings › Deploy keys, with write access; `apt-deploy` becomes `APT_DEPLOY_KEY`.
-4. **The environment** `apt` in `getsoundfolk/soundfolk` › Settings › Environments: deployment limited to tags
-   `v*`, with the secrets `APT_SIGNING_KEY` and `APT_DEPLOY_KEY`.
-5. **The first run**: the next tagged release fills the repository. A release already published can be added by
-   running the job again from its workflow run.
+**What exists** (set up on 2026-11-11):
+* The archive key `2EC2FA553148DB13358A3CE2C51311C5C23F5326`, "Soundfolk archive signing key" (no address: the
+  project has none yet). Its primary key only certifies, never expires, and stays offline with the maintainer,
+  protected by a passphrase, with its revocation certificate. Its signing subkey
+  `A38D76ED050D3FF917001913867B03FF64B88537` expires on **2029-11-10**: the CI warns six months ahead and fails
+  one month ahead (`.github/scripts/check-apt-key.sh`, job Repository of `ci.yml`).
+* The public keyring in `src-tauri/packaging/apt/soundfolk-archive-keyring.gpg`, shipped by the `.deb`.
+* The environment `apt` of `getsoundfolk/soundfolk`, deployment limited to tags `v*`, with `APT_SIGNING_KEY` (the
+  subkey alone, without passphrase: the job signs unattended) and `APT_DEPLOY_KEY`.
+* The repository `getsoundfolk/apt`, Pages from `main`, and its deploy key "soundfolk release" with write access
+  (the organisation allows deploy keys for this).
 
-**Renewing the subkey** before it expires (3 years): add a new signing subkey with the offline primary, commit the
-exported public keyring (packages update `/usr/share/keyrings` with it), wait for one release to spread it, then
-replace `APT_SIGNING_KEY`. APT refuses a repository signed by an expired key.
+**Making them again**, in a terminal (GnuPG asks for passphrases), from the repository's root:
+```bash
+export GPG_TTY=$(tty) GNUPGHOME="$(mktemp -d)"
+gpg --quick-gen-key "Soundfolk archive signing key" ed25519 cert never
+FINGERPRINT=$(gpg --list-keys --with-colons | awk -F: '/^fpr/{print $10; exit}')
+gpg --quick-add-key "$FINGERPRINT" ed25519 sign 3y
+gpg --export "$FINGERPRINT" > src-tauri/packaging/apt/soundfolk-archive-keyring.gpg
+gpg --armor --export-secret-keys "$FINGERPRINT" > ~/soundfolk-archive-primary.asc          # offline backup
+cp "$GNUPGHOME/openpgp-revocs.d/$FINGERPRINT.rev" ~/soundfolk-archive-revocation.rev       # offline too
+# The subkey without passphrase, in a second keyring (the primary keeps its own):
+export CI_HOME="$(mktemp -d)"
+gpg --armor --export-secret-subkeys "$FINGERPRINT" > "$CI_HOME/sub.asc"
+GNUPGHOME="$CI_HOME" gpg --pinentry-mode loopback --import "$CI_HOME/sub.asc"
+# `gpg --passwd` stops at the absent primary: ask the agent for the subkey's keygrip instead.
+GRIP=$(GNUPGHOME="$CI_HOME" gpg --with-keygrip -K "$FINGERPRINT" | awk '/^ssb/ { s = 1 } s && /Keygrip/ { print $3; exit }')
+GNUPGHOME="$CI_HOME" gpg-connect-agent "PASSWD $GRIP" /bye                         # new passphrase: empty
+GNUPGHOME="$CI_HOME" gpg --armor --export-secret-subkeys "$FINGERPRINT" \
+  | gh secret set APT_SIGNING_KEY --env apt --repo getsoundfolk/soundfolk
+rm -rf "$CI_HOME" "$GNUPGHOME"
+```
+The deploy key: `ssh-keygen -t ed25519 -N '' -f apt-deploy`, then `gh repo deploy-key add apt-deploy.pub --repo
+getsoundfolk/apt --allow-write` and `gh secret set APT_DEPLOY_KEY --env apt < apt-deploy`.
+
+**Renewing the subkey**, months before it expires: import the backup, add a new signing subkey, commit the
+exported public keyring, and publish a release: still signed with the old subkey, it brings the new one to every
+subscribed system. Only then replace `APT_SIGNING_KEY` with the new subkey. Once the old one has expired, no
+release can reach those systems any more: their listeners have to reinstall the `.deb` by hand.
+
+**If a key is lost or leaks.** The backup holds the subkey too: a lost secret is made again from it. A lost backup
+breaks nothing until the subkey expires: make a new key, ship both public keys in one release, then sign with
+the new one. A leaked subkey: publish at once a release whose keyring revokes it and carries a new one. Without
+any key the systems trust, the repository can be rebuilt, but every subscribed listener reinstalls the `.deb`.

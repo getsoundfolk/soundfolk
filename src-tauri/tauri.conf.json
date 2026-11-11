@@ -74,7 +74,13 @@
     "linux": {
       "deb": {
         "section": "sound",
-        "depends": ["libasound2"]
+        "depends": ["libasound2"],
+        "files": {
+          "/usr/share/keyrings/soundfolk-archive-keyring.gpg": "packaging/apt/soundfolk-archive-keyring.gpg",
+          "/usr/share/soundfolk/apt/soundfolk.sources": "packaging/apt/soundfolk.sources"
+        },
+        "postInstallScript": "packaging/apt/postinst.sh",
+        "postRemoveScript": "packaging/apt/postrm.sh"
       }
     }
   }

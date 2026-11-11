@@ -22,6 +22,11 @@ sudo apt install ./Soundfolk_*_amd64.deb
 The package is built on Ubuntu 22.04, so it installs on **Ubuntu 22.04 or later** and **Debian 12 or later**.
 Older releases lack the required glibc and WebKitGTK 4.1 versions.
 
+From the release after 0.2.3, the package subscribes the system to Soundfolk's APT repository: new versions then
+come with the system's other updates (Software Updater, `apt upgrade`). Delete
+`/etc/apt/sources.list.d/soundfolk.sources` to stop that; to subscribe before installing, see
+[`docs/17-apt-repository.md`](docs/17-apt-repository.md) §4.
+
 ### Other distributions (AppImage)
 
 ```bash
