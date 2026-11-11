@@ -1,0 +1,28 @@
+<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- The disk image's window (660 × 400 points; its windowSize adds 28 for the title bar). Finder
+     draws the app at (180, 170) and Applications at (480, 170), 128 points wide, with their names
+     under them: tauri.conf.json, bundle.macOS.dmg.
+     Rendered to dmg-background.tiff by render-dmg-background.sh. Colors: the light theme's. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <style>
+    text { font-family: "Noto Sans", sans-serif; fill: #374151; }
+    .title { font-size: 18px; font-weight: 500; fill: #111827; }
+    .head { font-size: 13px; font-weight: 500; fill: #111827; }
+    .step { font-size: 13px; }
+  </style>
+  <rect width="660" height="400" fill="#f6f8fa"/>
+
+  <text class="title" x="330" y="58" text-anchor="middle">Drag Soundfolk to Applications</text>
+
+  <!-- From the app to the folder. -->
+  <g fill="none" stroke="#c2410c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M268 170 H392"/>
+    <path d="M380 158 L392 170 L380 182"/>
+  </g>
+
+  <!-- The first launch, which Gatekeeper refuses until the app is notarized (README). -->
+  <rect x="40" y="286" width="580" height="90" rx="12" fill="#ffffff" stroke="#111827" stroke-opacity="0.1"/>
+  <text class="head" x="60" y="312">The first time, macOS refuses to open Soundfolk (it is not notarized yet):</text>
+  <text class="step" x="60" y="336">1. Open Soundfolk from Applications, then close the message.</text>
+  <text class="step" x="60" y="358">2. In System Settings › Privacy &amp; Security, click Open Anyway.</text>
+</svg>

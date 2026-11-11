@@ -47,8 +47,16 @@ code-signed yet, so SmartScreen warns before running it: click **More info**, th
 ### macOS (disk image)
 
 Open `Soundfolk_*_universal.dmg` and drag **Soundfolk** into **Applications**. It runs on **macOS 10.13 or
-later**. The app is not notarized by Apple yet, so macOS refuses to open it the first time: go to
-**System Settings › Privacy & Security** and click **Open Anyway** under the message about Soundfolk.
+later**. The app is not notarized by Apple yet, so macOS refuses to open it the first time (the disk image's
+window says so too):
+
+1. Open **Soundfolk** from Applications, then close the message (**Done**, or **Cancel** before macOS 15;
+   not **Move to Trash**).
+2. Go to **System Settings › Privacy & Security** (before macOS 13: **System Preferences › Security &
+   Privacy**), click **Open Anyway** under the message about Soundfolk, and confirm with your password.
+
+Later launches and updates open it directly. From a terminal, `xattr -dr com.apple.quarantine
+/Applications/Soundfolk.app` does the same in one step.
 
 ### Checking a package
 

@@ -278,21 +278,26 @@ jobs:
       - name: Build
         env:
           VERSION: ${{ needs.version.outputs.version }}
+          # On CI the disk image script skips its Finder layout (the window, the icons' places, the
+          # background with the first-launch steps): the runner lets it drive Finder, so keep it.
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
         run: |
           npm ci
           # One universal app (lipo of both architectures), signed ad hoc (bundle.macOS in
           # tauri.conf.json): without a signature Apple Silicon reports a downloaded app as damaged.
-          # The disk image script skips its Finder window layout on CI (the CI variable).
           npm run tauri -- build --target universal-apple-darwin --bundles dmg \
             --config "{\"version\": \"$VERSION\"}" -- --locked
           bundle=src-tauri/target/universal-apple-darwin/release/bundle
           mkdir -p out
           cp "$bundle"/dmg/*.dmg out/
           ls -l out
-          # Fails if the app in the disk image does not hold both architectures or its signature
-          # does not verify. Checked inside the image: the bundler deletes the .app once it is in.
+          # Fails if the app in the disk image does not hold both architectures, its signature does
+          # not verify, or the window lost its layout (Finder's .DS_Store and the background).
+          # Checked inside the image: the bundler deletes the .app once it is in.
           dmgs=(out/*.dmg)
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "${dmgs[0]}"
+          test -f "$RUNNER_TEMP/dmg/.DS_Store"
+          test -f "$RUNNER_TEMP/dmg/.background/dmg-background.tiff"
           apps=("$RUNNER_TEMP"/dmg/*.app)
           binaries=("${apps[0]}"/Contents/MacOS/*)
           lipo "${binaries[0]}" -verify_arch arm64 x86_64
