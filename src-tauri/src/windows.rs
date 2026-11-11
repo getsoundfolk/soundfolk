@@ -110,6 +110,7 @@ pub fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
         .cloned()
         .ok_or(tauri::Error::WindowNotFound)?;
     let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
+    software_rendering(&window);
     let geometry = *app
         .state::<WindowGeometry>()
         .0
@@ -130,6 +131,9 @@ pub fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
 pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
     // Nothing in the mini player closes it, but a window manager shortcut can: that is a
     // return to the main window, or the app would play on with no window to come back to.
+    if let WindowEvent::Destroyed = event {
+        crate::memory::after_window_closed(window.app_handle());
+    }
     if window.label() == mini::LABEL {
         if let WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
@@ -161,4 +165,31 @@ pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
             _ => {}
         }
     }
+}
+
+/// Opting out of [`software_rendering`]: set to anything, the GPU draws the window again.
+#[cfg(target_os = "linux")]
+const GPU_RENDERING_VAR: &str = "SOUNDFOLK_GPU_RENDERING";
+
+/// On Linux, WebKit draws the web view without the GPU: ~27 MB less while a window is open, and no
+/// cost measured, since the interface barely animates (docs/02-architecture.md §6). Set on the web
+/// view rather than through `WEBKIT_DISABLE_COMPOSITING_MODE`, which every program the app starts
+/// (a browser for a donation page) would inherit.
+pub(crate) fn software_rendering(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os(GPU_RENDERING_VAR).is_some() {
+            return;
+        }
+        if let Err(e) = window.with_webview(|webview| {
+            use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
+            if let Some(settings) = WebViewExt::settings(&webview.inner()) {
+                settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
+            }
+        }) {
+            tracing::warn!("web view left to GPU rendering: {e}");
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = window;
 }

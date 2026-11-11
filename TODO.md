@@ -143,8 +143,11 @@ listening stats must be crossed with the sessions.
 - [ ] Sleep timer in the player: stop after 15 / 30 / 60 min, the volume fading out over the last minute.
 - [ ] Import favorites and personal stations (M3U, JSON); the M3U export exists (Listen → Export M3U). Personal
   stations kept as they are, Radio-Browser stations matched by UUID, else by stream.
-- [ ] Measure memory use and keep a target (< ~50 MB idle while playing) — the main argument against Electron
-  players.
+- [x] Measure memory use and keep a target (< 50 MB while playing, window closed) — the main argument against
+  Electron players. `.github/scripts/measure-memory.sh`, figures in `docs/02-architecture.md` §6: 41 MB launched at
+  login, ~157 MB window open (the web views drawn without the GPU on Linux: −22 MB, `SOUNDFOLK_GPU_RENDERING=1` undoes it).
+- [ ] Meet the target after the window has been opened once: 68 MB once closed again, since WebKit's network process
+  is stopped (`memory.rs`). The app process keeps ~26 MB from the web view: Mesa, WebKit code pages, heap in use.
 
 **UI pattern to reuse**: ordered sources (drag to reorder, a switch each, a type badge, "a disabled source is never
 queried") — for "Find this track on" or recipe sources. If lyrics come one day, LRCLIB plain text is enough (no

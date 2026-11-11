@@ -19,6 +19,7 @@ mod files;
 mod http;
 mod listening;
 mod media_controls;
+mod memory;
 mod mini;
 mod musicbrainz;
 mod notifications;

@@ -4531,6 +4531,7 @@ dependencies = [
  "gtk",
  "jiff",
  "ksni",
+ "libc",
  "notify-rust",
  "qrcode",
  "reqwest",
@@ -4560,6 +4561,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "url",
+ "webkit2gtk",
  "windows-sys 0.61.2",
  "zbus",
 ]

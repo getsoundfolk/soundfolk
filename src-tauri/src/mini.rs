@@ -132,6 +132,7 @@ pub fn open(app: &AppHandle, remembered: &Remembered) -> tauri::Result<()> {
             // Placed before it shows, so it never appears first where the window manager guessed.
             .visible(false)
             .build()?;
+        crate::windows::software_rendering(&window);
         // WebKitGTK's view asks for at least 200 px of height and GTK sizes the window to fit it:
         // without this the window would be 200 px high, and could not be made compact.
         #[cfg(target_os = "linux")]

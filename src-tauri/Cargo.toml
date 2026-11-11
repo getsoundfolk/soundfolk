@@ -133,6 +133,11 @@ zbus = "5"
 ksni = "0.3.6"
 # The mini player's web view gives up its minimum height (mini.rs); already pulled in by Tauri
 gtk = "0.18"
+# The web views drawn without the GPU (windows.rs); already pulled in by Tauri
+webkit2gtk = "2"
+# Stops WebKit's network process and trims the heap once no window is left (memory.rs); already
+# pulled in by Tauri
+libc = "0.2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }
