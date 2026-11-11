@@ -481,6 +481,12 @@ export type Release = {
 	version: string,
 	/**  Its release page, where the packages are. */
 	url: string,
+	/**
+	 *  This system gets new versions from Soundfolk's APT repository: its software updater
+	 *  installs this one (docs/17-apt-repository.md). Decided by the app: a value in
+	 *  `latest.json` is replaced ([`Updates::available`]).
+	 */
+	through_apt?: boolean,
 };
 
 /**  What the player needs to play a station, whatever its origin. */

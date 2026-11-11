@@ -42,6 +42,27 @@ pub struct Release {
     pub version: String,
     /// Its release page, where the packages are.
     pub url: String,
+    /// This system gets new versions from Soundfolk's APT repository: its software updater
+    /// installs this one (docs/17-apt-repository.md). Decided by the app: a value in
+    /// `latest.json` is replaced ([`Updates::available`]).
+    #[serde(default)]
+    pub through_apt: bool,
+}
+
+/// The source the soundfolk package adds (`packaging/apt/postinst.sh`).
+#[cfg(target_os = "linux")]
+const APT_SOURCE: &str = "/etc/apt/sources.list.d/soundfolk.sources";
+
+/// Whether this system is subscribed to Soundfolk's APT repository. Blocking (reads the disk).
+fn through_apt() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        std::path::Path::new(APT_SOURCE).exists()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        false
+    }
 }
 
 fn parse(text: &str) -> Result<Release, String> {
@@ -125,7 +146,10 @@ impl Updates {
         Ok(latest
             .as_ref()
             .filter(|l| newer(&self.current, l, skipped.as_deref()))
-            .cloned())
+            .map(|l| Release {
+                through_apt: through_apt(),
+                ..l.clone()
+            }))
     }
 }
 
@@ -245,6 +269,7 @@ mod tests {
         Release {
             version: version.to_owned(),
             url: format!("{RELEASE_PAGES}tag/v{version}"),
+            through_apt: false,
         }
     }
 

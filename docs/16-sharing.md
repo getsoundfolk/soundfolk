@@ -305,7 +305,7 @@ Whoever spent evenings choosing a list wants to show it, and their audience is t
 A friend convinced by a link has to install Soundfolk without hunting for a `.deb`. In order of reach on Linux:
 1. **Flathub**: every distribution, updates through the software centre. The first one to do.
 2. **AUR** (Arch and derivatives).
-3. An APT repository for Debian and Ubuntu, so that the `.deb` updates itself.
+3. An APT repository for Debian and Ubuntu, so that the `.deb` updates itself (17).
 
 Windows (winget) and macOS (Homebrew), now that those builds exist. The page's Get Soundfolk (§5.3) follows this list.
 

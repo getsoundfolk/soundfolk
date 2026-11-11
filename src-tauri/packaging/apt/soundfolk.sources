@@ -1,0 +1,9 @@
+# Soundfolk's package repository: Software Updater (or `apt upgrade`) installs new versions.
+# Added by the soundfolk package. Delete this file to stop updates from it: the package will not
+# put it back.
+Types: deb
+URIs: https://getsoundfolk.github.io/apt
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /usr/share/keyrings/soundfolk-archive-keyring.gpg

@@ -92,6 +92,8 @@ onwards.
 * **New versions (desktop, on by default):** once a day, Soundfolk downloads `latest.json` from the latest GitHub
   Release (the version number and its release page; GitHub sees the IP address). When it is newer, a dot on ⚙ and a
   line in Settings › About link to the release page, with **Skip** for that version. Nothing is downloaded or
-  installed: the listener updates the way they installed. Never checked by a nightly, a Flatpak or Snap, or a build
-  whose packager set `SOUNDFOLK_NO_UPDATE_CHECK`, since their package manager updates them. Turned off in ⚙ › Privacy.
+  installed: the listener updates the way they installed. Once Soundfolk's APT repository is set up (17), a `.deb`
+  subscribes the system to it, and the line then says that Software Updater will install it. Never checked by a nightly, a
+  Flatpak or Snap, or a build whose packager set `SOUNDFOLK_NO_UPDATE_CHECK`, since their package manager updates
+  them. Turned off in ⚙ › Privacy.
 * **No telemetry** beyond that.

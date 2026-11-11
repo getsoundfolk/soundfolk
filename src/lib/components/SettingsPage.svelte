@@ -242,6 +242,10 @@
                 >What's new</button
               >
               <button class={styles.link} type="button" onclick={skipUpdate}>Skip</button>
+              {#if updates.available.through_apt}
+                <!-- Subscribed by the .deb (docs/17-apt-repository.md): nothing to download. -->
+                <p class={styles.hint}>Software Updater will install it.</p>
+              {/if}
             </dd>
           </div>
         {/if}

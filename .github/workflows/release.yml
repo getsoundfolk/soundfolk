@@ -7,7 +7,8 @@
 # They are published together, by a last job that runs only once every build has succeeded:
 #   - every night from main, to the rolling "nightly" pre-release
 #     (skipped when main hasn't moved since the last nightly);
-#   - on every `v*` tag, to the GitHub Release of that tag, once ci.yml has passed for its commit.
+#   - on every `v*` tag, to the GitHub Release of that tag, once ci.yml has passed for its commit,
+#     and to the APT repository getsoundfolk.github.io/apt (docs/17-apt-repository.md).
 # Each package gets a signed build provenance attestation
 # (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
 # The Windows installer is not code-signed yet: SmartScreen warns before running it.
@@ -364,3 +365,86 @@ jobs:
             --prerelease --target "$SHA" \
             --title "Nightly $VERSION" \
             --notes "Automatic build of main at ${SHA:0:7}. Not a stable release."
+
+  apt:
+    name: Update the APT repository
+    needs: [version, publish]
+    # Tagged releases only: the repository is what Software Updater installs, never a nightly.
+    if: github.ref_type == 'tag'
+    # A fixed image, not ubuntu-latest: the tools that sign what every client checks change only
+    # when this line does.
+    runs-on: ubuntu-24.04
+    # Holds the signing key and the key that pushes to getsoundfolk/apt (docs/17-apt-repository.md):
+    # protected, so that only this workflow on a `v*` tag can read them.
+    environment: apt
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.version.outputs.sha }}
+
+      # Until the repository is set up (docs/17-apt-repository.md §5), the job says so and stops.
+      - name: Check that the repository is set up
+        id: setup
+        env:
+          HAS_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY != '' }}
+          HAS_DEPLOY_KEY: ${{ secrets.APT_DEPLOY_KEY != '' }}
+        run: |
+          if [ -f src-tauri/packaging/apt/soundfolk-archive-keyring.gpg ] \
+            && [ "$HAS_SIGNING_KEY" = true ] && [ "$HAS_DEPLOY_KEY" = true ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::APT repository not set up yet (docs/17-apt-repository.md §5): skipped"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          name: soundfolk-linux-${{ needs.version.outputs.version }}
+          path: out
+
+      - name: Import the signing key
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+        run: |
+          gpg --batch --import <<< "$APT_SIGNING_KEY"
+          signing=$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')
+          # The key the .deb trusts must be the one that signs: else every update fails.
+          shipped=$(gpg --batch --show-keys --with-colons src-tauri/packaging/apt/soundfolk-archive-keyring.gpg \
+            | awk -F: '/^fpr/ { print $10 }')
+          if ! grep -qx "$signing" <<< "$shipped"; then
+            echo "::error::the signing key $signing is not in src-tauri/packaging/apt/soundfolk-archive-keyring.gpg"
+            exit 1
+          fi
+          echo "SIGNING_KEY=$signing" >> "$GITHUB_ENV"
+
+      - name: Update and push the repository
+        if: steps.setup.outputs.ready == 'true'
+        env:
+          APT_DEPLOY_KEY: ${{ secrets.APT_DEPLOY_KEY }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          key="$RUNNER_TEMP/apt-deploy-key"
+          install -m 600 /dev/null "$key"
+          printf '%s\n' "$APT_DEPLOY_KEY" > "$key"
+          # GitHub's host key, from `gh api meta`: no trust on first use.
+          hosts="$RUNNER_TEMP/known_hosts"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$hosts"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
+          git clone --depth 1 --branch main git@github.com:getsoundfolk/apt.git "$RUNNER_TEMP/apt"
+          debs=(out/*.deb)
+          .github/scripts/update-apt-repo.sh "$RUNNER_TEMP/apt" "${debs[0]}" \
+            src-tauri/packaging/apt/soundfolk-archive-keyring.gpg
+          # One commit without history, pushed over the last: the packages would otherwise pile up
+          # in the repository's history (12 MB each).
+          cd "$RUNNER_TEMP/apt"
+          git checkout --quiet --orphan published
+          git add --all
+          git -c user.name="Soundfolk release" -c user.email="release@soundfolk.invalid" \
+            commit --quiet --message "Soundfolk $VERSION"
+          git push --force origin published:main
+          rm -f "$key"
