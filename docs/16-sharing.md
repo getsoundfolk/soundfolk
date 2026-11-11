@@ -192,6 +192,20 @@ app exists, it is the only thing the page can give.
   distribution once there is more than the `.deb` (§7.3), else the `.deb` of the latest Release; on other systems,
   "Soundfolk runs on Linux for now", the Releases page, and listening in the page. Every download is a GitHub
   Release asset, which has a build provenance attestation.
+* **A new release rebuilds the site.** The `site` job of `release.yml`, on a `v*` tag once the release is
+  published, starts the `Pages` workflow of `getsoundfolk.github.io`. Without it the download would wait for the
+  site's daily build. The job needs `SITE_TOKEN`, made by hand by a maintainer: a fine-grained token, owner
+  `getsoundfolk`, repository `getsoundfolk.github.io` only, permission "Actions: Read and write", with an expiry
+  date. It can start the site's workflows and nothing else: it cannot push to the site. Then:
+  ```bash
+  gh api -X PUT repos/getsoundfolk/soundfolk/environments/site \
+    --input - <<< '{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}'
+  gh api -X POST repos/getsoundfolk/soundfolk/environments/site/deployment-branch-policies \
+    -f name='v*' -f type=tag
+  gh secret set SITE_TOKEN --env site --repo getsoundfolk/soundfolk
+  ```
+  The environment `site` allows deployments from tags `v*` only, as `apt` and `winget` do. Until the secret is
+  set, the job says so and stops; when the token expires, it fails: make a new one and set it again.
 * **When `soundfolk://` is not registered** the browser does nothing, and a page cannot tell. A hint instead: if
   the page has not lost the focus about 2 s after Open in Soundfolk, it shows "Nothing happened? Get Soundfolk, or
   paste the link in its search." The browser's own "Open Soundfolk?" prompt also takes the focus, so the hint can

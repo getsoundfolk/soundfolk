@@ -9,7 +9,9 @@
 #     (skipped when main hasn't moved since the last nightly);
 #   - on every `v*` tag, to the GitHub Release of that tag, once ci.yml has passed for its commit,
 #     to the APT repository getsoundfolk.github.io/apt (docs/17-apt-repository.md),
-#     and to winget's catalogue, through a pull request to microsoft/winget-pkgs (docs/18-winget.md).
+#     and to winget's catalogue, through a pull request to microsoft/winget-pkgs (docs/18-winget.md);
+#     the site getsoundfolk.github.io is then rebuilt, so that its download points to the new release
+#     (docs/16-sharing.md §5.3).
 # Each package gets a signed build provenance attestation
 # (check it with `gh attestation verify <file> -R getsoundfolk/soundfolk`).
 # On tags, the packages the app installs itself (the macOS app, the Windows installer, the AppImage)
@@ -635,3 +637,26 @@ jobs:
           # it against the SHA-256 in the manifest.
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Soundfolk_${VERSION}_x64-setup.exe"
           "$RUNNER_TEMP/komac" update "$PACKAGE" --version "$VERSION" --urls "$url" --submit
+
+  site:
+    name: Rebuild the site
+    needs: [version, publish]
+    # Tagged releases only: the site's download offers the latest release, never a nightly.
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    # Holds SITE_TOKEN, the token that starts the site's Pages workflow (docs/16-sharing.md §5.3):
+    # protected, so that only this workflow on a `v*` tag can read it.
+    environment: site
+    permissions: {}
+    steps:
+      - name: Start the site's Pages workflow
+        env:
+          GH_TOKEN: ${{ secrets.SITE_TOKEN }}
+        run: |
+          # Until the token is set (docs/16-sharing.md §5.3), the job says so and stops: the site's
+          # daily build picks the release up anyway.
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::SITE_TOKEN not set (docs/16-sharing.md §5.3): skipped"
+            exit 0
+          fi
+          gh workflow run pages.yml --repo getsoundfolk/getsoundfolk.github.io --ref main
