@@ -105,8 +105,10 @@ tauri-plugin-autostart = "2"
 notify-rust = { version = "4.18", default-features = false, features = ["z"] }
 # The update check compares the latest release with this one (already pulled in by Tauri)
 semver = "1"
-# Installs a new version over this one, checking its signature (docs/19-in-app-updates.md)
-tauri-plugin-updater = "2.14"
+# Installs a new version over this one, checking its signature (docs/19-in-app-updates.md).
+# Without `system-proxy`: it turns on reqwest's for every client of the app, and on macOS pulls
+# system-configuration 0.7, so a second core-foundation (cargo-deny).
+tauri-plugin-updater = { version = "2.14", default-features = false, features = ["rustls-tls", "zip"] }
 # System media controls: MPRIS on Linux, through pure Rust D-Bus (zbus), no libdbus needed;
 # Now Playing (MediaPlayer) on macOS; the System Media Transport Controls on Windows
 souvlaki = { version = "0.9", default-features = false, features = ["use_zbus"] }
