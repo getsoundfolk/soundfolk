@@ -111,6 +111,12 @@ listening stats must be crossed with the sessions.
   which channel he reads (his FAQ also gives an e-mail). Lighter variant: keep the checks, then link to
   https://www.radio-browser.info/owners (stream owners' `icy-*` headers, applied within 24 h) and to a prefilled
   issue (`/-/issues/new?issue[title]=…&issue[description]=…` works without a fork).
+- [ ] Sign the Windows and macOS packages, so that they install without warnings (today SmartScreen asks for
+  "Run anyway", and Gatekeeper for "Open Anyway" in Privacy & Security; see the README). macOS: an Apple
+  Developer ID and notarization, which needs the Apple Developer Program ($99 a year; Apple waives it for some
+  non-profits). Windows: a code-signing certificate, from SignPath Foundation (free for open source projects it
+  accepts), Certum's open source certificate, or Azure Trusted Signing (about $10 a month, with eligibility
+  rules). Check each offer's terms when picking one; signing goes in `release.yml`, keys in protected secrets.
 - [ ] When GitHub announces the end of the `ubuntu-22.04` runner image: build the `.deb` and the AppImage in a
   `container: ubuntu:22.04` on a newer runner (`release.yml`, job `linux`; `ci.yml`, job `rust`), so that they
   keep glibc 2.35 and still install on Ubuntu 22.04 and Debian 12 (LTS until 2028). In the container: no `sudo`,
