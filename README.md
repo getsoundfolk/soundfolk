@@ -1,3 +1,5 @@
+<img src=".github/logo.svg" alt="" width="96" height="96">
+
 # Soundfolk
 
 > Find and play any web radio. Know what’s playing, keep track of what you heard.
