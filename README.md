@@ -86,6 +86,9 @@ You can help without writing code: write a **recipe** that reads the titles of a
 station’s **donation link**, or put together a **list** of stations. See
 [the website](https://getsoundfolk.github.io/contribute/).
 
+To help pay the yearly Apple Developer fee for the macOS app, you can
+[donate on Ko-fi](https://ko-fi.com/soundfolk).
+
 For code, read [CONTRIBUTING.md](CONTRIBUTING.md) (commits are signed off, DCO). Everyone follows the
 [code of conduct](CODE_OF_CONDUCT.md). Questions and ideas go to
 [Discussions](https://github.com/getsoundfolk/soundfolk/discussions), bugs to
