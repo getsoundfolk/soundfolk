@@ -9,7 +9,7 @@ hand (§3); until then, and without the token, the job says so and stops.
 
 ## 1. What the listener sees
 * **Install:** `winget install Soundfolk.Soundfolk`. winget downloads the installer of the GitHub Release, checks
-  its SHA-256 against the manifest, and runs it silently: the same per-user install as the README's, no
+  its SHA-256 against the manifest, and runs it silently: the same per-user install as [install.md](install.md)'s, no
   administrator rights.
 * **Update:** `winget upgrade Soundfolk.Soundfolk`, or `winget upgrade --all`. winget also sees a copy installed
   from the `.exe` by hand: it reads the same Apps & Features entry.
@@ -54,7 +54,7 @@ It asks the rest in the terminal: the long description (`longDescription` of `ta
 `internet-radio`, `music`), scope `user`. It fills in the installer's details itself. Then follow the pull request
 until it is merged: the bots comment when a check fails. From the next tag on, the job takes over.
 
-**After the first merge:** add `winget install Soundfolk.Soundfolk` to the README's Windows section, and the
+**After the first merge:** add `winget install Soundfolk.Soundfolk` to the Windows section of [install.md](install.md), and the
 line to the share page's Get Soundfolk (16 §5.3).
 
 ## 4. Still open

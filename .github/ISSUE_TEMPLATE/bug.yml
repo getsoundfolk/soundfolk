@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: MPL-2.0
+
+name: Bug
+description: Something in Soundfolk does not work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Soundfolk version
+      description: ⚙ › About, or the name of the file you installed.
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options:
+        - .deb (Debian, Ubuntu)
+        - AppImage
+        - Windows installer
+        - macOS disk image
+        - Built from source
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      placeholder: Ubuntu 24.04, Windows 11, macOS 15…
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >-
+        If you can, start Soundfolk from a terminal with RUST_LOG=soundfolk_lib=debug and paste the lines around
+        the problem.
+      render: text

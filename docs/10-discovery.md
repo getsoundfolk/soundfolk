@@ -184,7 +184,7 @@ listener's own:
 
 ### 6.1 From the catalog
 In the station sheet, and as the fallback when a stream fails and the station has no other stream (the
-fallback to another stream of the same station stays in TODO.md).
+fallback to another stream of the same station stays in [TODO.md](TODO.md)).
 
 * Take the station's tags, mapped to genre families where possible (08 §3.1); keep the **most specific** one or two
   (fewest stations in `/json/tags`): `bossa nova` says more than `music`.

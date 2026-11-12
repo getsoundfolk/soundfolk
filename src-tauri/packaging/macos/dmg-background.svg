@@ -20,7 +20,7 @@
     <path d="M380 158 L392 170 L380 182"/>
   </g>
 
-  <!-- The first launch, which Gatekeeper refuses until the app is notarized (README). -->
+  <!-- The first launch, which Gatekeeper refuses until the app is notarized (docs/install.md). -->
   <rect x="40" y="286" width="580" height="90" rx="12" fill="#ffffff" stroke="#111827" stroke-opacity="0.1"/>
   <text class="head" x="60" y="312">The first time, macOS refuses to open Soundfolk (it is not notarized yet):</text>
   <text class="step" x="60" y="336">1. Open Soundfolk from Applications, then close the message.</text>

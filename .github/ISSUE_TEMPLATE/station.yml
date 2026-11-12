@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: MPL-2.0
+
+name: Station does not play or shows no title
+description: One station fails to play, cuts out, or never shows what is on air.
+labels: [station]
+body:
+  - type: input
+    id: station
+    attributes:
+      label: Station
+      description: Its name as shown in Soundfolk, and its website if you know it.
+    validations:
+      required: true
+  - type: dropdown
+    id: problem
+    attributes:
+      label: Problem
+      options:
+        - Does not play
+        - Plays, then stops or cuts out
+        - Plays, but shows no title or a wrong one
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: The error shown, if any, and whether the station plays in a browser or another player.
+  - type: input
+    id: version
+    attributes:
+      label: Soundfolk version and system
+      placeholder: 0.3.0 on Ubuntu 24.04
+    validations:
+      required: true

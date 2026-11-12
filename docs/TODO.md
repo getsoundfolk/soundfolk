@@ -112,7 +112,7 @@ listening stats must be crossed with the sessions.
   https://www.radio-browser.info/owners (stream owners' `icy-*` headers, applied within 24 h) and to a prefilled
   issue (`/-/issues/new?issue[title]=…&issue[description]=…` works without a fork).
 - [ ] Sign the Windows and macOS packages, so that they install without warnings (today SmartScreen asks for
-  "Run anyway", and Gatekeeper for "Open Anyway" in Privacy & Security; see the README). macOS: an Apple
+  "Run anyway", and Gatekeeper for "Open Anyway" in Privacy & Security; see [install.md](install.md)). macOS: an Apple
   Developer ID and notarization, which needs the Apple Developer Program ($99 a year; Apple waives it for some
   non-profits). Windows: a code-signing certificate, from SignPath Foundation (free for open source projects it
   accepts), Certum's open source certificate, or Azure Trusted Signing (about $10 a month, with eligibility

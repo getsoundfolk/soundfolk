@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: MPL-2.0
+
+blank_issues_enabled: false
+contact_links:
+  - name: Question or idea
+    url: https://github.com/getsoundfolk/soundfolk/discussions
+    about: Ask for help, suggest a feature or share your stations in Discussions.
+  - name: Security issue
+    url: https://github.com/getsoundfolk/soundfolk/security/advisories/new
+    about: Report a vulnerability privately, not in a public issue.

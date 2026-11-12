@@ -5,7 +5,7 @@
 #     sources;
 #   - npm: security advisories of moderate severity or more;
 #   - on a pull request: how many crates / packages it adds, and which. Fails above a threshold: a
-#     dependency that pulls many others in cascade deserves a look (see TODO.md, clipboard plugin).
+#     dependency that pulls many others in cascade deserves a look (see docs/TODO.md, clipboard plugin).
 # Runs every Monday (new advisories come out for unchanged dependencies) and whenever a lockfile
 # changes. Dependency updates themselves come from Dependabot (.github/dependabot.yml).
 name: Dependencies

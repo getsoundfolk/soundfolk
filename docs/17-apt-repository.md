@@ -19,7 +19,7 @@ subscribe: their listeners install the next `.deb` once by hand, or subscribe wi
 ## 2. The repository
 * Served by GitHub Pages from the `main` branch of `getsoundfolk/apt`, at `https://getsoundfolk.github.io/apt`.
 * One suite, `stable`, one component, `main`, amd64 only: the `.deb` is built on Ubuntu 22.04, so one package
-  serves every supported release (README).
+  serves every supported release ([install.md](install.md)).
 * Tagged releases only, never a nightly. The last three versions stay in the pool, so that a listener can go back
   one or two with `apt install soundfolk=<version>`.
 * Signed with Soundfolk's archive key. The `.deb` carries its public part in

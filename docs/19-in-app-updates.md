@@ -13,7 +13,7 @@ notice links to the release page, as before.
 * **One click.** The app downloads the package (about 12 MB), checks its signature, replaces itself and starts
   again. "Downloading the new version…" shows meanwhile; playback goes on until the restart.
 * **macOS:** the app downloaded by the app itself carries no quarantine mark, so Gatekeeper does not ask again:
-  only the very first launch, from the disk image, needs Open Anyway (README).
+  only the very first launch, from the disk image, needs Open Anyway ([install.md](install.md)).
 * **Windows:** the installer runs with a progress bar only (`installMode: passive`), for the current user like the
   first install, and starts the app again. SmartScreen does not step in: the package was not downloaded by a
   browser.

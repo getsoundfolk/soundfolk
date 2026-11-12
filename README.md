@@ -1,127 +1,121 @@
+<div align="center">
+
 <img src=".github/logo.svg" alt="" width="96" height="96">
 
 # Soundfolk
 
-> Find and play any web radio. Know what’s playing, keep track of what you heard.
+**Find and play any web radio. Know what’s playing, keep track of what you heard.**
 
-Tauri v2 + Svelte 5 + Rust audio engine (`stream-download` → `symphonia` → `cpal`) + SQLite (`rusqlite`).
-Specs in [`docs/`](docs/).
+A free desktop app for Linux, Windows and macOS, with the tens of thousands of stations of the
+[Radio-Browser](https://www.radio-browser.info) catalog. No account, no ads, no tracking.
 
-## Install
+[![Latest release](https://img.shields.io/github/v/release/getsoundfolk/soundfolk?label=release)](https://github.com/getsoundfolk/soundfolk/releases/latest)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows%20%7C%20macOS-informational)](docs/install.md)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](LICENSE)
+[![CI](https://github.com/getsoundfolk/soundfolk/actions/workflows/ci.yml/badge.svg)](https://github.com/getsoundfolk/soundfolk/actions/workflows/ci.yml)
 
-Linux, Windows and macOS packages are built automatically (see
-[`.github/workflows/release.yml`](.github/workflows/release.yml)): each tagged version is attached to its
-[release](https://github.com/getsoundfolk/soundfolk/releases), and a build of `main` is published every night
-as the **nightly** pre-release. The Linux and Windows packages are 64-bit x86 only (amd64 / x64); the macOS
-app is universal (Apple Silicon and Intel).
+**[Download](https://getsoundfolk.github.io/download/)** ·
+[Website](https://getsoundfolk.github.io) ·
+[Privacy](#privacy) ·
+[Contribute](#contributing)
 
-### Debian/Ubuntu (`.deb`)
+</div>
 
-```bash
-sudo apt install ./Soundfolk_*_amd64.deb
-```
+<!--
+  Screenshot to add: docs/screenshots/main.png (the player with a filled history, about 1600 px wide).
+  <p align="center"><img src="docs/screenshots/main.png" alt="Soundfolk playing a station, with the tracks heard today" width="800"></p>
+-->
 
-The package is built on Ubuntu 22.04, so it installs on **Ubuntu 22.04 or later** and **Debian 12 or later**.
-Older releases lack the required glibc and WebKitGTK 4.1 versions.
+## Download
 
-From the release after 0.2.3, the package subscribes the system to Soundfolk's APT repository: new versions then
-come with the system's other updates (Software Updater, `apt upgrade`). Delete
-`/etc/apt/sources.list.d/soundfolk.sources` to stop that; to subscribe before installing, see
-[`docs/17-apt-repository.md`](docs/17-apt-repository.md) §4.
+| System                 | Package                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| Debian 12+, Ubuntu 22.04+ | `.deb`, updated with the system afterwards                             |
+| Other Linux (glibc 2.35+) | `.AppImage`                                                            |
+| Windows 10+            | `-setup.exe`, per-user, no administrator rights                            |
+| macOS 10.13+           | `.dmg`, universal (Apple Silicon and Intel)                                |
 
-### Other distributions (AppImage)
+Get them from the [latest release](https://github.com/getsoundfolk/soundfolk/releases/latest). The Windows
+installer is not code-signed and the macOS app not notarized yet, so the first launch needs one extra click:
+[docs/install.md](docs/install.md) shows which, and how to check that a package was built by this repository.
 
-```bash
-chmod +x Soundfolk_*_amd64.AppImage
-./Soundfolk_*_amd64.AppImage
-```
+## Why Soundfolk
 
-The AppImage carries its own libraries except glibc, so it runs on any distribution with **glibc 2.35 or
-later**. It needs FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04); without it, run it with
-`--appimage-extract-and-run`. `soundfolk://` links open it once it has been launched one time.
+- **Every station, one search away.** Type a name, a city or a genre; stations that work come first. Not sure
+  what to play? **Surprise me** picks a music station from anywhere in the world. Your own streams (direct URL,
+  `.m3u`, `.pls`) sit next to the catalog's.
+- **Know what’s on air**, even when the stream does not say: Soundfolk then reads the title from the station’s
+  website, with recipes written by listeners, or from its streaming server’s status page.
+- **Never lose a discovery.** Every track you hear is written down, by day, with its station. Like it with ♡,
+  find it later, open it on YouTube, Spotify, Deezer, Apple Music, Bandcamp or Discogs in one click.
+- **Stats that mean something:** stations ranked by likes per hour of listening, listening time by hour and day,
+  and, if you allow it, the artists, genres and decades of what you liked.
+- **Constant volume** from one station to the next, and sound in about half a second.
+- **At home on the desktop:** mini player, media keys, tray icon, track notifications, launch at login, keyboard
+  shortcuts, light and dark themes.
+- **Share a station** with the track on air, and browse **lists of stations** put together by listeners.
+- **Light:** a Rust audio engine, not a browser tab.
 
-### Windows (installer)
+<!--
+  Screenshots to add: docs/screenshots/stats.png, docs/screenshots/mini-player.png, docs/screenshots/search.png.
+-->
 
-Run `Soundfolk_*_x64-setup.exe`. It installs for the current user, without administrator rights, on
-**Windows 10 or later**; it downloads Microsoft WebView2 if Windows lacks it. The installer is not
-code-signed yet, so SmartScreen warns before running it: click **More info**, then **Run anyway**.
+## Privacy
 
-### macOS (disk image)
+Your favorites, history, likes and stats live in a database on your computer. Soundfolk has no account and no
+server of its own, and sends nothing about you without a switch in its settings:
 
-Open `Soundfolk_*_universal.dmg` and drag **Soundfolk** into **Applications**. It runs on **macOS 10.13 or
-later**. The app is not notarized by Apple yet, so macOS refuses to open it the first time (the disk image's
-window says so too):
+- **Listen counting** (on by default): playing a catalog station tells Radio-Browser its UUID, for popularity
+  rankings. Nothing else; never for your own stations. A notice is shown on the first Play, which is not counted.
+- **Track identification** (off by default): only liked tracks are looked up on MusicBrainz, for the stats.
+- **New versions** (on by default): once a day, the version number is read from the latest GitHub release.
+- **Search** goes to the Radio-Browser API, a community service.
 
-1. Open **Soundfolk** from Applications, then close the message (**Done**, or **Cancel** before macOS 15;
-   not **Move to Trash**).
-2. Go to **System Settings › Privacy & Security** (before macOS 13: **System Preferences › Security &
-   Privacy**), click **Open Anyway** under the message about Soundfolk, and confirm with your password.
+No telemetry beyond that. Details: [docs/05-features.md](docs/05-features.md) §4.
 
-Later launches and updates open it directly. From a terminal, `xattr -dr com.apple.quarantine
-/Applications/Soundfolk.app` does the same in one step.
+## Known limitations
 
-### Checking a package
+- **HLS (`.m3u8`) streams are not supported yet**, so those stations (about 14 % of the most popular ones) are
+  left out of the results.
+- Search needs a network: the catalog is queried online.
+- Desktop only for now; mobile apps will come behind the same audio engine interface.
 
-To check that a package was built by this repository's CI:
+## Contributing
 
-```bash
-gh attestation verify Soundfolk_*_amd64.deb -R getsoundfolk/soundfolk
-```
+You can help without writing code: write a **recipe** that reads the titles of a station’s website, add a
+station’s **donation link**, or put together a **list** of stations. See
+[the website](https://getsoundfolk.github.io/contribute/).
 
-## Build from source
-
-### Prerequisites (Debian/Ubuntu)
-
-```bash
-sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
-  librsvg2-dev libasound2-dev build-essential pkg-config
-```
-
-Plus Rust (stable ≥ 1.95) and Node 22.13 or later (22, 24 or 26+: what Vite, Vitest and ESLint
-require; `engines` in `package.json`). On Windows and macOS, see Tauri's
-[prerequisites](https://v2.tauri.app/start/prerequisites/). `libasound2-dev` is required by `cpal` (ALSA; under
-PipeWire/PulseAudio, the `pipewire-alsa` / `pulseaudio-alsa` compatibility layer is enough).
-
-### Run
+For code, read [CONTRIBUTING.md](CONTRIBUTING.md) (commits are signed off, DCO). Questions and ideas go to
+[Discussions](https://github.com/getsoundfolk/soundfolk/discussions), bugs to
+[Issues](https://github.com/getsoundfolk/soundfolk/issues).
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-Search for a station (e.g. `rdwa`) then click ▶, or add a stream in the **My stations** tab (direct URL, `.m3u` or `.pls`).
-Detailed engine logs: `RUST_LOG=soundfolk_lib=debug npm run tauri dev`.
+Prerequisites and logs: [docs/install.md § Building from source](docs/install.md#building-from-source).
 
-## Structure
+Tauri v2 + Svelte 5, a Rust audio engine (`stream-download` → `symphonia` → `cpal`) and SQLite (`rusqlite`).
 
-| Path | Role |
-|---|---|
-| `src-tauri/src/` | Rust back end: audio engine (`audio/`), catalog (`catalog/`), SQLite (`db/`), Tauri commands (`commands.rs`) |
-| `src-tauri/crates/nowplaying/` | Network-free engine reading the title on air from a station's web page, for streams without metadata |
-| `src-tauri/recipes/` | The stations' recipes for that engine, their test pages and `recipe.schema.json` |
-| `src/` | Svelte 5 front end (CSS Modules); `src/lib/bindings.ts` is generated from the Rust code |
-| `docs/` | Specifications, one file per topic |
+| Path                           | Role                                                                                                    |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `src-tauri/src/`               | Rust back end: audio engine (`audio/`), catalog (`catalog/`), SQLite (`db/`), Tauri commands (`commands.rs`) |
+| `src-tauri/crates/nowplaying/` | Network-free engine reading the title on air from a station's web page, for streams without metadata    |
+| `src-tauri/recipes/`           | The stations' recipes for that engine, their test pages and `recipe.schema.json`                        |
+| `src/`                         | Svelte 5 front end (CSS Modules); `src/lib/bindings.ts` is generated from the Rust code                 |
+| `docs/`                        | Specifications, one file per topic                                                                      |
 
 The layers and how they talk are described in [docs/02-architecture.md](docs/02-architecture.md), the
 tables in [docs/03-database.md](docs/03-database.md), and the events sent to the front end, with their
 payloads, in [`src-tauri/src/events.rs`](src-tauri/src/events.rs).
 
-## Known limitations
+## Thanks
 
-- **HLS (`.m3u8`) is not supported**: HLS stations (roughly 14 % of the most popular ones) are left out of the search results.
-- The catalog is queried online (Radio-Browser API): no search without a network.
-- Desktop only: the mobile engine (`AVPlayer` / `ExoPlayer`) will come behind the same `AudioEngine` trait.
-
-## Privacy
-
-- **Listen counting** (on by default, can be turned off in the settings): each time a catalog station is played,
-  Soundfolk calls Radio-Browser's `/json/url/{uuid}`. What is sent: the station UUID and, as with any internet
-  request, the IP address. Nothing else (no favorites, no history). A notice is shown on the first Play; that
-  first click is not counted. Personal stations are never reported.
-- **Personal stations**: stored on the device only.
-- **Catalog**: searches are sent to the Radio-Browser API (a community service, with no availability guarantee).
+The station catalog comes from [Radio-Browser](https://www.radio-browser.info), run by volunteers, and track
+identification from [MusicBrainz](https://musicbrainz.org).
 
 ## License
 
-The client is released under [MPL-2.0](LICENSE). Contributions follow [CONTRIBUTING.md](CONTRIBUTING.md) (DCO).
-The **Soundfolk** name and logo are not covered by this license.
+The client is released under [MPL-2.0](LICENSE). The **Soundfolk** name and logo are not covered by this license.
