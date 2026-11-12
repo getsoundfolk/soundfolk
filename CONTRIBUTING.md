@@ -103,6 +103,9 @@ The CI also runs [typos](https://github.com/crate-ci/typos) (spelling, rules in 
 [actionlint](https://github.com/rhysd/actionlint) and [zizmor](https://docs.zizmor.sh) (workflows).
 Dependencies (advisories, licenses, duplicates) are checked by [`deps.yml`](.github/workflows/deps.yml), with
 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) (`cd src-tauri && cargo deny check`).
+When no hosted runner picks up a CI job (it happens on macOS), [`ci-retry.yml`](.github/workflows/ci-retry.yml)
+re-runs it, at most twice. A job that ran and failed is never re-run on its own. To see what it would do on
+a past run: `.github/scripts/ci-retry.sh getsoundfolk/soundfolk RUN_ID 1 --dry-run`.
 
 ### Pre-commit hook
 
