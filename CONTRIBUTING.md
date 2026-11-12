@@ -3,6 +3,8 @@
 Thanks for wanting to contribute! This repository contains the **public client** of Soundfolk, released under the
 [Mozilla Public License 2.0](LICENSE) (`SPDX-License-Identifier: MPL-2.0`).
 
+Everyone taking part, in issues, discussions and pull requests, follows the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## License of your contributions
 
 By submitting a contribution (pull request, patch…), you agree that:
