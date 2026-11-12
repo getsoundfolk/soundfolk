@@ -21,10 +21,24 @@ A free desktop app for Linux, Windows and macOS, with the tens of thousands of s
 
 </div>
 
-<!--
-  Screenshot to add: docs/screenshots/main.png (the player with a filled history, about 1600 px wide).
-  <p align="center"><img src="docs/screenshots/main.png" alt="Soundfolk playing a station, with the tracks heard today" width="800"></p>
--->
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/player-dark.webp">
+  <img src="docs/screenshots/player-light.webp" alt="The player, with the title on air and favorite stations" width="200">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/history-dark.webp">
+  <img src="docs/screenshots/history-light.webp" alt="The listening history, by day, with liked tracks" width="200">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/discover-dark.webp">
+  <img src="docs/screenshots/discover-light.webp" alt="Discover: search, Surprise me and lists of stations" width="200">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/sheet-dark.webp">
+  <img src="docs/screenshots/sheet-light.webp" alt="A station's details: where its title comes from, its stream" width="200">
+</picture>
+</p>
 
 ## Download
 
@@ -55,10 +69,6 @@ installer is not code-signed and the macOS app not notarized yet, so the first l
   shortcuts, light and dark themes.
 - **Share a station** with the track on air, and browse **lists of stations** put together by listeners.
 - **Light:** a Rust audio engine, not a browser tab.
-
-<!--
-  Screenshots to add: docs/screenshots/stats.png, docs/screenshots/mini-player.png, docs/screenshots/search.png.
--->
 
 ## Privacy
 
