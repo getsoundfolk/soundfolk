@@ -1,7 +1,12 @@
 # 🔗 Sharing
 
 How a listener sends a station, a track on air or a list to a friend, on desktop and on mobile, and how that link
-brings new listeners to Soundfolk. Not built yet: this is the plan.
+brings new listeners to Soundfolk.
+
+**Today:** built on desktop (`share.rs`, `SharePanel.svelte`). A station, the track on air or a list is shared as a
+link to `getsoundfolk.github.io` with Copy link and a QR code; a link opens when pasted into the search, dropped on
+the window or opened as `soundfolk://`. The website's page plays the station for a friend without the app. Mobile
+(App Links, Universal Links) waits for the mobile apps.
 
 ## 1. Goals
 * **One link, pasted anywhere.** A link that works in a chat app, an email or a forum post, clickable everywhere.

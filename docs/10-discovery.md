@@ -4,8 +4,10 @@ Spec for finding stations the listener was not looking for: the **Discover** des
 [06-ui-principles.md](06-ui-principles.md) §1, beyond search and filters
 ([09-search-filters.md](09-search-filters.md)).
 
-**Today:** nothing. The app has three tabs (History, Search, Favorites); Search sends typed text, and the filters and
-the "Surprise me" sort of 08 are specified but not built.
+**Today:** the app has three tabs, Listen, Discover and History. Discover has the search box, **Surprise me** (§4.1,
+`catalog/surprise.rs`) and one row per curated list (§5.2); the search puts the matching lists first. Not built: the
+chips of §3 (search still sends only the typed text, 09), Scan (§4.2), rule collections (§5.1), hidden gems (§5.3)
+and More like this (§6).
 
 ---
 

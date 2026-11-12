@@ -2,13 +2,14 @@
 
 Lists of stations chosen by people ("Late-night jazz", "French community radios", "Ambient for coding"), as opposed to
 the rule collections of [10-discovery.md](10-discovery.md) §5.1, which are live catalog queries. This is the
-spec of 09 §5.2, with the ad-free attribute it depends on. Not built: §1–3 challenge a first proposal, §4 records
-the decisions, §5–8 are the plan, §9 what is left to decide.
+spec of 09 §5.2, with the ad-free attribute it depends on. §1–3 challenge a first proposal, §4 records the
+decisions, §5–8 are the plan, §9 what is left to decide.
 
-**Today:** nothing built. Before this document, 09 §5.2 put hand-picked collections on `soundfolk.fm`, fetched
-daily, and left "who curates" open; it now points here. [13-donations.md](13-donations.md) built the first piece of
-shared station data (`getsoundfolk/soundfolk-stations`, donation links only) and its whole chain: one file per
-station, proof, bot, daily CI check, `v1/stations.json` fetched once a day with `If-None-Match`.
+**Today:** built in the app (`curated_lists.rs`). The lists of `getsoundfolk/soundfolk-stations` are downloaded once a
+day, like the donation links of [13-donations.md](13-donations.md), and kept for offline use. Discover shows one row
+per list, the search puts the matching lists first, a list's screen has Surprise me and an M3U export, the player
+says "In N lists", and a list can be starred into Favorites. The website shows the lists too. The app does not read
+the ad-free attribute yet.
 
 ---
 

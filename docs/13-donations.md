@@ -1,6 +1,10 @@
 # 🤝 Donations
 
-How Soundfolk shows a station's donation link, and when it suggests donating. Not built yet: this is the plan.
+How Soundfolk shows a station's donation link, and when it suggests donating.
+
+**Today:** the link is built (`donations.rs`): the app downloads `v1/stations.json` of `soundfolk-stations` once a
+day, and the player shows **Donate** for a station that has a link, with the station and the domain in its tooltip.
+The monthly reminder (§1) is not built.
 
 ## 1. Goals
 * **The player shows the station's donation link** when it has one (06 §2), with the domain it leads to.
