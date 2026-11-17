@@ -27,6 +27,10 @@ const REBUFFER_MS: usize = 1000;
 /// The callback normally runs every few milliseconds, paused or not: this long without it (awake
 /// time) means the output is dead.
 const SILENT_CALLBACK: Duration = Duration::from_secs(5);
+/// A lone xrun (ALSA missed a period, cpal recovers on its own) is a click at most: logged at
+/// debug level. This many within [`XRUN_WINDOW`] means the machine cannot keep up: a warning.
+const XRUN_WARN_COUNT: u32 = 5;
+const XRUN_WINDOW: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutputFormat {
@@ -145,6 +149,7 @@ where
     let mut buffering = true;
     let mut needed = thresholds.start;
     let errors = health.clone();
+    let mut xruns = XrunCounter::default();
 
     device
         .build_output_stream(
@@ -176,6 +181,18 @@ where
                 }
             },
             move |err: cpal::Error| {
+                if err.kind() == cpal::ErrorKind::Xrun {
+                    let count = xruns.record(Instant::now());
+                    tracing::debug!(count, "audio output xrun: {err}");
+                    if count == XRUN_WARN_COUNT {
+                        tracing::warn!(
+                            count,
+                            window_s = XRUN_WINDOW.as_secs(),
+                            "audio output: repeated buffer underruns, the system cannot keep up"
+                        );
+                    }
+                    return;
+                }
                 tracing::warn!("audio output stream error: {err}");
                 if matches!(
                     err.kind(),
@@ -187,4 +204,53 @@ where
             None,
         )
         .map_err(|e| format!("Cannot open the audio output: {e}"))
+}
+
+/// Counts xruns in fixed windows of [`XRUN_WINDOW`], opened by the first xrun after a quiet one.
+#[derive(Default)]
+struct XrunCounter {
+    window_start: Option<Instant>,
+    count: u32,
+}
+
+impl XrunCounter {
+    /// Records one xrun at `now` and returns how many the current window holds.
+    fn record(&mut self, now: Instant) -> u32 {
+        match self.window_start {
+            Some(start) if now.saturating_duration_since(start) < XRUN_WINDOW => self.count += 1,
+            _ => {
+                self.window_start = Some(now);
+                self.count = 1;
+            }
+        }
+        self.count
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn xruns_count_within_a_window_then_start_over() {
+        let t0 = Instant::now();
+        let mut xruns = XrunCounter::default();
+        assert_eq!(xruns.record(t0), 1);
+        assert_eq!(xruns.record(t0 + Duration::from_millis(50)), 2);
+        assert_eq!(xruns.record(t0 + Duration::from_secs(59)), 3);
+        // The window has passed: a new one opens.
+        assert_eq!(xruns.record(t0 + XRUN_WINDOW), 1);
+        assert_eq!(xruns.record(t0 + XRUN_WINDOW + Duration::from_secs(1)), 2);
+    }
+
+    #[test]
+    fn warning_fires_once_per_window() {
+        let t0 = Instant::now();
+        let mut xruns = XrunCounter::default();
+        let warned = (0..20)
+            .map(|i| xruns.record(t0 + Duration::from_millis(i * 10)))
+            .filter(|&count| count == XRUN_WARN_COUNT)
+            .count();
+        assert_eq!(warned, 1);
+    }
 }
