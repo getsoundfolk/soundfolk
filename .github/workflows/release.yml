@@ -153,7 +153,9 @@ jobs:
           # (cache poisoning), and what ships must come from the lockfiles alone.
           package-manager-cache: false
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
 
       # The AppImage bundler downloads its tools from github.com/<repo>/releases/download/, with
       # no checksum and no fallback (that address gave 502, 503 and 504 for hours on 2026-11-08),
@@ -239,7 +241,9 @@ jobs:
           node-version: 22
           package-manager-cache: false # see the Linux job
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
+        with:
+          toolchain: stable
 
       - name: Build
         env:
@@ -284,8 +288,9 @@ jobs:
           node-version: 22
           package-manager-cache: false # see the Linux job
 
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
         with:
+          toolchain: stable
           targets: aarch64-apple-darwin, x86_64-apple-darwin
 
       - name: Build
