@@ -110,8 +110,10 @@ Measured on 2026-11-11 (release build of `1a34174`, Linux x86_64, X11, WebKitGTK
   loaded anyway). Measured back to back, in the same conditions: 156–157 MiB open instead of 179, 77 MiB closed
   either way. No cost measured at rest, and none seen by hand (scrolling a long search, station sheets, the mini
   player); the interface barely animates. `SOUNDFOLK_GPU_RENDERING=1` gives the GPU back, for a user whose display
-  suffers from it. The policy is set on the web view rather than through `WEBKIT_DISABLE_COMPOSITING_MODE`, which
-  every program the app starts would inherit.
+  suffers from it. The policy must be in place before a web view loads its first page: set afterwards (all that
+  `with_webview` allows, since wry loads the page while it builds the view), WebKit 2.52 stops delivering the mouse
+  wheel to the page. WebKit reads `WEBKIT_DISABLE_COMPOSITING_MODE` once, when its first settings are made, so `run`
+  sets the variable, makes a settings object and removes the variable at once: no program the app starts inherits it.
 * PSS splits a shared library between the processes that map it: the same run reads ~5 MiB more when no other
   WebKitGTK program is running (46 instead of 41 MiB launched at login, all of it `libwebkit2gtk` pages). Compare
   figures measured in the same conditions, back to back.

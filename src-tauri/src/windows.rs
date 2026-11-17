@@ -110,7 +110,6 @@ pub fn open_main_window(app: &tauri::AppHandle) -> tauri::Result<tauri::WebviewW
         .cloned()
         .ok_or(tauri::Error::WindowNotFound)?;
     let window = WebviewWindowBuilder::from_config(app, &config)?.build()?;
-    software_rendering(&window);
     let geometry = *app
         .state::<WindowGeometry>()
         .0
@@ -167,29 +166,47 @@ pub fn on_window_event(window: &tauri::Window, event: &WindowEvent) {
     }
 }
 
-/// Opting out of [`software_rendering`]: set to anything, the GPU draws the window again.
+/// Opting out of [`software_rendering`]: set to anything, the GPU draws the windows again.
 #[cfg(target_os = "linux")]
 const GPU_RENDERING_VAR: &str = "SOUNDFOLK_GPU_RENDERING";
 
-/// On Linux, WebKit draws the web view without the GPU: ~27 MB less while a window is open, and no
-/// cost measured, since the interface barely animates (docs/02-architecture.md §6). Set on the web
-/// view rather than through `WEBKIT_DISABLE_COMPOSITING_MODE`, which every program the app starts
-/// (a browser for a donation page) would inherit.
-pub(crate) fn software_rendering(window: &tauri::WebviewWindow) {
+/// WebKitGTK's own switch: set when its first settings are made, it makes *never* the hardware
+/// acceleration policy of every web view of the process.
+#[cfg(target_os = "linux")]
+const WEBKIT_VAR: &str = "WEBKIT_DISABLE_COMPOSITING_MODE";
+
+/// On Linux, WebKit draws the web views without the GPU: ~22 MB less while a window is open, and no
+/// cost measured, since the interface barely animates (docs/02-architecture.md §6).
+///
+/// The policy has to be in place before a web view loads its first page. Set afterwards, as
+/// `with_webview` alone allows (wry loads the page while it builds the view), it leaves the view
+/// deaf to the mouse wheel: no scrolling, no volume. WebKit reads `WEBKIT_DISABLE_COMPOSITING_MODE`
+/// once, when its first settings are made: the variable is set, a settings object is made, and the
+/// variable is removed at once, so that no program the app starts (a browser for a donation page)
+/// inherits it.
+///
+/// # Safety
+///
+/// Changes the environment: to be called first thing in `run`, before any other thread exists.
+pub(crate) unsafe fn software_rendering() {
     #[cfg(target_os = "linux")]
     {
-        if std::env::var_os(GPU_RENDERING_VAR).is_some() {
+        use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt};
+        if std::env::var_os(GPU_RENDERING_VAR).is_some() || std::env::var_os(WEBKIT_VAR).is_some() {
             return;
         }
-        if let Err(e) = window.with_webview(|webview| {
-            use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt, WebViewExt};
-            if let Some(settings) = WebViewExt::settings(&webview.inner()) {
-                settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
-            }
-        }) {
-            tracing::warn!("web view left to GPU rendering: {e}");
+        // WebKit wants GTK first; Tauri's own `gtk::init` later finds it done.
+        if let Err(e) = gtk::init() {
+            tracing::warn!("web views left to GPU rendering: {e}");
+            return;
+        }
+        // SAFETY: the caller guarantees that no other thread reads or writes the environment.
+        unsafe { std::env::set_var(WEBKIT_VAR, "1") };
+        let policy = webkit2gtk::Settings::new().hardware_acceleration_policy();
+        // SAFETY: as above.
+        unsafe { std::env::remove_var(WEBKIT_VAR) };
+        if policy != HardwareAccelerationPolicy::Never {
+            tracing::warn!("web views left to GPU rendering: WebKit kept the policy {policy:?}");
         }
     }
-    #[cfg(not(target_os = "linux"))]
-    let _ = window;
 }

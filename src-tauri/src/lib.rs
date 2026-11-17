@@ -251,6 +251,8 @@ pub fn run() {
                 .unwrap_or_else(|_| EnvFilter::new("soundfolk_lib=info")),
         )
         .init();
+    // SAFETY: no other thread exists yet (the subscriber above starts none).
+    unsafe { windows::software_rendering() };
 
     let builder = tauri::Builder::default();
     // Registered first, as the plugin asks: a second launch hands over to the running copy
