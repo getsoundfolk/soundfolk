@@ -29,6 +29,9 @@ updates:
       # (opener, single-instance) still use. Lift once they are all on zbus 6.
       - dependency-name: zbus
         versions: [">=6"]
+      # notify-rust 4.19 moved to zbus 6: same reason as zbus above, lift both together.
+      - dependency-name: notify-rust
+        versions: [">=4.19"]
     groups:
       # Tauri, its plugins and its build crates move together.
       tauri:
