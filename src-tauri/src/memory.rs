@@ -100,7 +100,14 @@ mod tests {
             .arg("5")
             .spawn()
             .unwrap();
-        let found = children_named("sleep");
+        // `spawn` can return before the child's exec has renamed it: until then it still bears the
+        // test binary's name. Look again for up to two seconds.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut found = children_named("sleep");
+        while found.is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            found = children_named("sleep");
+        }
         child.kill().unwrap();
         child.wait().unwrap();
         assert_eq!(found, vec![child.id() as libc::pid_t]);
