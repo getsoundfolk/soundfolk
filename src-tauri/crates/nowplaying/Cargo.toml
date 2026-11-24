@@ -21,7 +21,7 @@ schemars = "1"
 ego-tree = "0.11"
 scraper = { version = "0.27", default-features = false, features = ["errors"] }
 regex-lite = "0.1"
-jiff = { version = "0.2", default-features = false, features = ["std"] }
+jiff = { version = "1.0", default-features = false, features = ["std"] }
 fastrand = "2"
 ureq = { version = "3", optional = true }
 
