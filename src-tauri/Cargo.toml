@@ -90,7 +90,7 @@ qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # Titles of streams without metadata: recipes, server status pages, scheduling (no I/O)
 soundfolk-nowplaying = { path = "crates/nowplaying" }
 # HTTP `Date` headers and timestamps
-jiff = { version = "0.2", default-features = false, features = ["std"] }
+jiff = { version = "1.0", default-features = false, features = ["std"] }
 # Station pages in another charset than UTF-8 (Latin-1 and the like), decoded as a browser does
 encoding_rs = "0.8"
 
