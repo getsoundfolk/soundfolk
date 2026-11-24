@@ -1,15 +1,17 @@
 # SPDX-License-Identifier: MPL-2.0
 #
-# Re-runs a CI run whose jobs failed only because no hosted runner picked them up (macOS arm64 in
-# runs 42651821949 and 43246302663), at most twice. The rules are in .github/scripts/ci-retry.sh,
-# which can be tried on a past run: ci-retry.sh getsoundfolk/soundfolk RUN_ID 1 --dry-run
+# Re-runs a CI or Release run whose jobs failed only because no hosted runner picked them up (macOS
+# arm64 in CI runs 42651821949 and 43246302663, Release run 45408119818), at most twice. For a
+# Release run, the jobs that waited on the build (signing, publishing) run again with it. The rules
+# are in .github/scripts/ci-retry.sh, which can be tried on a past run:
+#   ci-retry.sh getsoundfolk/soundfolk RUN_ID 1 --dry-run
 name: CI retry
 
 on:
   # Runs the copy of this file on main, with a token that can re-run jobs. Safe here: the job checks
   # out main, not the triggering run's code, and reads only job metadata from the API, no artifacts.
   workflow_run: # zizmor: ignore[dangerous-triggers]
-    workflows: [CI]
+    workflows: [CI, Release]
     types: [completed]
 
 permissions: {}

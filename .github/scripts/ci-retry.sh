@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
 #
-# Re-runs the failed jobs of a CI run when none of them ever got a runner: GitHub gave up queuing
-# them ("The job was not acquired by Runner of type hosted even after multiple attempts", macOS
-# arm64 in runs 42651821949 and 43246302663). Such a job has no runner name and no step. If any
-# failed job did run, nothing is re-run: a real failure stays visible. Called by ci-retry.yml.
+# Re-runs the failed jobs of a CI or Release run when none of them ever got a runner: GitHub gave up
+# queuing them ("The job was not acquired by Runner of type hosted even after multiple attempts",
+# macOS arm64 in CI runs 42651821949 and 43246302663, Release run 45408119818). Such a job has no
+# runner name and no step. If any failed job did run, nothing is re-run: a real failure stays
+# visible. Called by ci-retry.yml.
 #
 # Usage: ci-retry.sh REPO RUN_ID ATTEMPT [--dry-run]
 #   --dry-run   says what it would do, re-runs nothing (to try it on past runs)
