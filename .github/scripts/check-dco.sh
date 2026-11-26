@@ -18,7 +18,7 @@ head="$2"
 failed=0
 checked=0
 
-# Merge commits are not authored contributions; bot accounts (e.g. Dependabot) are exempt.
+# Merge commits are not authored contributions; bot accounts (e.g. Renovate) are exempt.
 for sha in $(git rev-list --no-merges "$base..$head"); do
   short="${sha:0:7}"
   author_email="$(git show -s --format='%ae' "$sha")"

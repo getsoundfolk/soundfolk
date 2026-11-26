@@ -7,12 +7,12 @@
 #   - on a pull request: how many crates / packages it adds, and which. Fails above a threshold: a
 #     dependency that pulls many others in cascade deserves a look (see docs/TODO.md, clipboard plugin).
 # Runs every Monday (new advisories come out for unchanged dependencies) and whenever a lockfile
-# changes. Dependency updates themselves come from Dependabot (.github/dependabot.yml).
+# changes. Dependency updates themselves come from Renovate (renovate.json).
 name: Dependencies
 
 on:
   schedule:
-    - cron: "41 5 * * 1" # Mondays, 05:41 UTC, before Dependabot's weekly PRs are reviewed
+    - cron: "41 5 * * 1" # Mondays, 05:41 UTC, the morning Renovate opens its weekly PRs
   push:
     branches: [main]
     paths:
