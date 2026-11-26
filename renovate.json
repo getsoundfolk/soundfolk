@@ -32,6 +32,22 @@
       "allowedVersions": "<4.19"
     },
     {
+      "description": "Held back: gtk and webkit2gtk are the versions Tauri (wry, tao, muda) already pulls in; a newer one would put a second GTK binding in the tree. Lift once Tauri moves.",
+      "matchPackageNames": ["gtk"],
+      "allowedVersions": "<0.19"
+    },
+    {
+      "description": "Held back with gtk, see above",
+      "matchPackageNames": ["webkit2gtk"],
+      "allowedVersions": "<3"
+    },
+    {
+      "description": "Held back: the Rust job runs on Ubuntu 22.04 on purpose, the system the .deb is built on (release.yml), for the same system libraries",
+      "matchDatasources": ["github-runners"],
+      "matchDepNames": ["ubuntu"],
+      "enabled": false
+    },
+    {
       "description": "Held back: TypeScript only serves svelte-check, whose peer range stops at ^6 (TS 7 is the Go rewrite, with a new API). Lift once svelte-check accepts TS 7.",
       "matchPackageNames": ["typescript"],
       "allowedVersions": "<7"
