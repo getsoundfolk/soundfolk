@@ -5,7 +5,11 @@
 # queuing them ("The job was not acquired by Runner of type hosted even after multiple attempts",
 # macOS arm64 in CI runs 42651821949 and 43246302663, Release run 45408119818). Such a job has no
 # runner name and no step. If any failed job did run, nothing is re-run: a real failure stays
-# visible. Called by ci-retry.yml.
+# visible. It waits first, longer after each attempt (20 minutes, 1 hour, 2 hours): a re-run on the
+# spot lands in the same shortage, and there is no other pool to fall back on (GitHub's Intel macOS
+# runners are going away; larger runners are paid). It leaves alone a run that a newer run of the same workflow and
+# branch replaced: re-running an old nightly would publish it over the newer one. Called by
+# ci-retry.yml.
 #
 # Usage: ci-retry.sh REPO RUN_ID ATTEMPT [--dry-run]
 #   --dry-run   says what it would do, re-runs nothing (to try it on past runs)
@@ -47,6 +51,27 @@ if [ -n "$ran" ]; then
     summary "These never got a runner (re-run them by hand once the failure is fixed):"
     summary "$unacquired"
   fi
+  exit 0
+fi
+
+case $attempt in
+  1) wait=20 ;;
+  2) wait=60 ;;
+  *) wait=120 ;;
+esac
+if [ "$dry_run" = --dry-run ]; then
+  echo "(dry run: would wait $wait minutes first)"
+else
+  echo "Waiting $wait minutes for runners to free up"
+  sleep $((wait * 60))
+fi
+
+# Checked after the wait: a newer run may have started meanwhile.
+read -r workflow branch < <(gh api "repos/$repo/actions/runs/$run_id" --jq '"\(.workflow_id) \(.head_branch)"')
+newest=$(gh api "repos/$repo/actions/workflows/$workflow/runs?branch=$branch&per_page=1" \
+  --jq '.workflow_runs[0].id')
+if [ "$newest" != "$run_id" ]; then
+  summary "Run $run_id, attempt $attempt: run $newest of the same workflow on $branch replaced it, nothing re-run."
   exit 0
 fi
 
