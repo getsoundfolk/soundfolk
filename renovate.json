@@ -10,16 +10,28 @@
       "automerge": false
     },
     {
-      "description": "The SHA-pinned actions of the workflows, once a month",
+      "description": "specta, specta-typescript and tauri-specta are release candidates pinned with = that require each other's exact versions (tauri-specta rc.29 needs specta =rc.28 and specta-typescript 0.0.15): one PR, reviewed by hand. After the tauri rule, which tauri-specta also matches.",
+      "matchPackageNames": ["specta", "specta-typescript", "tauri-specta"],
+      "groupName": "specta",
+      "automerge": false
+    },
+    {
+      "description": "The SHA-pinned actions of the workflows, once a month, reviewed by hand: release.yml (signing, provenance, artifacts) runs only nightly and on tags, so a pull request's checks do not cover it",
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions",
       "commitMessagePrefix": "ci:",
+      "automerge": false,
       "schedule": ["before 7am on the first day of the month"]
     },
     {
       "description": "Held back: 0.28+ is on html5ever 0.40, a second HTML engine next to wry's dom_query 0.28 (html5ever 0.39); cargo-deny fails it. Lift once wry is on dom_query 0.29.",
       "matchPackageNames": ["scraper"],
       "allowedVersions": "<0.28"
+    },
+    {
+      "description": "Held back with scraper: nowplaying uses ego-tree's NodeId on scraper's trees, so both must use the same ego-tree (0.11 for scraper 0.27). Lift together with scraper.",
+      "matchPackageNames": ["ego-tree"],
+      "allowedVersions": "<0.12"
     },
     {
       "description": "Held back: zbus 6 would sit next to zbus 5, which souvlaki, ksni and the Tauri plugins (opener, single-instance) still use. notify-rust 4.19 moved to zbus 6. Lift both once they are all on zbus 6.",
