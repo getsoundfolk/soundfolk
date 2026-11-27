@@ -340,6 +340,31 @@ jobs:
           mkdir "$RUNNER_TEMP/extracted"
           tar -xzf "$updater" -C "$RUNNER_TEMP/extracted"
           codesign --verify --deep --strict "$RUNNER_TEMP/extracted/$(basename "${apps[0]}")"
+          # Smoke test: the app starts and is still running 15 seconds later, once per architecture
+          # (x86_64 through Rosetta). The runner has a graphical session, so the window opens. Only
+          # macOS 26 is tried: GitHub has no runner older than macOS 14. One run at a time: the
+          # single-instance plugin would hand a second one over to the first.
+          app_binary=("$RUNNER_TEMP"/extracted/*.app/Contents/MacOS/*)
+          for arch in arm64 x86_64; do
+            if [ "$arch" = x86_64 ] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+              echo "::warning::Rosetta is missing on the runner: the Intel half was not started"
+              continue
+            fi
+            log="$RUNNER_TEMP/smoke-$arch.log"
+            arch "-$arch" "${app_binary[0]}" >"$log" 2>&1 &
+            pid=$!
+            sleep 15
+            if ! kill -0 "$pid" 2>/dev/null; then
+              echo "::error::Soundfolk ($arch) quit within 15 seconds of starting"
+              cat "$log"
+              exit 1
+            fi
+            echo "$arch: still running after 15 seconds"
+            kill "$pid"
+            # Stopped by the signal above, so its exit status is not the app's: only wait for it.
+            wait "$pid" || true
+            tail -n 20 "$log"
+          done
 
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
