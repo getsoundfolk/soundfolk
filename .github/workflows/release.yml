@@ -272,7 +272,7 @@ jobs:
     needs: version
     if: needs.version.outputs.skip != 'true'
     # Apple Silicon runner; the x86_64 half of the universal app is cross-compiled.
-    runs-on: macos-15
+    runs-on: macos-26
     permissions:
       contents: read
       id-token: write # sign the provenance attestation
@@ -309,8 +309,9 @@ jobs:
           mkdir -p out
           cp "$bundle"/dmg/*.dmg out/
           ls -l out
-          # Fails if the app in the disk image does not hold both architectures, its signature does
-          # not verify, or the window lost its layout (Finder's .DS_Store and the background).
+          # Fails if the app in the disk image does not hold both architectures, runs on a newer macOS
+          # than docs/install.md promises (10.13 on Intel; Apple Silicon starts at 11.0), its signature
+          # does not verify, or the window lost its layout (Finder's .DS_Store and the background).
           # Checked inside the image: the bundler deletes the .app once it is in.
           dmgs=(out/*.dmg)
           hdiutil attach -nobrowse -readonly -mountpoint "$RUNNER_TEMP/dmg" "${dmgs[0]}"
@@ -319,6 +320,16 @@ jobs:
           apps=("$RUNNER_TEMP"/dmg/*.app)
           binaries=("${apps[0]}"/Contents/MacOS/*)
           lipo "${binaries[0]}" -verify_arch arm64 x86_64
+          # The first `minos` (LC_BUILD_VERSION) or `version` (LC_VERSION_MIN_MACOSX) line is the
+          # slice's minimum macOS; the `version` lines after it are the linker tools'. A newer Xcode
+          # on the runner can raise it without failing the build.
+          for expected in x86_64:10.13 arm64:11.0; do
+            arch=${expected%%:*}
+            minos=$(vtool -arch "$arch" -show-build "${binaries[0]}" |
+              awk '$1 == "minos" || $1 == "version" { print $2; exit }')
+            echo "$arch: macOS $minos or later"
+            test "$minos" = "${expected#*:}"
+          done
           codesign --verify --deep --strict "${apps[0]}"
           # The app alone, for the in-app updater (docs/19-in-app-updates.md), which replaces the
           # installed one with it. No AppleDouble files (COPYFILE_DISABLE): extracted again, its

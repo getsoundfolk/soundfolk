@@ -118,7 +118,7 @@ jobs:
   rust-macos:
     name: Rust (macOS)
     # The runner the macOS disk image is built on (release.yml).
-    runs-on: macos-15
+    runs-on: macos-26
     # Same limit as the Linux job (2 minutes today). Run 43077276878 hung in Clippy here.
     timeout-minutes: 45
     steps:
