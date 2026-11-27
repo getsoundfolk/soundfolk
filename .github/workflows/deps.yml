@@ -57,7 +57,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       # Reads package-lock.json, no install needed. Low-severity advisories without a fix
       # (deepmerge via vite-plugin-svelte, build only) do not fail the job.
       - run: npm audit --audit-level=moderate

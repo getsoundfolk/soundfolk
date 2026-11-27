@@ -148,7 +148,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           # No npm or Rust cache in a release build: a cache can be written by other runs
           # (cache poisoning), and what ships must come from the lockfiles alone.
           package-manager-cache: false
@@ -238,7 +238,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false # see the Linux job
 
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -285,7 +285,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false # see the Linux job
 
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1
@@ -387,7 +387,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.setup.outputs.ready == 'true'
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false # see the Linux job
 
       - name: Sign the packages
