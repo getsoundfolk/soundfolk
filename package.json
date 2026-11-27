@@ -10,7 +10,7 @@
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri",
-    "lint": "eslint . && npm run lint:css && knip && .github/scripts/check-unused-commands.sh",
+    "lint": "eslint . && npm run lint:css && knip && .github/scripts/check-unused-bindings.sh",
     "lint:css": "stylelint \"src/**/*.{css,svelte}\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
