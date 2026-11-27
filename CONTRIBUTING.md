@@ -91,7 +91,8 @@ animation, a stable scrollbar gutter on scrolling panels ([docs/07-visual-design
 The last two come from a local plugin, `stylelint-plugin-soundfolk.js`. A rule broken on purpose says
 why: `/* stylelint-disable-next-line rule -- why */`. Last, [knip](https://knip.dev) (`knip.json`) finds
 files, exports and npm packages nothing uses; the exports of the generated `src/lib/bindings.ts` are
-left out.
+left out. Then `.github/scripts/check-unused-commands.sh` lists the Tauri commands the front end never
+calls, which neither Rust nor knip sees.
 
 `src/lib/bindings.ts` (the commands and the types they carry) is generated from the Rust code: a test
 fails when it is out of date, and writes it again, so after changing a command or one of its types run
