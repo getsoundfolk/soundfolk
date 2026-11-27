@@ -71,7 +71,7 @@ export function recipeRequestLink(station: Playable): string {
   return `${RECIPES_REPOSITORY}/issues/new?${params}`;
 }
 
-export const isAppError = (e: unknown): e is AppError =>
+const isAppError = (e: unknown): e is AppError =>
   typeof e === 'object' &&
   e !== null &&
   typeof (e as AppError).kind === 'string' &&

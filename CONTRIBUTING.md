@@ -89,7 +89,9 @@ npm test
 tokens, radii, weights and sizes on their scales, a reduced-motion fallback for every transition or
 animation, a stable scrollbar gutter on scrolling panels ([docs/07-visual-design.md](docs/07-visual-design.md)).
 The last two come from a local plugin, `stylelint-plugin-soundfolk.js`. A rule broken on purpose says
-why: `/* stylelint-disable-next-line rule -- why */`.
+why: `/* stylelint-disable-next-line rule -- why */`. Last, [knip](https://knip.dev) (`knip.json`) finds
+files, exports and npm packages nothing uses; the exports of the generated `src/lib/bindings.ts` are
+left out.
 
 `src/lib/bindings.ts` (the commands and the types they carry) is generated from the Rust code: a test
 fails when it is out of date, and writes it again, so after changing a command or one of its types run

@@ -28,7 +28,7 @@ export const sharedOf = (s: Playable): Shared =>
 
 /** A received link the shared sheet shows: everything but a catalog station or a known list,
  *  which open the station sheet or the list's screen. */
-export type Received =
+type Received =
   | { kind: 'invalid'; message: string }
   | { kind: 'gone'; link: SharedLink & { kind: 'station' } }
   | { kind: 'unknown_list'; link: SharedLink & { kind: 'list' } }
@@ -36,7 +36,7 @@ export type Received =
   | { kind: 'personal_list'; link: SharedLink & { kind: 'personal_list' } };
 
 /** The link being offered in the share panel. */
-export interface Offer {
+interface Offer {
   /** What is shared, as the panel's title says it: a station's or a list's name. */
   name: string;
   track: string | null;
