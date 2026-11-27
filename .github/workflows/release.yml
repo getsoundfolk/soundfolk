@@ -471,12 +471,12 @@ jobs:
       contents: write # create the release and upload the packages
       discussions: write # announce a tagged release in Discussions
     steps:
-      # The whole history and its tags, to find the previous release.
+      # The scripts; for a tagged release, the whole history and its tags, to find the previous
+      # release. ('0' is a string: the number 0 would be false and pick the 1.)
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.ref_type == 'tag'
         with:
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: ${{ github.ref_type == 'tag' && '0' || '1' }}
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -521,10 +521,24 @@ jobs:
           GH_REPO: ${{ github.repository }}
           TAG: ${{ needs.version.outputs.release }}
         run: |
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release upload "$TAG" out/* --clobber
-            exit 0
-          fi
+          # Tried again after a server error (retry.sh). A try that failed may have left the
+          # release published without all its packages, or a draft (gh uploads to a draft first):
+          # the next one completes the first, deletes the second.
+          source .github/scripts/retry.sh
+          publish() {
+            # Published only: unlike `gh release view`, this address never returns a draft.
+            if gh api "repos/$GH_REPO/releases/tags/$TAG" --silent 2> /dev/null; then
+              gh release upload "$TAG" out/* --clobber
+              return 0
+            fi
+            drafts=$(gh api --paginate "repos/$GH_REPO/releases" \
+              --jq ".[] | select(.draft and .tag_name == \"$TAG\") | .id")
+            for id in $drafts; do
+              gh api -X DELETE "repos/$GH_REPO/releases/$id"
+            done
+            gh release create "$TAG" out/* --verify-tag --notes-file "$notes" --title "Soundfolk $TAG" \
+              --discussion-category Announcements
+          }
           # The summary is the message of the annotated tag, past its first paragraph (the title,
           # "Soundfolk 0.4.0") and without its signature. Read through the API: actions/checkout turns
           # an annotated tag into a lightweight one. The rest of the notes is the same for every
@@ -541,8 +555,7 @@ jobs:
           fi
           .github/scripts/release-notes.sh notes "$TAG" "$summary" > "$notes"
           cat "$notes"
-          gh release create "$TAG" out/* --verify-tag --notes-file "$notes" --title "Soundfolk $TAG" \
-            --discussion-category Announcements
+          retry publish
 
       - name: Publish the nightly pre-release
         if: github.ref_type != 'tag'
@@ -551,13 +564,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.version.outputs.version }}
           SHA: ${{ needs.version.outputs.sha }}
-        run: |
-          # One rolling pre-release: drop the previous one and its tag, recreate at this commit.
-          gh release delete nightly --cleanup-tag --yes 2> /dev/null || true
-          gh release create nightly out/* \
-            --prerelease --target "$SHA" \
-            --title "Nightly $VERSION" \
-            --notes "Automatic build of main at ${SHA:0:7}. Not a stable release."
+        # One rolling pre-release, replaced only once the new one is uploaded.
+        run: .github/scripts/publish-nightly.sh "$VERSION" "$SHA" out/*
 
   apt:
     name: Update the APT repository
@@ -628,7 +636,14 @@ jobs:
           hosts="$RUNNER_TEMP/known_hosts"
           echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$hosts"
           export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
-          git clone --depth 1 --branch main git@github.com:getsoundfolk/apt.git "$RUNNER_TEMP/apt"
+          # The clone and the push are tried again after a server error (retry.sh); the push
+          # replaces the branch, so pushing twice does no harm.
+          source .github/scripts/retry.sh
+          clone() {
+            rm -rf "$RUNNER_TEMP/apt"
+            git clone --depth 1 --branch main git@github.com:getsoundfolk/apt.git "$RUNNER_TEMP/apt"
+          }
+          retry clone
           debs=(out/*.deb)
           .github/scripts/update-apt-repo.sh "$RUNNER_TEMP/apt" "${debs[0]}" \
             src-tauri/packaging/apt/soundfolk-archive-keyring.gpg
@@ -639,7 +654,7 @@ jobs:
           git add --all
           git -c user.name="Soundfolk release" -c user.email="release@soundfolk.invalid" \
             commit --quiet --message "Soundfolk $VERSION"
-          git push --force origin published:main
+          retry git push --force origin published:main
           rm -f "$key"
 
   winget:
@@ -709,7 +724,11 @@ jobs:
           # The installer of the release just published: winget downloads it from there and checks
           # it against the SHA-256 in the manifest.
           url="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/Soundfolk_${VERSION}_x64-setup.exe"
-          "$RUNNER_TEMP/komac" update "$PACKAGE" --version "$VERSION" --urls "$url" --submit
+          # Tried again after a server error (retry.sh). Safe even when a try opened the pull
+          # request and lost the answer: in CI, Komac 2.17 submits nothing when a pull request for
+          # this version already exists (Package::prompt_existing_pr; --skip-pr-check not passed).
+          .github/scripts/retry.sh \
+            "$RUNNER_TEMP/komac" update "$PACKAGE" --version "$VERSION" --urls "$url" --submit
 
   site:
     name: Rebuild the site
@@ -720,8 +739,15 @@ jobs:
     # Holds SITE_TOKEN, the token that starts the site's Pages workflow (docs/16-sharing.md §5.3):
     # protected, so that only this workflow on a `v*` tag can read it.
     environment: site
-    permissions: {}
+    permissions:
+      contents: read # retry.sh
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts/retry.sh
+          sparse-checkout-cone-mode: false
+
       - name: Start the site's Pages workflow
         env:
           GH_TOKEN: ${{ secrets.SITE_TOKEN }}
@@ -732,4 +758,6 @@ jobs:
             echo "::notice::SITE_TOKEN not set (docs/16-sharing.md §5.3): skipped"
             exit 0
           fi
-          gh workflow run pages.yml --repo getsoundfolk/getsoundfolk.github.io --ref main
+          # Tried again after a server error. Starting it twice would only build the site twice.
+          .github/scripts/retry.sh \
+            gh workflow run pages.yml --repo getsoundfolk/getsoundfolk.github.io --ref main

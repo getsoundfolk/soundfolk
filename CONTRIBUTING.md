@@ -108,6 +108,10 @@ When no hosted runner picks up a CI or Release job (it happens on macOS),
 (20 minutes, 1 hour, 2 hours). A job that ran and failed is never re-run on its own, nor
 a run that a newer one of the same workflow and branch replaced. To see what it would do on a past run:
 `.github/scripts/ci-retry.sh getsoundfolk/soundfolk RUN_ID 1 --dry-run`.
+Within a Release run, the steps that publish (the GitHub release, the APT repository, winget, the site) try
+again after a server error, 1 then 5 minutes later ([`retry.sh`](.github/scripts/retry.sh)). The nightly is
+uploaded to a draft before it replaces the previous one
+([`publish-nightly.sh`](.github/scripts/publish-nightly.sh)): a failed upload leaves the previous nightly online.
 
 ### Pre-commit hook
 
